@@ -154,7 +154,9 @@ impl fmt::Display for ModelError {
             Self::InvalidIdentifierCharacter { field } => {
                 write!(formatter, "{field} contains a disallowed character")
             }
-            Self::InvalidTimeWindow => formatter.write_str("challenge expiry must be after issue time"),
+            Self::InvalidTimeWindow => {
+                formatter.write_str("challenge expiry must be after issue time")
+            }
         }
     }
 }

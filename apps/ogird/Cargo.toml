@@ -10,7 +10,7 @@ authors.workspace = true
 publish = false
 
 [dependencies]
-ogir-agent = { path = "../../crates/ogir-agent" }
+ogir-agent = { path = "../../crates/ogir-agent", version = "=0.0.0" }
 
 [lints]
 workspace = true

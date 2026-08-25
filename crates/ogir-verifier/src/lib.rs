@@ -3,8 +3,8 @@
 #![forbid(unsafe_code)]
 //! Deterministic verifier interfaces. Cryptographic verification is not implemented yet.
 
-use ogir_protocol::EvidenceBundle;
 use ogir_model::{Decision, PublisherChallenge, ReasonCode};
+use ogir_protocol::EvidenceBundle;
 
 /// Expected relying-party context supplied independently of client evidence.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,9 +89,9 @@ const fn denied(reason: ReasonCode) -> VerificationOutcome {
 
 #[cfg(test)]
 mod tests {
-    use super::{verify_research_structure, ExpectedContext, VerificationRequest};
-    use ogir_protocol::EvidenceBundle;
+    use super::{ExpectedContext, VerificationRequest, verify_research_structure};
     use ogir_model::{Decision, Nonce, ProtocolVersion, PublisherChallenge, ReasonCode};
+    use ogir_protocol::EvidenceBundle;
 
     fn challenge() -> PublisherChallenge {
         PublisherChallenge {

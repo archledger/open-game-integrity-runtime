@@ -10,7 +10,7 @@ authors.workspace = true
 publish = false
 
 [dependencies]
-ogir-verifier = { path = "../../crates/ogir-verifier" }
+ogir-verifier = { path = "../../crates/ogir-verifier", version = "=0.0.0" }
 
 [lints]
 workspace = true

@@ -83,7 +83,7 @@ impl Error for ProtocolError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{FrameHeader, MessageKind, ProtocolError, MAX_FRAME_LENGTH};
+    use super::{FrameHeader, MAX_FRAME_LENGTH, MessageKind, ProtocolError};
     use ogir_model::ProtocolVersion;
 
     #[test]

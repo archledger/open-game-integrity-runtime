@@ -10,7 +10,7 @@ authors.workspace = true
 publish = false
 
 [dependencies]
-ogir-model = { path = "../ogir-model" }
+ogir-model = { path = "../ogir-model", version = "=0.0.0" }
 
 [lints]
 workspace = true

@@ -32,10 +32,7 @@ pub struct EvidenceRequest {
 /// Backend boundary for test, software-TPM, and hardware-TPM implementations.
 pub trait AttestationBackend: fmt::Debug + Send {
     /// Creates fresh evidence for the exact request.
-    fn create_evidence(
-        &mut self,
-        request: &EvidenceRequest,
-    ) -> Result<EvidenceBundle, AgentError>;
+    fn create_evidence(&mut self, request: &EvidenceRequest) -> Result<EvidenceBundle, AgentError>;
 }
 
 /// Local-agent error. It intentionally does not classify the player as cheating.
