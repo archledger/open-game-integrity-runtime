@@ -4,6 +4,8 @@ set -euo pipefail
 
 ./scripts/test-repository-metadata.sh
 ./scripts/check-repository-metadata.sh
+./scripts/test-adr-index.sh
+./scripts/check-adr-index.sh
 ./scripts/test-dco.sh
 
 cargo fmt --all --check
