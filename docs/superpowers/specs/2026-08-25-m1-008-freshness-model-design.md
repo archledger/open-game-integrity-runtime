@@ -1,6 +1,6 @@
 # M1-008 challenge freshness and replay design
 
-- Status: Proposed for human review
+- Status: Approved for implementation
 - Date: 2026-08-25
 - Related issue: [M1-008](../../../planning/issues/008-freshness-model.md)
 - Decision owner: Initial maintainer
