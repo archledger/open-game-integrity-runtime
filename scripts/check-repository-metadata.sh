@@ -41,8 +41,9 @@ case "${marker_status}" in
 esac
 
 tracked_paths_file="$(mktemp)"
-trap 'rm -f -- "${tracked_paths_file}"' EXIT
-if ! git -C "${repository_root}" ls-files -z >"${tracked_paths_file}"; then
+source_blob_file="$(mktemp)"
+trap 'rm -f -- "${tracked_paths_file}" "${source_blob_file}"' EXIT
+if ! git -C "${repository_root}" ls-files --stage -z >"${tracked_paths_file}"; then
   echo "repository metadata check failed to enumerate tracked files" >&2
   exit 2
 fi
@@ -50,6 +51,7 @@ fi
 validate_spdx_header() {
   local path="$1"
   local expected_license="$2"
+  local source_file="$3"
   local declaration_output
   local declaration_status=0
   local line_number
@@ -58,7 +60,7 @@ validate_spdx_header() {
   declaration_output="$(
     grep -a -n -E \
       '^[[:space:]]*(#|//|/\*)[[:space:]]*SPDX-License-Identifier:' \
-      "${repository_root}/${path}"
+      "${source_file}"
   )" || declaration_status=$?
 
   case "${declaration_status}" in
@@ -94,7 +96,11 @@ validate_spdx_header() {
   fi
 }
 
-while IFS= read -r -d '' path; do
+while IFS= read -r -d '' tracked_entry; do
+  tracked_metadata="${tracked_entry%%$'\t'*}"
+  path="${tracked_entry#*$'\t'}"
+  tracked_mode="${tracked_metadata%% *}"
+
   case "${path}" in
     *.rs | *.c | *.h | *.sh)
       expected_license="Apache-2.0"
@@ -103,7 +109,18 @@ while IFS= read -r -d '' path; do
         bpf/*) expected_license="GPL-2.0-only" ;;
       esac
 
-      validate_spdx_header "${path}" "${expected_license}"
+      if [[ "${tracked_mode}" != "100644" && "${tracked_mode}" != "100755" ]]; then
+        printf '%s: tracked source must be a regular file\n' "${path}" >&2
+        status=1
+        continue
+      fi
+
+      if ! git -C "${repository_root}" show ":${path}" >"${source_blob_file}"; then
+        printf '%s: failed to read staged source content\n' "${path}" >&2
+        exit 2
+      fi
+
+      validate_spdx_header "${path}" "${expected_license}" "${source_blob_file}"
       ;;
   esac
 done <"${tracked_paths_file}"

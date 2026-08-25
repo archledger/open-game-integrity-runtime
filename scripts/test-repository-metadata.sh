@@ -94,6 +94,13 @@ printf '%s\n' \
 git -C "${fixture}" add wine/example.c
 expect_fail "conflicting SPDX headers" "wine/example.c: invalid SPDX license header"
 
+make_fixture source-symlink
+external_source="${fixture_root}/external.rs"
+printf '%s\n' '// SPDX-License-Identifier: Apache-2.0' >"${external_source}"
+ln -s "${external_source}" "${fixture}/src/linked.rs"
+git -C "${fixture}" add src/linked.rs
+expect_fail "tracked source symlink" "src/linked.rs: tracked source must be a regular file"
+
 fixture="${fixture_root}/bare.git"
 git init --bare -q "${fixture}"
 expect_fail "bare repository" "repository metadata check requires a Git worktree"
