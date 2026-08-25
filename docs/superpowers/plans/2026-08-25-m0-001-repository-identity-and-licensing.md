@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **Execution status:** Implemented and independently reviewed. The Independent Review Amendments below supersede the original checker/test code samples in Tasks 1-2.
+> **Execution status:** Implemented through two independent review/remediation rounds; a third verification review is pending. The Independent Review Amendments below supersede the original checker/test code samples in Tasks 1-2.
 
 **Goal:** Replace the bootstrap's unresolved repository identity, document the initial copyright-notice policy, and add an automated fail-closed gate for repository identity and source-license boundaries.
 
@@ -241,7 +241,7 @@ Run:
 ./scripts/test-repository-metadata.sh
 ```
 
-Expected after independent-review remediation: fourteen `PASS:` lines followed by `All repository metadata tests passed.`
+Expected after independent-review remediation: twenty-two `PASS:` lines followed by `All repository metadata tests passed.`
 
 - [ ] **Step 3: Prove the checker fails against the unresolved bootstrap**
 
@@ -348,7 +348,7 @@ Run:
 ./scripts/test-repository-metadata.sh
 ```
 
-Expected: both commands exit 0; after independent-review remediation the fixture suite reports fourteen passing cases.
+Expected: both commands exit 0; after independent-review remediation the fixture suite reports twenty-two passing cases.
 
 - [ ] **Step 5: Verify official license texts were not modified**
 
@@ -431,7 +431,15 @@ The first independent review of `33ea390..be85830` returned `Ready to merge? No`
 - any supplied subdirectory resolves to the canonical worktree top level before repository-wide scanning;
 - generic owner/repository marker forms are rejected and all repository examples use `archledger`;
 - executable extensionless shell sources are classified by their staged shebang and require SPDX metadata;
-- the suite contains fourteen positive/negative fixtures covering these behaviors.
+- the first review round expanded the suite to fourteen positive/negative fixtures covering these behaviors.
+
+The second independent review of `be85830..2ed310b` also returned `Ready to merge? No`. Its test-first corrections further supersede Tasks 1-2:
+
+- parsed SPDX identifiers are compared literally, with near-match cases for all three license boundaries;
+- identity markers are read from the staged index so unstaged worktree edits cannot hide pending content;
+- SPDX comment prefixes are validated by source kind (`#` for shell; `//` or block comments for Rust/C);
+- regular extensionless shell sources are detected by staged shebang content regardless of executable bit;
+- the suite contains twenty-two fixtures after the second remediation round.
 
 The configured repository and security/discussion URLs still return 404 until the public GitHub repository is created. That external acceptance criterion remains a blocker; this plan does not authorize creating or configuring the remote.
 
@@ -455,7 +463,7 @@ shellcheck scripts/*.sh
 git diff --check 33ea390..HEAD
 ```
 
-Expected: all commands exit 0 and the fixture suite reports fourteen passing cases.
+Expected: all commands exit 0 and the fixture suite reports twenty-two passing cases.
 
 - [ ] **Step 2: Confirm scope and sensitive-data hygiene**
 
