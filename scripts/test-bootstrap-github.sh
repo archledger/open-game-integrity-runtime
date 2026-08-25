@@ -76,7 +76,7 @@ fake_issue_create() {
   local title=""
   local body_file=""
   local milestone=""
-  local label labels_csv=""
+  local label labels_csv="" canonical_labels body_base64 next_number
   local -a labels=()
 
   while (($# > 0)); do
@@ -134,6 +134,25 @@ fake_issue_create() {
   printf '%s\t%s\t%s\t%s\n' \
     "${title}" "${milestone}" "${labels_csv}" "${body_file}" \
     >>"${state_root}/issue-creations.tsv"
+  canonical_labels="$(
+    printf '%s\n' "${labels[@]}" | LC_ALL=C sort | awk '
+      BEGIN { first = 1 }
+      {
+        printf "%s%s", first ? "" : ",", $0
+        first = 0
+      }
+      END { print "" }
+    '
+  )"
+  body_base64="$(base64 <"${body_file}" | tr -d '\n')"
+  next_number="$((
+    $(awk -F '\t' 'BEGIN { max = 0 } $1 > max { max = $1 } END { print max }' \
+      "${state_root}/issue-metadata.tsv") + 1
+  ))"
+  printf '%s\t%s\t%s\t%s\t%s\n' \
+    "${next_number}" "${title}" "${milestone}" \
+    "${canonical_labels}" "${body_base64}" \
+    >>"${state_root}/issue-metadata.tsv"
   printf '%s\n' "${title}" >>"${state_root}/issues.txt"
   echo "https://example.invalid/issues/1"
 }
@@ -226,11 +245,11 @@ fake_api() {
       ;;
     GET:*/issues\?*)
       if [[ "${paginate}" != "true" ||
-        "${jq_filter}" != '.[] | select(.pull_request == null) | .title' ]]; then
+        "${jq_filter}" != '.[] | select(.pull_request == null) | [.number, .title, (.milestone.title // ""), ([.labels[].name] | sort | join(",")), ((.body // "") | @base64)] | @tsv' ]]; then
         echo "issue API query must paginate and exclude pull requests" >&2
         return 2
       fi
-      cat "${state_root}/issues.txt"
+      cat "${state_root}/issue-metadata.tsv"
       ;;
     POST:*/milestones)
       fake_create_milestone "${state_root}" "${fields[@]}"
@@ -324,6 +343,7 @@ ln -s -- "${repository_root}/scripts/test-bootstrap-github.sh" \
 : >"${fixture_root}/state/milestones.tsv"
 : >"${fixture_root}/state/issues.txt"
 : >"${fixture_root}/state/issue-creations.tsv"
+: >"${fixture_root}/state/issue-metadata.tsv"
 
 run_bootstrap() {
   PATH="${fixture_root}/bin:${PATH}" \
@@ -347,6 +367,51 @@ expect_equal() {
   fi
 }
 
+seed_canonical_issue() {
+  local number="$1"
+  local issue_file="$2"
+  local title labels milestone label canonical_labels body_base64
+  local -a label_array=()
+
+  title="$(sed -n '1s/^# //p' "${issue_file}")"
+  labels="$(sed -n 's/^<!-- labels: \(.*\) -->$/\1/p' "${issue_file}")"
+  milestone="$(sed -n 's/^<!-- milestone: \(.*\) -->$/\1/p' "${issue_file}")"
+  IFS=',' read -r -a label_array <<<"${labels}"
+  for label in "${label_array[@]}"; do
+    label="${label#"${label%%[![:space:]]*}"}"
+    label="${label%"${label##*[![:space:]]}"}"
+    printf '%s\n' "${label}"
+  done | LC_ALL=C sort >"${fixture_root}/state/issue-labels.tmp"
+  canonical_labels="$(awk '
+    BEGIN { first = 1 }
+    {
+      printf "%s%s", first ? "" : ",", $0
+      first = 0
+    }
+    END { print "" }
+  ' "${fixture_root}/state/issue-labels.tmp")"
+  body_base64="$(base64 <"${issue_file}" | tr -d '\n')"
+
+  printf '%s\t%s\t%s\t%s\t%s\n' \
+    "${number}" "${title}" "${milestone}" \
+    "${canonical_labels}" "${body_base64}" \
+    >>"${fixture_root}/state/issue-metadata.tsv"
+  printf '%s\n' "${title}" >>"${fixture_root}/state/issues.txt"
+}
+
+seed_other_canonical_issues() {
+  local issue_file
+  local number=1
+
+  for issue_file in "${repository_root}"/planning/issues/*.md; do
+    if [[ "${issue_file}" == */006-triage-taxonomy.md ]]; then
+      continue
+    fi
+    seed_canonical_issue "${number}" "${issue_file}"
+    number=$((number + 1))
+  done
+}
+
 expected_milestones=(
   "M0 Repository Foundation"
   "M1 Domain Model"
@@ -363,19 +428,19 @@ expected_milestones=(
   "M12 Production Candidate"
 )
 expected_milestone_descriptions=(
-  "Create a public, reviewable project where unsafe process choices are difficult from the first commit. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
-  "Define what OGIR means before deciding how bytes are encoded or which libraries implement it. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
-  "Prove challenge, evidence, verifier, permit, and session-key binding without involving TPM complexity. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
-  "Replace the mock attester with real TPM-backed freshness and key possession while keeping the rest of the system backend-agnostic. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
-  "Prove one narrow, documented Linux platform profile rather than claiming generic Linux trust. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
-  "Allow a Windows sample game under stock Proton to invoke OGIR without trusting Windows-provided identity fields. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
-  "Make the integration experience credible for a game studio while retaining publisher control. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
-  "Bind the attestation report to the actual live game process tree before enforcing restrictions. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
-  "Add only the minimum game-scoped controls needed for a clearly defined threat class. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
-  "Turn the threat model into executable, repeatable adversarial testing. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
-  "Improve ordinary Windows TPM API compatibility under Wine without conflating it with physical-host attestation. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
-  "Earn justified trust rather than asking publishers to trust project reputation alone. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
-  "Offer one supportable, versioned profile with explicit lifecycle and residual risk. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Create a public, reviewable project where unsafe process choices are difficult from the first commit."
+  "Define what OGIR means before deciding how bytes are encoded or which libraries implement it."
+  "Prove challenge, evidence, verifier, permit, and session-key binding without involving TPM complexity."
+  "Replace the mock attester with real TPM-backed freshness and key possession while keeping the rest of the system backend-agnostic."
+  "Prove one narrow, documented Linux platform profile rather than claiming generic Linux trust."
+  "Allow a Windows sample game under stock Proton to invoke OGIR without trusting Windows-provided identity fields."
+  "Make the integration experience credible for a game studio while retaining publisher control."
+  "Bind the attestation report to the actual live game process tree before enforcing restrictions."
+  "Add only the minimum game-scoped controls needed for a clearly defined threat class."
+  "Turn the threat model into executable, repeatable adversarial testing."
+  "Improve ordinary Windows TPM API compatibility under Wine without conflating it with physical-host attestation."
+  "Earn justified trust rather than asking publishers to trust project reputation alone."
+  "Offer one supportable, versioned profile with explicit lifecycle and residual risk."
 )
 expected_labels=(
   $'type: architecture\t5319E7\tDurable trust, protocol, privilege, or component decision'
@@ -417,6 +482,27 @@ expect_equal "first run creates 33 canonical labels" "33" \
   "$(wc -l <"${fixture_root}/state/labels.tsv")"
 expect_equal "first run creates 13 milestones" "13" \
   "$(wc -l <"${fixture_root}/state/milestones.tsv")"
+
+mapfile -t roadmap_objectives < <(
+  awk '
+    /^# Milestone M[0-9]+ / { milestone = $0 }
+    /^## Objective$/ {
+      getline
+      getline
+      if (milestone != "") {
+        print
+      }
+    }
+  ' "${repository_root}/docs/ROADMAP.md"
+)
+expect_equal "roadmap exposes 13 milestone objectives" "13" \
+  "${#roadmap_objectives[@]}"
+for milestone_index in "${!expected_milestone_descriptions[@]}"; do
+  expect_equal \
+    "bootstrap description matches roadmap objective ${milestone_index}" \
+    "${roadmap_objectives[${milestone_index}]}" \
+    "${expected_milestone_descriptions[${milestone_index}]}"
+done
 
 for expected_label in "${expected_labels[@]}"; do
   if grep -Fqx -- "${expected_label}" \
@@ -488,13 +574,7 @@ else
   failures=$((failures + 1))
 fi
 
-for issue_file in "${repository_root}"/planning/issues/*.md; do
-  if [[ "${issue_file}" == */006-triage-taxonomy.md ]]; then
-    continue
-  fi
-  sed -n '1s/^# //p' "${issue_file}" \
-    >>"${fixture_root}/state/issues.txt"
-done
+seed_other_canonical_issues
 
 PATH="${fixture_root}/bin:${PATH}" \
   OGIR_FAKE_GH=1 \
@@ -526,19 +606,18 @@ expect_equal "sample issue creation is idempotent" "1" \
 
 : >"${fixture_root}/state/issues.txt"
 : >"${fixture_root}/state/issue-creations.tsv"
-for issue_file in "${repository_root}"/planning/issues/*.md; do
-  if [[ "${issue_file}" == */006-triage-taxonomy.md ]]; then
-    continue
-  fi
-  sed -n '1s/^# //p' "${issue_file}" \
-    >>"${fixture_root}/state/issues.txt"
-done
-for ((issue_number = 1; issue_number <= 491; issue_number++)); do
+: >"${fixture_root}/state/issue-metadata.tsv"
+seed_other_canonical_issues
+for ((issue_number = 10; issue_number <= 500; issue_number++)); do
+  printf '%s\tExisting filler issue %03d\t\t\t\n' \
+    "${issue_number}" "${issue_number}" \
+    >>"${fixture_root}/state/issue-metadata.tsv"
   printf 'Existing filler issue %03d\n' "${issue_number}" \
     >>"${fixture_root}/state/issues.txt"
 done
-printf '%s\n' "M0-006: Establish labels, milestones, and triage policy" \
-  >>"${fixture_root}/state/issues.txt"
+seed_canonical_issue \
+  "501" \
+  "${repository_root}/planning/issues/006-triage-taxonomy.md"
 
 PATH="${fixture_root}/bin:${PATH}" \
   OGIR_FAKE_GH=1 \
@@ -546,6 +625,63 @@ PATH="${fixture_root}/bin:${PATH}" \
   "${create_issues}" "example/ogir" >/dev/null
 expect_equal "existing issue beyond 500 is not duplicated" "0" \
   "$(wc -l <"${fixture_root}/state/issue-creations.tsv")"
+
+: >"${fixture_root}/state/issues.txt"
+: >"${fixture_root}/state/issue-creations.tsv"
+: >"${fixture_root}/state/issue-metadata.tsv"
+seed_other_canonical_issues
+printf '%s\t%s\t%s\t%s\t%s\n' \
+  "10" \
+  "M0-006: Establish labels, milestones, and triage policy" \
+  "M12 Production Candidate" \
+  "bug" \
+  "bWFsZm9ybWVk" \
+  >>"${fixture_root}/state/issue-metadata.tsv"
+printf '%s\n' "M0-006: Establish labels, milestones, and triage policy" \
+  >>"${fixture_root}/state/issues.txt"
+if malformed_issue_output="$(
+  PATH="${fixture_root}/bin:${PATH}" \
+    OGIR_FAKE_GH=1 \
+    OGIR_FAKE_GH_STATE="${fixture_root}/state" \
+    "${create_issues}" "example/ogir" 2>&1
+)"; then
+  printf 'FAIL: malformed same-title issue unexpectedly passed\n' >&2
+  failures=$((failures + 1))
+elif [[ "${malformed_issue_output}" == \
+  *"existing issue does not match canonical specification: M0-006: Establish labels, milestones, and triage policy"* ]]; then
+  printf 'PASS: malformed same-title issue fails closed\n'
+else
+  printf 'FAIL: malformed issue error was not specific\n%s\n' \
+    "${malformed_issue_output}" >&2
+  failures=$((failures + 1))
+fi
+
+: >"${fixture_root}/state/issues.txt"
+: >"${fixture_root}/state/issue-creations.tsv"
+: >"${fixture_root}/state/issue-metadata.tsv"
+seed_other_canonical_issues
+seed_canonical_issue \
+  "10" \
+  "${repository_root}/planning/issues/006-triage-taxonomy.md"
+seed_canonical_issue \
+  "11" \
+  "${repository_root}/planning/issues/006-triage-taxonomy.md"
+if duplicate_issue_output="$(
+  PATH="${fixture_root}/bin:${PATH}" \
+    OGIR_FAKE_GH=1 \
+    OGIR_FAKE_GH_STATE="${fixture_root}/state" \
+    "${create_issues}" "example/ogir" 2>&1
+)"; then
+  printf 'FAIL: duplicate issue titles unexpectedly passed\n' >&2
+  failures=$((failures + 1))
+elif [[ "${duplicate_issue_output}" == \
+  *"duplicate issue title: M0-006: Establish labels, milestones, and triage policy"* ]]; then
+  printf 'PASS: duplicate issue titles fail closed\n'
+else
+  printf 'FAIL: duplicate issue error was not specific\n%s\n' \
+    "${duplicate_issue_output}" >&2
+  failures=$((failures + 1))
+fi
 
 printf '%s\t%s\t%s\t%s\t%s\n' \
   "99" \
