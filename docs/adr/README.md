@@ -34,6 +34,8 @@ Valid states are `Proposed`, `Accepted`, `Superseded`, `Rejected`, and
   not-applicable rationale. A blank heading is not sufficient.
 - Only rendered Markdown structure satisfies the gate. Links, headings, or
   index rows inside HTML comments or code blocks do not count.
+- Raw HTML outside code blocks is rejected so it cannot change whether policy
+  metadata renders as Markdown structure.
 
 Run the consistency gate before submitting changes:
 

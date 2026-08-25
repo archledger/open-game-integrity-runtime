@@ -227,6 +227,20 @@ git -C "${fixture}" add docs/adr/index.md
 expect_fail "ADR index hides decision rows in a code fence" \
   "is missing from docs/adr/index.md"
 
+make_fixture raw-html-index-entries
+printf '%s\n' \
+  "# ADR index" \
+  "" \
+  "<div>" \
+  "| ADR | Status | Decision | Supersedes | Superseded by |" \
+  "| --- | --- | --- | --- | --- |" \
+  "| [ADR-0001](0001-accepted.md) | Accepted | Hidden accepted fixture | None | None |" \
+  "| [ADR-0002](0002-rejected.md) | Rejected | Hidden rejected fixture | None | None |" \
+  "</div>" >"${fixture}/docs/adr/index.md"
+git -C "${fixture}" add docs/adr/index.md
+expect_fail "ADR index hides decision rows in raw HTML" \
+  "docs/adr/index.md: raw HTML is not allowed outside code blocks"
+
 make_fixture mismatched-index-status
 sed -i \
   's/| Accepted | Accepted fixture |/| Proposed | Accepted fixture |/' \
@@ -404,6 +418,15 @@ git -C "${fixture}" add docs/adr/0001-accepted.md
 expect_fail "ADR duplicates Superseded by metadata" \
   "docs/adr/0001-accepted.md: expected exactly one Superseded by metadata field"
 
+make_fixture raw-html-supersession-metadata
+sed -i '/^- Supersedes: /i <div>' \
+  "${fixture}/docs/adr/0001-accepted.md"
+sed -i '/^- Superseded by: /a </div>' \
+  "${fixture}/docs/adr/0001-accepted.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md
+expect_fail "ADR hides supersession metadata in raw HTML" \
+  "docs/adr/0001-accepted.md: raw HTML is not allowed outside code blocks"
+
 make_fixture mismatched-adr-identifier
 sed -i '1s/^# ADR-0001:/# ADR-0009:/' \
   "${fixture}/docs/adr/0001-accepted.md"
@@ -507,6 +530,48 @@ printf '%s\n' \
   "-->" >"${fixture}/docs/adr/README.md"
 git -C "${fixture}" add docs/adr/README.md
 expect_fail "ADR README hides navigation links in a comment" \
+  "docs/adr/README.md must link to index.md and template.md"
+
+make_fixture raw-html-readme-links
+printf '%s\n' \
+  "# Architecture decision records" \
+  "" \
+  "<div>" \
+  "[decision index](index.md)" \
+  "[ADR template](template.md)" \
+  "</div>" >"${fixture}/docs/adr/README.md"
+git -C "${fixture}" add docs/adr/README.md
+expect_fail "ADR README hides navigation links in raw HTML" \
+  "docs/adr/README.md: raw HTML is not allowed outside code blocks"
+
+make_fixture literal-readme-link-suffixes
+printf '%s\n' \
+  "# Architecture decision records" \
+  "" \
+  "The literal suffixes ](index.md) and ](template.md) are not links." \
+  >"${fixture}/docs/adr/README.md"
+git -C "${fixture}" add docs/adr/README.md
+expect_fail "ADR README contains only literal link suffixes" \
+  "docs/adr/README.md must link to index.md and template.md"
+
+make_fixture image-readme-links
+printf '%s\n' \
+  "# Architecture decision records" \
+  "" \
+  "![decision index](index.md)" \
+  "![ADR template](template.md)" >"${fixture}/docs/adr/README.md"
+git -C "${fixture}" add docs/adr/README.md
+expect_fail "ADR README uses images instead of navigation links" \
+  "docs/adr/README.md must link to index.md and template.md"
+
+make_fixture escaped-readme-links
+printf '%s\n' \
+  "# Architecture decision records" \
+  "" \
+  '\[decision index](index.md)' \
+  '\[ADR template](template.md)' >"${fixture}/docs/adr/README.md"
+git -C "${fixture}" add docs/adr/README.md
+expect_fail "ADR README escapes its navigation links" \
   "docs/adr/README.md must link to index.md and template.md"
 
 make_fixture missing-readme

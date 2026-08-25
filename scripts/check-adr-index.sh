@@ -6,8 +6,9 @@ write_markdown_structure() {
   local input="$1"
   local output="$2"
   local label="$3"
+  local awk_status
 
-  if ! awk '
+  if awk '
     function leading_run(text, character, count) {
       count = 0
       while (substr(text, count + 1, 1) == character) {
@@ -83,6 +84,13 @@ write_markdown_structure() {
       }
       probe = fence_probe(line)
 
+      if (probe ~ /^<\/?[[:alpha:]][[:alnum:]-]*([[:space:]]|\/?>)/ ||
+          probe ~ /^<\?/ || probe ~ /^<![[:alpha:]]/ ||
+          probe ~ /^<!\[/) {
+        invalid_html = 1
+        exit 42
+      }
+
       first_character = substr(probe, 1, 1)
       if (first_character == "`" || first_character == "~") {
         run = leading_run(probe, first_character)
@@ -97,15 +105,78 @@ write_markdown_structure() {
     }
 
     END {
+      if (invalid_html) {
+        exit 42
+      }
       if (inside_comment || fence_character != "") {
-        exit 1
+        exit 43
       }
     }
   ' "${input}" >"${output}"; then
+    return 0
+  else
+    awk_status=$?
+  fi
+
+  if ((awk_status == 42)); then
+    printf '%s: raw HTML is not allowed outside code blocks\n' \
+      "${label}" >&2
+  elif ((awk_status == 43)); then
     printf '%s: unclosed HTML comment or fenced code block\n' \
       "${label}" >&2
-    return 1
+  else
+    printf '%s: failed to parse staged Markdown structure\n' \
+      "${label}" >&2
   fi
+  return 1
+}
+
+has_inline_markdown_link() {
+  local input="$1"
+  local target="$2"
+
+  awk -v target="${target}" '
+    {
+      line = $0
+      for (start = 1; start <= length(line); start++) {
+        if (substr(line, start, 1) != "[") {
+          continue
+        }
+
+        backslashes = 0
+        for (cursor = start - 1;
+             cursor >= 1 && substr(line, cursor, 1) == "\\";
+             cursor--) {
+          backslashes++
+        }
+        if (backslashes % 2 == 1) {
+          continue
+        }
+        if (start > 1 && substr(line, start - 1, 1) == "!") {
+          continue
+        }
+
+        remainder = substr(line, start + 1)
+        closing_bracket = index(remainder, "]")
+        if (closing_bracket <= 1) {
+          continue
+        }
+        label = substr(remainder, 1, closing_bracket - 1)
+        if (index(label, "[") != 0) {
+          continue
+        }
+        destination = substr(line, start + closing_bracket + 1, length(target) + 2)
+        if (destination == "(" target ")") {
+          found = 1
+          exit
+        }
+      }
+    }
+
+    END {
+      exit(found ? 0 : 1)
+    }
+  ' "${input}"
 }
 
 require_staged_regular_file() {
@@ -200,8 +271,8 @@ if ! write_markdown_structure "${adr_file}" "${structure_file}" \
   "docs/adr/README.md"; then
   exit 1
 fi
-if ! grep -a -Fq -- '](index.md)' "${structure_file}" ||
-  ! grep -a -Fq -- '](template.md)' "${structure_file}"; then
+if ! has_inline_markdown_link "${structure_file}" "index.md" ||
+  ! has_inline_markdown_link "${structure_file}" "template.md"; then
   echo "docs/adr/README.md must link to index.md and template.md" >&2
   exit 1
 fi
