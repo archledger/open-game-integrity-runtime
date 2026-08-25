@@ -85,14 +85,35 @@ milestones=(
   "M12 Production Candidate"
 )
 
-existing_milestones="$(gh api --paginate "repos/${repository}/milestones?state=all&per_page=100" --jq '.[].title')"
+milestone_description="See docs/ROADMAP.md for scope and exit criteria."
+existing_milestones="$(
+  gh api --paginate "repos/${repository}/milestones?state=all&per_page=100" \
+    --jq '.[] | [.number, .title, .state, (.description // ""), (.due_on // "")] | @tsv'
+)"
 for title in "${milestones[@]}"; do
-  if grep -Fqx -- "${title}" <<<"${existing_milestones}"; then
+  existing_milestone="$(
+    awk -F '\t' -v title="${title}" '$2 == title { print; exit }' \
+      <<<"${existing_milestones}"
+  )"
+  if [[ -z "${existing_milestone}" ]]; then
+    gh api --method POST "repos/${repository}/milestones" \
+      -f title="${title}" \
+      -f state="open" \
+      -f description="${milestone_description}" >/dev/null
     continue
   fi
-  gh api --method POST "repos/${repository}/milestones" \
-    -f title="${title}" \
-    -f description="See docs/ROADMAP.md for scope and exit criteria." >/dev/null
+
+  IFS=$'\t' read -r milestone_number _ existing_state \
+    existing_description existing_due_on <<<"${existing_milestone}"
+  if [[ "${existing_state}" != "open" ||
+    "${existing_description}" != "${milestone_description}" ||
+    -n "${existing_due_on}" ]]; then
+    gh api --method PATCH \
+      "repos/${repository}/milestones/${milestone_number}" \
+      -f state="open" \
+      -f description="${milestone_description}" \
+      -F due_on=null >/dev/null
+  fi
 done
 
 printf 'Created or updated OGIR labels and milestones in %s.\n' "${repository}"
