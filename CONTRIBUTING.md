@@ -109,6 +109,15 @@ Example:
 Signed-off-by: Contributor Name <contributor@example.com>
 ```
 
+## Issue triage
+
+Use the canonical namespaced labels, authority rules, state transitions,
+milestones, and “Done with evidence” requirements in
+[`docs/TRIAGE_POLICY.md`](docs/TRIAGE_POLICY.md). Contributors may propose
+classification changes; maintainers own ready/blocked/closure decisions.
+Suspected vulnerabilities remain private under `SECURITY.md` until coordinated
+disclosure.
+
 ## Security-critical changes
 
 The following require an explicit architecture decision record and an independent human review before a production release:

@@ -24,6 +24,10 @@ Do not include real player data, production publisher credentials, TPM endorseme
 
 Until a formal security response team exists, maintainers will triage privately, preserve reporter attribution preferences, avoid public disclosure before a fix is available, and add a permanent regression test for every confirmed defect.
 
+The private-to-public transition, public-label restrictions, and evidence
+requirements are defined in
+[`docs/TRIAGE_POLICY.md`](docs/TRIAGE_POLICY.md#private-security-reports).
+
 ## No automatic player enforcement
 
 An OGIR failure or vulnerability report must never directly trigger a player ban. Security triage, attestation eligibility, and disciplinary decisions are separate processes.
