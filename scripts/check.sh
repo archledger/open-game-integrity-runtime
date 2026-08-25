@@ -4,6 +4,7 @@ set -euo pipefail
 
 ./scripts/test-repository-metadata.sh
 ./scripts/check-repository-metadata.sh
+./scripts/test-dco.sh
 
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings

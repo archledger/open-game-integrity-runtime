@@ -95,5 +95,5 @@ cargo doc --workspace --no-deps
 
 ## Contributor certification
 
-- [ ] My commits include a `Signed-off-by` trailer.
+- [ ] Every commit includes a `Signed-off-by` trailer matching its committer metadata under the [DCO 1.1](https://developercertificate.org/).
 - [ ] I understand and accept responsibility for the submitted code and documentation.

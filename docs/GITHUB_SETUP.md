@@ -82,6 +82,7 @@ Enable:
 - Dependabot alerts and security updates;
 - secret scanning and push protection;
 - CodeQL default setup where available;
+- compulsory sign-off for web-based commits;
 - automatic deletion of head branches after merge.
 
 Disable initially:
@@ -93,7 +94,10 @@ Disable initially:
 
 Recommended merge method:
 
-- squash merge for ordinary pull requests;
+- squash merge ordinary pull requests only through the GitHub.com web interface,
+  so compulsory web sign-off covers the newly created base-branch commit;
+- do not directly merge bot-authored pull requests; recreate reviewed changes in
+  a human-authored pull request;
 - signed annotated tags for releases;
 - no direct release from a contributor pull-request workflow.
 
@@ -101,7 +105,8 @@ Recommended merge method:
 
 Repository Actions permissions:
 
-- default `GITHUB_TOKEN` permission: read-only;
+- default `GITHUB_TOKEN` permission: read-only, with only the documented
+  per-workflow exception needed to publish the DCO commit status;
 - allow GitHub-authored actions and a small explicit allowlist;
 - require actions to be pinned to full commit SHAs when the organization setting becomes available;
 - never run untrusted pull-request code with production secrets;
@@ -111,6 +116,66 @@ Repository Actions permissions:
 
 The included CI workflow pins `actions/checkout` to the reviewed commit for v7.0.1 and sets `persist-credentials: false`.
 
+### DCO status enforcement
+
+The repository uses its own `scripts/check-dco.sh` and
+`.github/workflows/dco.yml`; it does not install a third-party DCO app or run a
+third-party DCO action. The local negative suite is:
+
+```bash
+./scripts/test-dco.sh
+```
+
+The workflow uses `pull_request_target` only to read commit metadata from the
+trusted base branch. It checks out the exact base commit, fetches pull-request
+Git objects without checking out or executing pull-request content, and runs the
+base branch's checker. It also rejects pull requests whose authenticated GitHub
+actor type is not `User`; a human-looking service account still requires review.
+Do not change it to build or execute head-branch code.
+
+Its `GITHUB_TOKEN` permissions are deliberately limited to:
+
+- `contents: read`, for the trusted base checkout;
+- `statuses: write`, solely to publish `DCO / signoff` on the pull-request head
+  commit.
+
+The token cannot write repository contents, modify pull requests, or approve
+reviews. Because `pull_request_target` is a privileged trigger, this workflow
+must remain secret-free: it references no repository or organization secrets,
+but token permissions alone do not remove the trigger's potential secret
+access. The only referenced action is GitHub-owned `actions/checkout`, pinned to
+a full commit SHA with credentials not persisted. Status publication uses the
+GitHub CLI preinstalled on GitHub-hosted runners. The remaining trusted supply
+chain is GitHub Actions, the hosted runner image, Git, Bash, GitHub CLI, the
+GitHub status API, and the checker on the protected base branch. CODEOWNERS
+review applies to workflow changes.
+
+The status check validates matching self-certification trailers on the
+pull-request commits. Git metadata is not identity authentication. Human
+accountability also depends on authenticated pull-request activity and human
+review. Squash merge creates a different commit on `main`, so the repository's
+compulsory web sign-off setting separately certifies that web-created commit by
+its pull-request author. Do not use CLI/API merge paths unless they are later
+proved to preserve this final-commit sign-off.
+
+The active main ruleset already requires both `CI / rust` and `DCO / signoff`.
+Its creation exemption permits the empty repository's first human-certified
+push; it does not waive checks on later pull-request merges.
+
+After this workflow exists on the default branch:
+
+1. Open a temporary pull request with one unsigned commit and confirm the
+   `DCO / signoff` status fails.
+2. Repair that commit under the responsible human's identity and confirm the
+   same status succeeds.
+3. Confirm the already-required status blocks the unsigned test pull request
+   from merging, then close it without merging.
+4. Bind the required status to the GitHub Actions source when GitHub offers that
+   selector for the newly observed context.
+
+The local negative suite satisfies the pre-remote regression requirement, but
+it does not substitute for this one-time live activation check.
+
 ## 6. Main branch ruleset
 
 ### Solo-maintainer experimental phase
@@ -118,7 +183,7 @@ The included CI workflow pins `actions/checkout` to the reviewed commit for v7.0
 A mandatory external approval would make a solo repository unusable. Use:
 
 - require pull requests before merge;
-- required status check: `CI / rust`;
+- required status checks: `CI / rust` and `DCO / signoff`;
 - require conversation resolution;
 - require signed commits where practical;
 - block force pushes;
@@ -327,10 +392,32 @@ docs/3-threat-model
 
 ## 14. First push sequence
 
-1. Push the unchanged bootstrap as the signed initial commit.
-2. Open Issue 1 to replace placeholders and verify licensing.
-3. Open Issue 2 for GitHub settings and record screenshots/settings in the issue.
-4. Open Issue 3 to run the Rust checks, fix any toolchain-specific warnings, and commit `Cargo.lock`.
-5. Create milestone M0 and assign the first six foundation issues.
-6. Open the first ADR pull request before adding any external Rust dependency.
-7. Do not begin TPM or Proton code until M1 domain types and M2 mock flow are specified.
+The remote began empty and the local bootstrap history predates enforcement. Do
+not grandfather or push that unsigned history. The responsible human must:
+
+1. Freeze the intended publication tip and review every commit and changed line.
+2. From that clean tip, add their own certification to the complete unpublished
+   history:
+
+   ```bash
+   git rebase --root --signoff
+   ```
+
+3. Reconcile any local stacked branch references affected by the rewritten
+   commit IDs, then prove every reachable commit—including the root—is certified:
+
+   ```bash
+   ./scripts/check-dco.sh --root HEAD
+   ```
+
+4. Run `./scripts/check.sh` and inspect the complete range diff.
+5. Push only that human-reviewed, certified history to create `main`. The
+   ruleset's creation exemption exists solely for this bootstrap; do not use the
+   owner bypass to evade later failed checks.
+6. Run the one-time unsigned/signed pull-request activation test above before
+   accepting ordinary contributions.
+7. Record the resulting commit IDs and live-check evidence. Do not begin TPM or
+   Proton code until M1 domain types and M2 mock flow are specified.
+
+`git rebase --root --signoff` is a history rewrite and a legal certification.
+It must be performed by the responsible human, never by an AI system or bot.
