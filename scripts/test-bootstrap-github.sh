@@ -16,11 +16,102 @@ fake_gh() {
     api)
       fake_api "${state_root}" "$@"
       ;;
+    issue)
+      fake_issue "${state_root}" "$@"
+      ;;
     *)
       printf 'unsupported fake gh resource: %s\n' "${resource}" >&2
       return 2
       ;;
   esac
+}
+
+fake_issue() {
+  local state_root="$1"
+  local operation="$2"
+  shift 2
+
+  case "${operation}" in
+    list)
+      cat "${state_root}/issues.txt"
+      ;;
+    create)
+      fake_issue_create "${state_root}" "$@"
+      ;;
+    *)
+      printf 'unsupported fake issue operation: %s\n' \
+        "${operation}" >&2
+      return 2
+      ;;
+  esac
+}
+
+fake_issue_create() {
+  local state_root="$1"
+  shift
+  local title=""
+  local body_file=""
+  local milestone=""
+  local label labels_csv=""
+  local -a labels=()
+
+  while (($# > 0)); do
+    case "$1" in
+      --repo)
+        shift 2
+        ;;
+      --title)
+        title="$2"
+        shift 2
+        ;;
+      --body-file)
+        body_file="$2"
+        shift 2
+        ;;
+      --milestone)
+        milestone="$2"
+        shift 2
+        ;;
+      --label)
+        labels+=("$2")
+        shift 2
+        ;;
+      *)
+        printf 'unsupported fake issue-create argument: %s\n' "$1" >&2
+        return 2
+        ;;
+    esac
+  done
+
+  [[ -n "${title}" && -f "${body_file}" && -n "${milestone}" ]] || {
+    echo "incomplete fake issue create" >&2
+    return 1
+  }
+  awk -F '\t' -v milestone="${milestone}" \
+    '$2 == milestone { found = 1 } END { exit !found }' \
+    "${state_root}/milestones.tsv" || {
+      printf 'unknown milestone: %s\n' "${milestone}" >&2
+      return 1
+    }
+
+  for label in "${labels[@]}"; do
+    awk -F '\t' -v label="${label}" \
+      '$1 == label { found = 1 } END { exit !found }' \
+      "${state_root}/labels.tsv" || {
+        printf 'unknown label: %s\n' "${label}" >&2
+        return 1
+      }
+    if [[ -n "${labels_csv}" ]]; then
+      labels_csv+=","
+    fi
+    labels_csv+="${label}"
+  done
+
+  printf '%s\t%s\t%s\t%s\n' \
+    "${title}" "${milestone}" "${labels_csv}" "${body_file}" \
+    >>"${state_root}/issue-creations.tsv"
+  printf '%s\n' "${title}" >>"${state_root}/issues.txt"
+  echo "https://example.invalid/issues/1"
 }
 
 fake_label_create() {
@@ -189,6 +280,7 @@ fi
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bootstrap="${repository_root}/scripts/bootstrap-github.sh"
+create_issues="${repository_root}/scripts/create-initial-issues.sh"
 fixture_root="$(mktemp -d)"
 trap 'rm -rf -- "${fixture_root}"' EXIT
 mkdir -p "${fixture_root}/bin" "${fixture_root}/state"
@@ -196,6 +288,8 @@ ln -s -- "${repository_root}/scripts/test-bootstrap-github.sh" \
   "${fixture_root}/bin/gh"
 : >"${fixture_root}/state/labels.tsv"
 : >"${fixture_root}/state/milestones.tsv"
+: >"${fixture_root}/state/issues.txt"
+: >"${fixture_root}/state/issue-creations.tsv"
 
 run_bootstrap() {
   PATH="${fixture_root}/bin:${PATH}" \
@@ -281,6 +375,42 @@ else
   printf 'FAIL: second run did not repair milestone drift\n' >&2
   failures=$((failures + 1))
 fi
+
+for issue_file in "${repository_root}"/planning/issues/*.md; do
+  if [[ "${issue_file}" == */006-triage-taxonomy.md ]]; then
+    continue
+  fi
+  sed -n '1s/^# //p' "${issue_file}" \
+    >>"${fixture_root}/state/issues.txt"
+done
+
+PATH="${fixture_root}/bin:${PATH}" \
+  OGIR_FAKE_GH=1 \
+  OGIR_FAKE_GH_STATE="${fixture_root}/state" \
+  "${create_issues}" "example/ogir" >/dev/null
+
+expect_equal "sample issue is created once" "1" \
+  "$(wc -l <"${fixture_root}/state/issue-creations.tsv")"
+IFS=$'\t' read -r created_title created_milestone created_labels \
+  created_body <"${fixture_root}/state/issue-creations.tsv"
+expect_equal "sample issue title" \
+  "M0-006: Establish labels, milestones, and triage policy" \
+  "${created_title}"
+expect_equal "sample issue milestone" "M0 Repository Foundation" \
+  "${created_milestone}"
+expect_equal "sample issue taxonomy is unambiguous" \
+  "type: documentation,area: supply-chain,risk: trusted-computing-base,status: ready" \
+  "${created_labels}"
+expect_equal "sample issue uses the reviewed specification" \
+  "${repository_root}/planning/issues/006-triage-taxonomy.md" \
+  "${created_body}"
+
+PATH="${fixture_root}/bin:${PATH}" \
+  OGIR_FAKE_GH=1 \
+  OGIR_FAKE_GH_STATE="${fixture_root}/state" \
+  "${create_issues}" "example/ogir" >/dev/null
+expect_equal "sample issue creation is idempotent" "1" \
+  "$(wc -l <"${fixture_root}/state/issue-creations.tsv")"
 
 if ((failures > 0)); then
   printf '%d GitHub bootstrap test(s) failed\n' "${failures}" >&2
