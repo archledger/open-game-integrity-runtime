@@ -7,7 +7,11 @@ if [[ -z "${repository_root}" ]]; then
   repository_root="$(git rev-parse --show-toplevel)"
 fi
 
-if ! git -C "${repository_root}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+inside_work_tree="$(git -C "${repository_root}" rev-parse --is-inside-work-tree 2>/dev/null)" || {
+  echo "repository metadata check requires a Git worktree: ${repository_root}" >&2
+  exit 2
+}
+if [[ "${inside_work_tree}" != "true" ]]; then
   echo "repository metadata check requires a Git worktree: ${repository_root}" >&2
   exit 2
 fi
@@ -16,15 +20,31 @@ account_marker='YOUR-GITHUB-'"ACCOUNT"
 username_marker='YOUR_GITHUB_'"USERNAME"
 status=0
 
-if marker_matches="$(
+marker_status=0
+marker_matches="$(
   git -C "${repository_root}" grep -n -F \
     -e "${account_marker}" \
     -e "${username_marker}" \
     -- .
-)"; then
-  echo "unresolved repository identity marker(s):" >&2
-  printf '%s\n' "${marker_matches}" >&2
-  status=1
+)" || marker_status=$?
+case "${marker_status}" in
+  0)
+    echo "unresolved repository identity marker(s):" >&2
+    printf '%s\n' "${marker_matches}" >&2
+    status=1
+    ;;
+  1) ;;
+  *)
+    echo "repository metadata check failed to search tracked content" >&2
+    exit 2
+    ;;
+esac
+
+tracked_paths_file="$(mktemp)"
+trap 'rm -f -- "${tracked_paths_file}"' EXIT
+if ! git -C "${repository_root}" ls-files -z >"${tracked_paths_file}"; then
+  echo "repository metadata check failed to enumerate tracked files" >&2
+  exit 2
 fi
 
 while IFS= read -r -d '' path; do
@@ -42,7 +62,7 @@ while IFS= read -r -d '' path; do
       fi
       ;;
   esac
-done < <(git -C "${repository_root}" ls-files -z)
+done <"${tracked_paths_file}"
 
 if ((status != 0)); then
   exit "${status}"

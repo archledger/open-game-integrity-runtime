@@ -82,6 +82,14 @@ printf '%s\n' '/* SPDX-License-Identifier: Apache-2.0 */' >"${fixture}/bpf/examp
 git -C "${fixture}" add bpf/example.bpf.c
 expect_fail "incorrect BPF license" "bpf/example.bpf.c: expected SPDX-License-Identifier: GPL-2.0-only"
 
+fixture="${fixture_root}/bare.git"
+git init --bare -q "${fixture}"
+expect_fail "bare repository" "repository metadata check requires a Git worktree"
+
+make_fixture corrupt-index
+printf '%s\n' 'corrupt-index' >"${fixture}/.git/index"
+expect_fail "corrupt Git index" "repository metadata check failed to search tracked content"
+
 if ((failures > 0)); then
   printf '%d repository metadata test(s) failed\n' "${failures}" >&2
   exit 1
