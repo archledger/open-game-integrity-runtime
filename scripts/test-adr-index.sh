@@ -574,6 +574,48 @@ git -C "${fixture}" add docs/adr/README.md
 expect_fail "ADR README escapes its navigation links" \
   "docs/adr/README.md must link to index.md and template.md"
 
+make_fixture inline-code-readme-links
+printf '%s\n' \
+  "# Architecture decision records" \
+  "" \
+  "\`[decision index](index.md)\`" \
+  "\`[ADR template](template.md)\`" >"${fixture}/docs/adr/README.md"
+git -C "${fixture}" add docs/adr/README.md
+expect_fail "ADR README hides navigation links in inline code" \
+  "docs/adr/README.md must link to index.md and template.md"
+
+make_fixture multi-backtick-inline-code-links
+printf '%s\n' \
+  "# Architecture decision records" \
+  "" \
+  "\`\`[decision index](index.md) and \`literal\` text\`\`" \
+  "\`\`[ADR template](template.md)\`\`" >"${fixture}/docs/adr/README.md"
+git -C "${fixture}" add docs/adr/README.md
+expect_fail "ADR README hides links in multi-backtick code" \
+  "docs/adr/README.md must link to index.md and template.md"
+
+make_fixture multiline-inline-code-links
+printf '%s\n' \
+  "# Architecture decision records" \
+  "" \
+  '`' \
+  "[decision index](index.md)" \
+  "[ADR template](template.md)" \
+  '`' >"${fixture}/docs/adr/README.md"
+git -C "${fixture}" add docs/adr/README.md
+expect_fail "ADR README hides links in multiline inline code" \
+  "docs/adr/README.md must link to index.md and template.md"
+
+make_fixture inline-code-beside-real-links
+printf '%s\n' \
+  "# Architecture decision records" \
+  "" \
+  "Use \`ADR tooling\`, then open the [decision index](index.md)." \
+  'Start from the [ADR template](template.md).' \
+  >"${fixture}/docs/adr/README.md"
+git -C "${fixture}" add docs/adr/README.md
+expect_pass "inline code beside real README links"
+
 make_fixture missing-readme
 git -C "${fixture}" rm -q -f docs/adr/README.md
 expect_fail "ADR README is deleted" \

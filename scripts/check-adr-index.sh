@@ -136,20 +136,44 @@ has_inline_markdown_link() {
   local target="$2"
 
   awk -v target="${target}" '
+    function is_escaped(text, position, count, cursor) {
+      count = 0
+      for (cursor = position - 1;
+           cursor >= 1 && substr(text, cursor, 1) == "\\";
+           cursor--) {
+        count++
+      }
+      return count % 2 == 1
+    }
+
+    function backtick_run(text, position, count) {
+      count = 0
+      while (substr(text, position + count, 1) == "`") {
+        count++
+      }
+      return count
+    }
+
     {
       line = $0
       for (start = 1; start <= length(line); start++) {
-        if (substr(line, start, 1) != "[") {
+        character = substr(line, start, 1)
+        if (character == "`") {
+          run = backtick_run(line, start)
+          if (code_ticks != 0) {
+            if (run == code_ticks) {
+              code_ticks = 0
+            }
+          } else if (!is_escaped(line, start)) {
+            code_ticks = run
+          }
+          start += run - 1
           continue
         }
-
-        backslashes = 0
-        for (cursor = start - 1;
-             cursor >= 1 && substr(line, cursor, 1) == "\\";
-             cursor--) {
-          backslashes++
+        if (code_ticks != 0 || character != "[") {
+          continue
         }
-        if (backslashes % 2 == 1) {
+        if (is_escaped(line, start)) {
           continue
         }
         if (start > 1 && substr(line, start - 1, 1) == "!") {
