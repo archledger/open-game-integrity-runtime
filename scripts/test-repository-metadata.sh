@@ -101,6 +101,14 @@ ln -s "${external_source}" "${fixture}/src/linked.rs"
 git -C "${fixture}" add src/linked.rs
 expect_fail "tracked source symlink" "src/linked.rs: tracked source must be a regular file"
 
+make_fixture subdirectory-root
+account_marker='YOUR-GITHUB-'"ACCOUNT"
+printf '%s\n' "${account_marker}" >"${fixture}/README.md"
+printf '%s\n' '/* SPDX-License-Identifier: Apache-2.0 */' >"${fixture}/wine/example.c"
+git -C "${fixture}" add README.md wine/example.c
+fixture="${fixture}/wine"
+expect_fail "subdirectory repository root" "unresolved repository identity marker"
+
 fixture="${fixture_root}/bare.git"
 git init --bare -q "${fixture}"
 expect_fail "bare repository" "repository metadata check requires a Git worktree"

@@ -15,6 +15,10 @@ if [[ "${inside_work_tree}" != "true" ]]; then
   echo "repository metadata check requires a Git worktree: ${repository_root}" >&2
   exit 2
 fi
+repository_root="$(git -C "${repository_root}" rev-parse --show-toplevel)" || {
+  echo "repository metadata check failed to resolve the Git worktree root" >&2
+  exit 2
+}
 
 account_marker='YOUR-GITHUB-'"ACCOUNT"
 username_marker='YOUR_GITHUB_'"USERNAME"
