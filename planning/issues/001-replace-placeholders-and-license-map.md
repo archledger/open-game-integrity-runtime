@@ -4,7 +4,7 @@
 
 ## Problem
 
-The bootstrap contains `YOUR-GITHUB-ACCOUNT` and `YOUR_GITHUB_USERNAME` placeholders. The repository also crosses Apache-2.0, LGPL-2.1-or-later, and GPL-2.0-only boundaries. These must be explicit before accepting contributions.
+The bootstrap contains unresolved repository owner and CODEOWNERS identity markers. The repository also crosses Apache-2.0, LGPL-2.1-or-later, and GPL-2.0-only boundaries. These must be explicit before accepting contributions.
 
 ## Security invariants
 

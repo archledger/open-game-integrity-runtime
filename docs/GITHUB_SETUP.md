@@ -24,17 +24,22 @@ linux gaming proton wine rust tpm attestation security open-source
 
 ## 2. Prepare the local repository
 
-Replace placeholders first:
-
-```bash
-rg 'YOUR-GITHUB-ACCOUNT|YOUR_GITHUB_USERNAME' -n .
-```
-
-Then initialize:
+Initialize and stage the local repository:
 
 ```bash
 git init -b main
 git add .
+```
+
+Verify repository identity and source-license boundaries before committing:
+
+```bash
+./scripts/check-repository-metadata.sh
+```
+
+Then create the signed bootstrap commit:
+
+```bash
 git commit -s -m "chore: bootstrap OGIR research repository"
 ```
 

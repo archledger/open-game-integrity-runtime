@@ -14,7 +14,7 @@ version = "0.0.0"
 edition = "2024"
 rust-version = "1.98"
 license = "Apache-2.0"
-repository = "https://github.com/YOUR-GITHUB-ACCOUNT/open-game-integrity-runtime"
+repository = "https://github.com/archledger/open-game-integrity-runtime"
 authors = ["OGIR Contributors"]
 
 [workspace.lints.rust]

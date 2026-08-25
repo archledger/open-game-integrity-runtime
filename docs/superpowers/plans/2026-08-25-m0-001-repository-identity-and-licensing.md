@@ -313,7 +313,7 @@ Set `.github/CODEOWNERS` to:
 
 - [ ] **Step 2: Replace self-referential scan documentation**
 
-In `docs/GITHUB_SETUP.md`, replace the literal marker-search command with:
+In `docs/GITHUB_SETUP.md`, place the metadata check after `git init -b main` and `git add .`, but before the bootstrap commit:
 
 ```bash
 ./scripts/check-repository-metadata.sh

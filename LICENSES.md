@@ -11,3 +11,7 @@ The repository is intentionally multi-licensed by component.
 Every source file must contain an SPDX identifier. Do not copy implementation code across license boundaries without a documented license review.
 
 The OGIR name, logo, and future certification marks are not granted by the software licenses. A separate trademark policy will be created before certification claims are permitted.
+
+## Copyright notice policy
+
+The initial collective-work notice is `Copyright 2026 OGIR contributors.` Copyright in each contribution remains with its actual copyright holder unless separately transferred. The collective notice does not assign contributor rights or claim ownership of future contributions.
