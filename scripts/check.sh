@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 
+./scripts/test-repository-metadata.sh
+./scripts/check-repository-metadata.sh
+
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
