@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/ogir/attack-scenario.schema.json",
+  "title": "OGIR attack scenario",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "attacker",
+    "assets",
+    "preconditions",
+    "steps",
+    "expected",
+    "invariants",
+    "residual_risk"
+  ],
+  "properties": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "title": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "attacker": { "type": "string", "pattern": "^A[0-8]$" },
+    "assets": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "preconditions": { "type": "array", "items": { "type": "string" } },
+    "steps": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "expected": {
+      "type": "object",
+      "required": ["decision", "reason", "automatic_ban"],
+      "properties": {
+        "decision": { "type": "string" },
+        "reason": { "type": "string" },
+        "automatic_ban": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "invariants": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "residual_risk": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

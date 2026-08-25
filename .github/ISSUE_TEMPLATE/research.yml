@@ -1,0 +1,40 @@
+name: Research spike
+description: Resolve one architectural uncertainty using primary evidence.
+title: "[Research]: "
+labels:
+  - "type: research"
+  - "status: needs-research"
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Research question
+      description: Ask one answerable technical or security question.
+    validations:
+      required: true
+  - type: textarea
+    id: decisions
+    attributes:
+      label: Decision this research will unblock
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Required primary sources and upstream code
+    validations:
+      required: true
+  - type: textarea
+    id: experiments
+    attributes:
+      label: Experiments or prototypes
+      description: Define what must be measured rather than assumed.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Required output
+      description: ADR, comparison matrix, conformance fixture, prototype, or rejection rationale.
+    validations:
+      required: true

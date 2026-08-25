@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private security report
+    url: https://github.com/YOUR-GITHUB-ACCOUNT/open-game-integrity-runtime/security/advisories/new
+    about: Do not report vulnerabilities in a public issue.
+  - name: Design discussion
+    url: https://github.com/YOUR-GITHUB-ACCOUNT/open-game-integrity-runtime/discussions
+    about: Use Discussions for broad questions that are not yet implementation-ready.

@@ -1,0 +1,36 @@
+[workspace]
+members = [
+    "crates/ogir-model",
+    "crates/ogir-protocol",
+    "crates/ogir-agent",
+    "crates/ogir-verifier",
+    "apps/ogird",
+    "apps/ogir-verifierd",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98"
+license = "Apache-2.0"
+repository = "https://github.com/YOUR-GITHUB-ACCOUNT/open-game-integrity-runtime"
+authors = ["OGIR Contributors"]
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+expect_used = "deny"
+unwrap_used = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+panic = "abort"
+strip = "symbols"

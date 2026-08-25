@@ -1,0 +1,52 @@
+name: Scoped implementation task
+description: Implement one reviewed, testable change.
+title: "[Implementation]: "
+labels:
+  - "type: implementation"
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: State the exact behavior or capability required.
+    validations:
+      required: true
+  - type: textarea
+    id: invariants
+    attributes:
+      label: Security invariants and threats
+      description: Reference invariant numbers and threat-model sections.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: In scope
+    validations:
+      required: true
+  - type: textarea
+    id: non_scope
+    attributes:
+      label: Out of scope
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Primary sources
+      description: Official specifications, documentation, and upstream source.
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Required positive, negative, property, fuzz, and race tests
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Deterministic conditions for completion.
+    validations:
+      required: true

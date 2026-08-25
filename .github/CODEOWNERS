@@ -1,0 +1,10 @@
+# Replace the placeholder before enabling required CODEOWNERS review.
+* @YOUR_GITHUB_USERNAME
+
+/docs/SECURITY_INVARIANTS.md @YOUR_GITHUB_USERNAME
+/docs/THREAT_MODEL.md @YOUR_GITHUB_USERNAME
+/docs/adr/ @YOUR_GITHUB_USERNAME
+/.github/workflows/ @YOUR_GITHUB_USERNAME
+/sdk/include/ @YOUR_GITHUB_USERNAME
+/wine/ @YOUR_GITHUB_USERNAME
+/bpf/ @YOUR_GITHUB_USERNAME

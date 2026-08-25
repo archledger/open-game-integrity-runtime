@@ -1,0 +1,36 @@
+name: Architecture decision proposal
+description: Propose a durable change to trust, protocol, privilege, privacy, or component boundaries.
+title: "[Architecture]: "
+labels:
+  - "type: architecture"
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and problem
+    validations:
+      required: true
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Security and privacy requirements
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options and tradeoffs
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Primary sources
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Required validation, attack tests, and rollback
+    validations:
+      required: true

@@ -1,0 +1,16 @@
+[package]
+name = "ogir-protocol"
+description = "Bounded protocol framing primitives for Open Game Integrity Runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+ogir-model = { path = "../ogir-model" }
+
+[lints]
+workspace = true

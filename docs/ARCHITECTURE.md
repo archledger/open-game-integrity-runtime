@@ -1,0 +1,504 @@
+# OGIR Architecture
+
+## 1. Purpose
+
+Open Game Integrity Runtime gives a publisher a Linux-native way to request a narrowly defined game-session integrity policy from a Windows game running through Proton, receive fresh evidence rooted in an accepted platform, and make a server-side authorization decision.
+
+OGIR is an integrity substrate, not a complete anti-cheat product. Publishers still need server-authoritative game logic, exploit prevention, behavioral detection, account security, moderation, and incident response.
+
+## 2. Goals
+
+- Keep the Windows game binary viable under stock Proton.
+- Avoid translating arbitrary Windows kernel drivers.
+- Keep the game client outside the trust boundary.
+- Root freshness and platform evidence in a TPM-backed attestation flow.
+- Bind evidence to the exact publisher, game, build, policy, match, runtime, and session key.
+- Apply any runtime restrictions only to the protected game session.
+- Minimize disclosed information and prevent arbitrary publisher queries.
+- Let publishers self-host the verifier and define accepted policies.
+- Make every security claim executable as a conformance or adversarial test.
+
+## 3. Non-goals
+
+- Proving that no cheat can ever exist.
+- Emulating Microsoft Secure Kernel, VBS, HVCI, or a Windows kernel-driver trust chain.
+- Running or translating arbitrary `.sys` drivers.
+- Exposing unrestricted physical TPM commands to games.
+- Scanning unrelated processes, files, browser activity, or communications.
+- Supporting every distribution, custom kernel, firmware, and Proton build in the first profile.
+- Automatically banning a player after an integrity failure.
+- Replacing server-side anti-cheat or server-authoritative design.
+
+## 4. Architectural separation
+
+OGIR has two separate planes.
+
+### 4.1 Attestation and protected-session plane
+
+This is the primary project.
+
+```text
+Publisher challenge
+    -> Proton-facing bridge
+    -> local caller authentication
+    -> protected-session establishment
+    -> evidence collection and TPM quote
+    -> publisher verifier
+    -> short-lived session permit
+```
+
+The physical TPM is reachable only through narrow high-level operations controlled by the local agent.
+
+### 4.2 Windows TPM compatibility plane
+
+This is a later and separate Wine workstream.
+
+```text
+Windows TBS/CNG-compatible call
+    -> Wine built-in DLL / Unixlib
+    -> isolated per-prefix virtual TPM
+```
+
+The virtual TPM provides compatibility state, not proof of the physical host or competitive integrity. Raw TBS command forwarding must terminate at the virtual TPM, never at the physical TPM.
+
+## 5. Trust domains
+
+```mermaid
+flowchart TB
+    subgraph Publisher[Publisher-controlled infrastructure]
+        MM[Matchmaking / game server]
+        VER[OGIR verifier]
+        REF[Reference-value and revocation service]
+        MM --> VER
+        VER --> REF
+    end
+
+    subgraph Player[Linux player system]
+        subgraph Untrusted[Untrusted application domain]
+            GAME[Windows game under Proton]
+            DLL[ogir-client.dll]
+            GAME --> DLL
+        end
+
+        subgraph UserDomain[Unprivileged user domain]
+            PORTAL[OGIR portal]
+        end
+
+        subgraph TrustedLocal[Minimal local trusted computing base]
+            SESSION[Protected-session controller]
+            AGENT[ogird attestation service]
+            EVID[Evidence collectors]
+            SESSION --> AGENT
+            AGENT --> EVID
+        end
+
+        subgraph Platform[Linux security substrate]
+            TPM[TPM 2.0]
+            BOOT[Measured boot / UKI / event log]
+            IMA[IMA / fs-verity / policy state]
+            LSM[LSM / optional BPF-LSM]
+        end
+
+        DLL -->|bounded local protocol| PORTAL
+        PORTAL -->|authenticated caller handle| SESSION
+        EVID --> TPM
+        EVID --> BOOT
+        EVID --> IMA
+        SESSION --> LSM
+    end
+
+    MM -->|signed challenge| GAME
+    AGENT -->|evidence over authenticated channel| VER
+    VER -->|signed attestation result| MM
+    MM -->|short-lived permit| GAME
+```
+
+### 5.1 Untrusted Windows game and bridge
+
+Responsibilities:
+
+- receive a publisher challenge;
+- call the narrow OGIR API;
+- return opaque status and a publisher-signed permit to the game;
+- prove possession of the attested session key during matchmaking.
+
+It must not:
+
+- decide that the machine is trusted;
+- choose PCRs or physical TPM commands;
+- identify its own process authoritatively;
+- request arbitrary host information;
+- install or replace a privileged daemon;
+- grant itself a permit.
+
+### 5.2 Unprivileged portal
+
+Responsibilities:
+
+- accept bounded local requests;
+- authenticate peer credentials;
+- associate Wine/Proton-side requests with the real Linux process;
+- pass process handles and validated challenge material to the privileged service;
+- shield the privileged service from Windows ABI and high-volume untrusted parsing.
+
+The portal must run without system privileges.
+
+### 5.3 Protected-session controller
+
+Responsibilities:
+
+- create a dedicated session identity and cgroup;
+- verify that the game process belongs to the expected launch context;
+- establish the selected session policy;
+- prevent policy mutation after activation;
+- report enforcement state to the attestation service;
+- remove all session-scoped controls at termination.
+
+This component starts with observation and process binding. Enforcement is added only after the attestation MVP is correct.
+
+### 5.4 Attestation service (`ogird`)
+
+Responsibilities:
+
+- validate publisher challenge signatures and policy identifiers;
+- coordinate the TPM backend and evidence collectors;
+- independently derive claims rather than signing caller-supplied statements;
+- create publisher-scoped attestation identities;
+- create a match-specific ephemeral session key;
+- bind the challenge and session claims into TPM qualifying data;
+- transmit evidence directly to the verifier;
+- erase short-lived sensitive state at session end.
+
+The service must expose no arbitrary file, process, kernel, BPF, TPM, or command-execution API.
+
+### 5.5 Publisher verifier
+
+Responsibilities:
+
+- verify challenge freshness and single-use state;
+- verify TPM quote and attestation-key enrollment;
+- validate measured-boot and runtime evidence against accepted policy;
+- validate game, build, runtime, match, account scope, and session-key binding;
+- check agent, policy, platform, and verifier revocations;
+- produce a signed, short-lived Attestation Result or permit;
+- provide structured reasons without treating failure as proof of cheating.
+
+The verifier is publisher-controlled and self-hostable.
+
+### 5.6 Reference-value service
+
+Responsibilities:
+
+- publish signed accepted platform profiles;
+- publish accepted agent, runtime, and game manifests;
+- publish revocations and minimum protocol versions;
+- maintain transparency and change history;
+- separate reference submission from production approval.
+
+This service is not part of the first proof. The MVP can use a small static signed policy fixture.
+
+## 6. Core data flow
+
+```mermaid
+sequenceDiagram
+    participant S as Match Server
+    participant G as Windows Game
+    participant B as OGIR Bridge
+    participant P as User Portal
+    participant A as ogird
+    participant T as TPM / Platform
+    participant V as Publisher Verifier
+
+    S->>G: Signed challenge + nonce + policy + match
+    G->>B: BeginProtectedSession(challenge)
+    B->>P: Bounded request
+    P->>P: Authenticate peer and identify real process
+    P->>A: Challenge + authenticated process handle
+    A->>A: Validate publisher signature and policy
+    A->>T: Collect platform/session evidence and quote
+    T-->>A: Quote + measured state
+    A->>V: Evidence bundle over authenticated channel
+    V->>V: Verify freshness, quote, policy, references, revocations
+    V-->>S: Signed short-lived Attestation Result
+    S-->>G: Session permit
+    S->>G: Match transport challenge
+    G->>A: Request session-key signature via bridge
+    A-->>G: Signature bound to handshake transcript
+    G-->>S: Permit + proof of possession
+    S->>S: Validate permit and session-key proof
+```
+
+## 7. Protocol objects
+
+The initial protocol model should define these objects before choosing a serializer:
+
+### 7.1 PublisherChallenge
+
+Required fields:
+
+```text
+protocol version
+publisher identifier
+game identifier
+game build identifier
+account-scoped identifier
+match/session identifier
+policy identifier and version
+fresh random nonce
+issued-at and expiry
+publisher verifier identity
+ephemeral server channel-binding material
+publisher signature
+```
+
+### 7.2 LocalSessionDescriptor
+
+Derived locally, never trusted from the game:
+
+```text
+Linux process handle and start time
+UID
+cgroup/session identity
+Wine server and prefix identity
+Proton/runtime manifest digest
+game executable manifest digest
+active protected-session policy digest
+ephemeral session public key
+```
+
+### 7.3 EvidenceBundle
+
+Contains clearly separated evidence classes:
+
+```text
+hardware-certified evidence:
+  TPM quote
+  selected PCR values
+  attestation key identity/certification
+  qualifying-data binding
+
+measured-platform evidence:
+  boot-event log or profile proof
+  UKI/kernel measurement claims
+  Secure Boot and policy claims
+
+trusted-agent-observed evidence:
+  game/runtime manifests
+  process/session binding
+  enforcement-policy status
+  runtime measurement commitment
+
+metadata:
+  protocol version
+  evidence profile
+  freshness and expiry
+  privacy disclosure class
+```
+
+Claims must identify whether they are directly TPM-certified, reconstructed from measured logs, or observed by trusted software.
+
+### 7.4 AttestationResult
+
+The verifier returns a signed result rather than raw local truth:
+
+```text
+allow-ranked | allow-restricted | deny | unsupported | retry
+publisher/game/match/account binding
+accepted policy and profile
+session public key
+evidence digest
+issued-at and expiry
+structured reason codes
+verifier identity and signature
+```
+
+### 7.5 Renewal
+
+A renewal binds a fresh nonce to the existing session key and active policy. It must not silently relax requirements.
+
+### 7.6 Revocation
+
+Revocations may target:
+
+- protocol versions;
+- agent or bridge builds;
+- platform profiles;
+- policies;
+- attestation identities;
+- verifier keys;
+- game or runtime manifests.
+
+## 8. Wire format strategy
+
+The project should align with the IETF RATS role model and define an OGIR profile for Entity Attestation Token claims. The likely wire family is deterministic CBOR with COSE protection and CDDL schemas, but the first implementation must not commit to a library before:
+
+- canonical encoding behavior is verified;
+- malformed and duplicate-key handling is specified;
+- signature coverage is unambiguous;
+- conformance vectors exist;
+- at least two decoders can be differentially tested;
+- maximum nesting, field, string, and total message sizes are fixed.
+
+JSON may be used for human-readable fixtures, but must not become an ambiguous signed production format by accident.
+
+## 9. Local IPC
+
+The desired local transport is an authenticated Unix-domain channel with explicit framing and strict limits.
+
+Requirements:
+
+- obtain kernel-provided peer credentials;
+- pass a process handle or pidfd rather than trusting a numeric PID;
+- prevent PID-reuse and namespace confusion;
+- enforce one request state machine per connection;
+- set fixed maximum message sizes and timeouts;
+- reject unknown critical fields;
+- avoid parsing publisher policy in the Wine DLL;
+- never pass raw pointers across the Windows/Unix boundary;
+- rate-limit challenge and signing requests.
+
+The exact socket type and Rust wrapper require an ADR after a prototype of peer credential and file-descriptor passing.
+
+## 10. TPM architecture
+
+Define an internal trait so the rest of OGIR does not depend directly on one TPM library:
+
+```text
+AttestationBackend
+  create_or_load_publisher_scoped_ak()
+  certify_attestation_identity()
+  quote(selected_pcrs, qualifying_data)
+  create_ephemeral_session_key()
+  sign_session_transcript()
+  destroy_ephemeral_state()
+```
+
+Rules:
+
+- no raw physical-TPM command API is exposed to games;
+- no Endorsement Key is returned to a game or publisher as a universal device ID;
+- publisher-scoped Attestation Keys are preferred;
+- TPM resource-manager limits and cancellation are handled;
+- test, software-TPM, and hardware-TPM backends are visibly distinguished;
+- the verifier must know the assurance class of the TPM source;
+- TPM access is serialized or pooled deliberately rather than left to accidental concurrency.
+
+A future implementation may evaluate the Rust `tss-esapi` wrapper behind this trait. That dependency must remain isolated because it links to the native TPM2 software stack.
+
+## 11. Measured boot and runtime evidence
+
+The first supported platform profile should be narrow and predictable, preferably one UKI-oriented distribution or test image.
+
+Evidence adapters may include:
+
+- UEFI measured-boot event log;
+- systemd UKI/PCR 11 profile evidence;
+- Secure Boot state and signing hierarchy;
+- kernel command-line and boot-phase measurements;
+- kernel lockdown and module-signing policy;
+- IMA PCR and measurement log;
+- fs-verity or immutable runtime manifests.
+
+The verifier must replay or validate logs against TPM-certified PCR state. A valid PCR alone is not a semantic policy decision.
+
+## 12. Protected-session evolution
+
+### Level 0: observation only
+
+- identify game process tree;
+- derive cgroup/session identity;
+- hash runtime manifests;
+- no runtime restrictions.
+
+### Level 1: same-user isolation
+
+- block external debugger attachment and equivalent write paths;
+- protect process-memory interfaces;
+- reject unapproved attachment to the game session;
+- preserve unrelated user activity.
+
+### Level 2: hardened ranked profile
+
+- enforce accepted modules and platform policy;
+- restrict unapproved BPF/perf/uprobe attachment;
+- require immutable or appraised game/runtime files;
+- short renewal interval;
+- invalidate on policy change.
+
+### Level 3: console-like gaming profile
+
+- tightly controlled signed image;
+- fixed kernel/runtime/reference set;
+- stronger device/IOMMU and administrator restrictions.
+
+BPF-LSM is optional and must not be the first enforcement mechanism. Any BPF program must be small, measured, versioned, publicly reviewable, session-scoped, and GPL-compatible.
+
+## 13. Privacy architecture
+
+The protocol exposes a fixed claim vocabulary. A publisher cannot request arbitrary host queries.
+
+Allowed claim style:
+
+```text
+accepted_boot_profile = true
+module_signature_policy = enforced
+protected_session_policy = ranked-v1
+game_manifest = accepted
+runtime_manifest = accepted
+freshness = valid
+```
+
+Disallowed by design:
+
+```text
+complete process list
+unrelated application names
+home-directory enumeration
+browser/chat activity
+raw biometric data
+raw TPM endorsement key
+universal cross-publisher device identifier
+arbitrary file reads
+```
+
+Every evidence profile must declare its disclosure class and retention expectations.
+
+## 14. Failure semantics
+
+The system distinguishes:
+
+```text
+ALLOW
+ALLOW_RESTRICTED
+DENY_POLICY
+UNSUPPORTED_PLATFORM
+ATTESTATION_UNAVAILABLE
+TRANSIENT_ERROR
+PROTOCOL_ERROR
+REVOKED
+REPLAY_DETECTED
+PROTECTED_SESSION_LOST
+```
+
+Only the publisher decides gameplay behavior. OGIR reason codes must not claim that a player cheated unless separate evidence establishes that conclusion.
+
+## 15. Deployment topology
+
+### Experimental local topology
+
+- sample verifier on localhost;
+- software signing keys;
+- optional software TPM for plumbing tests;
+- no production trust claims.
+
+### Pilot topology
+
+- publisher-hosted verifier;
+- dedicated test keys/HSM partition;
+- one accepted Linux profile;
+- invite-only test accounts;
+- no automatic bans.
+
+### Production topology
+
+Requires independent audits, reproducible builds, signed provenance, compromise-resilient updates, formal incident response, public conformance tests, policy transparency, and an operational security reserve.

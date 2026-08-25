@@ -1,0 +1,19 @@
+id: OGIR-PROTOCOL-REPLAY-001
+title: Reuse a permit in another match
+attacker: A1
+assets:
+  - protected_session_authorization
+preconditions:
+  - a valid permit exists for match-A
+steps:
+  - submit the permit to match-B
+  - present proof generated for the original session transcript
+expected:
+  decision: deny
+  reason: session-binding-mismatch
+  automatic_ban: false
+invariants:
+  - permit match binding is exact
+  - proof of possession covers the current handshake transcript
+residual_risk:
+  - full-session relay requires a separate scenario

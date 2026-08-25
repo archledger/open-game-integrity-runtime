@@ -1,0 +1,17 @@
+[package]
+name = "ogir-agent"
+description = "Backend-neutral attestation orchestration interfaces for OGIR"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+ogir-model = { path = "../ogir-model" }
+ogir-protocol = { path = "../ogir-protocol" }
+
+[lints]
+workspace = true
