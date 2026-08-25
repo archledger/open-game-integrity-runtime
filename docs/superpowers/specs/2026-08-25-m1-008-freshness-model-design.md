@@ -400,6 +400,8 @@ M1-010 owns the final verifier outcome/state-machine representation.
 - repeat claim in the same context is replay;
 - repeat nonce under the same publisher with any changed game/build/account/
   match/policy binding is replay;
+- rejecting an altered same-key binding/window does not consume the original
+  issued record;
 - the same nonce bytes under a different authenticated publisher are
   independent;
 - missing registration fails closed; and

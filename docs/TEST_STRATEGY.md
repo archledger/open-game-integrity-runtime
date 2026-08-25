@@ -50,9 +50,10 @@ Freshness tests must fail when either time edge is widened, replay identity is
 scoped by context, check and consume are split, restart clears records, clock
 rollback is accepted, capacity evicts a live record, a successful claim remains
 issued, future-time rejection skips durable observation, raw claim returns a
-capability, checked arithmetic wraps, or nonce/account/match debug output is
-unredacted. Each mutation runs in a disposable worktree; mutated source never
-returns to the primary branch.
+capability, binding/window failure consumes the original issued record, checked
+arithmetic wraps, or nonce/account/match debug output is unredacted. Each
+mutation runs in a disposable worktree; mutated source never returns to the
+primary branch.
 
 ### Integration tests
 

@@ -623,9 +623,13 @@ fn replay_identity_ignores_every_context_and_window_field() {
         let store = ReferenceReplayStore::available();
         let guard = FreshnessGuard::new(&store, limits());
         assert_eq!(guard.register(UnixTime::new(100), &baseline), Ok(()));
-        assert!(guard.claim(UnixTime::new(100), &baseline).is_ok());
         assert_eq!(
             guard.claim(UnixTime::new(100), &changed),
+            Err(FreshnessError::ReplayDetected)
+        );
+        assert_eq!(guard.claim(UnixTime::new(100), &baseline), Ok(()));
+        assert_eq!(
+            guard.claim(UnixTime::new(100), &baseline),
             Err(FreshnessError::ReplayDetected)
         );
     }

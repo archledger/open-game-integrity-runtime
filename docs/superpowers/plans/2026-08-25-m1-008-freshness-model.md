@@ -2350,6 +2350,11 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
    capability-bypass test before the fixes. Mutation-probe both fixes, rerun the
    complete matrix, and obtain a fresh independent Yes verdict before live
    issue sync or DCO freeze.
+6. Re-review requires an altered-first raw-claim test: reject a same-key changed
+   binding/window, then prove the original challenge still claims exactly once.
+   Mutation-probe a premature `Consumed` write before binding/window validation.
+   Record both confirmed defects in `docs/LESSONS_LEARNED.md` as required by the
+   AI development policy.
 
 ---
 
@@ -2367,7 +2372,7 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
 | Privacy-minimal state and redacted errors/debug output | Task 3 private fields/getters; Task 5 redaction test; Task 6 ADR/threat/invariant text |
 | Non-disciplinary external error mapping and no `Allow` | Tasks 2 and 4 mapping/tests; Task 7 acceptance review |
 | Database-neutral synchronous boundary; no new dependency or unsafe/async/serialization choice | Task 3 `ReplayStore`; Task 6 dependency ADR; Task 7 manifest and full-matrix scans |
-| Deterministic arbitrary sequences and mutation resistance | Task 5 fixed-seed oracle and thirteen isolated mutation probes after review remediation |
+| Deterministic arbitrary sequences and mutation resistance | Task 5 fixed-seed oracle and fourteen isolated mutation probes after review remediation |
 | Repository governance, issue state, independent review, DCO, and publication | Tasks 0, 6, and 7 |
 
 ---

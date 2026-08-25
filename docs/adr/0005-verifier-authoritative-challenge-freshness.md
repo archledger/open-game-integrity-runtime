@@ -154,6 +154,7 @@ All affected Rust, documentation, and attack-lab paths remain Apache-2.0.
 - Literal before/exact issue/last-second/exact-and-after-expiry tests.
 - Equal/reversed/excessive/near-`u64::MAX` construction tests.
 - Same-key same/different-context replay and cross-publisher independence.
+- Altered same-key binding/window rejection leaves the original record issued.
 - Missing/unavailable/corrupt state, restart, and high-water rollback tests.
 - Rejected future-time persistence followed by post-restart rollback.
 - Exact lifetime, total, publisher, account, and rate-window limits.
