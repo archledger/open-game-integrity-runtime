@@ -79,6 +79,11 @@ for required_section in "${required_sections[@]}"; do
       "${required_section}" >&2
     exit 1
   fi
+  if ((section_count > 1)); then
+    printf 'docs/adr/template.md: duplicate required ADR section: %s\n' \
+      "${required_section}" >&2
+    exit 1
+  fi
   if ! awk -v heading="## ${required_section}" '
     $0 == heading { inside = 1; next }
     inside && /^## / { exit 1 }

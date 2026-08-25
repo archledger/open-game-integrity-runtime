@@ -265,6 +265,13 @@ git -C "${fixture}" add docs/adr/template.md
 expect_fail "ADR template leaves required section empty" \
   "docs/adr/template.md: empty required ADR section: Privacy impact"
 
+make_fixture duplicate-template-section
+printf '%s\n' "" "## Privacy impact" "Duplicate impact." \
+  >>"${fixture}/docs/adr/template.md"
+git -C "${fixture}" add docs/adr/template.md
+expect_fail "ADR template duplicates required section" \
+  "docs/adr/template.md: duplicate required ADR section: Privacy impact"
+
 make_fixture missing-readme-links
 printf '%s\n' "# Architecture decision records" \
   >"${fixture}/docs/adr/README.md"
