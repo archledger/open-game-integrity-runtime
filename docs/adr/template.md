@@ -4,8 +4,8 @@
 - Date: YYYY-MM-DD
 - Owners: Decision owners
 - Related issues: Issue links or a specific not-applicable rationale
-- Supersedes: ADR links or None
-- Superseded by: ADR link or None
+- Supersedes: None or comma-separated [ADR-NNNN](NNNN-title.md) links
+- Superseded by: None or comma-separated [ADR-NNNN](NNNN-title.md) links
 
 ## Context
 

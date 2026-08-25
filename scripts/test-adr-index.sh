@@ -27,6 +27,8 @@ write_adr() {
     "- Date: 2026-08-25" \
     "- Owners: Test Maintainer" \
     "- Related issues: None" \
+    "- Supersedes: None" \
+    "- Superseded by: None" \
     "" \
     "## Context" \
     "Test context." \
@@ -68,14 +70,14 @@ write_index() {
   printf '%s\n' \
     "# ADR index" \
     "" \
-    "| ADR | Status | Decision |" \
-    "| --- | --- | --- |" \
-    "| [ADR-0001](0001-accepted.md) | Accepted | Accepted fixture |" \
+    "| ADR | Status | Decision | Supersedes | Superseded by |" \
+    "| --- | --- | --- | --- | --- |" \
+    "| [ADR-0001](0001-accepted.md) | Accepted | Accepted fixture | None | None |" \
     >"${fixture}/docs/adr/index.md"
 
   if [[ "${include_rejected}" == "yes" ]]; then
     printf '%s\n' \
-      "| [ADR-0002](0002-rejected.md) | Rejected | Rejected fixture retained |" \
+      "| [ADR-0002](0002-rejected.md) | Rejected | Rejected fixture retained | None | None |" \
       >>"${fixture}/docs/adr/index.md"
   fi
 }
@@ -172,6 +174,23 @@ expect_fail() {
 make_fixture valid-with-rejected
 expect_pass "accepted and rejected ADRs remain indexed"
 
+make_fixture comment-syntax-inside-code-fence
+printf '%s\n' \
+  "" \
+  '```html' \
+  "<!-- literal example without a closing comment token" \
+  '```' >>"${fixture}/docs/adr/0001-accepted.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md
+expect_pass "comment syntax inside a code fence remains non-structural"
+
+make_fixture indented-backticks-remain-code
+printf '%s\n' \
+  "" \
+  '    ```literal indented code' \
+  "    not a fenced block" >>"${fixture}/docs/adr/0001-accepted.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md
+expect_pass "four-space-indented backticks remain indented code"
+
 make_fixture missing-index-entry
 write_index no
 git -C "${fixture}" add docs/adr/index.md
@@ -180,7 +199,7 @@ expect_fail "ADR omitted from index" \
 
 make_fixture stale-index-entry
 printf '%s\n' \
-  "| [ADR-0099](0099-deleted.md) | Rejected | Deleted ADR must not disappear |" \
+  "| [ADR-0099](0099-deleted.md) | Rejected | Deleted ADR must not disappear | None | None |" \
   >>"${fixture}/docs/adr/index.md"
 git -C "${fixture}" add docs/adr/index.md
 expect_fail "index references deleted ADR" \
@@ -188,11 +207,25 @@ expect_fail "index references deleted ADR" \
 
 make_fixture duplicate-index-entry
 printf '%s\n' \
-  "| [ADR-0001](0001-accepted.md) | Accepted | Duplicate fixture |" \
+  "| [ADR-0001](0001-accepted.md) | Accepted | Duplicate fixture | None | None |" \
   >>"${fixture}/docs/adr/index.md"
 git -C "${fixture}" add docs/adr/index.md
 expect_fail "duplicate ADR index entry" \
   "ADR-0001 has duplicate entries in docs/adr/index.md"
+
+make_fixture fenced-index-entries
+printf '%s\n' \
+  "# ADR index" \
+  "" \
+  '```markdown' \
+  "| ADR | Status | Decision | Supersedes | Superseded by |" \
+  "| --- | --- | --- | --- | --- |" \
+  "| [ADR-0001](0001-accepted.md) | Accepted | Hidden accepted fixture | None | None |" \
+  "| [ADR-0002](0002-rejected.md) | Rejected | Hidden rejected fixture | None | None |" \
+  '```' >"${fixture}/docs/adr/index.md"
+git -C "${fixture}" add docs/adr/index.md
+expect_fail "ADR index hides decision rows in a code fence" \
+  "is missing from docs/adr/index.md"
 
 make_fixture mismatched-index-status
 sed -i \
@@ -201,6 +234,151 @@ sed -i \
 git -C "${fixture}" add docs/adr/index.md
 expect_fail "index status differs from ADR" \
   "ADR-0001 index status does not match staged ADR status"
+
+make_fixture mismatched-index-supersession
+sed -i 's/^- Status: Rejected$/- Status: Superseded/' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i \
+  's|^- Superseded by: None$|- Superseded by: [ADR-0001](0001-accepted.md)|' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i \
+  's#| Rejected | Rejected fixture retained | None | None |#| Superseded | Rejected fixture retained | None | [ADR-0099](0099-missing.md) |#' \
+  "${fixture}/docs/adr/index.md"
+git -C "${fixture}" add docs/adr/0002-rejected.md docs/adr/index.md
+expect_fail "index supersession differs from ADR metadata" \
+  "ADR-0002 index Superseded by does not match staged ADR metadata"
+
+make_fixture missing-supersession-target
+sed -i 's/^- Status: Rejected$/- Status: Superseded/' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i \
+  's|^- Superseded by: None$|- Superseded by: [ADR-0099](0099-missing.md)|' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i \
+  's#| Rejected | Rejected fixture retained | None | None |#| Superseded | Rejected fixture retained | None | [ADR-0099](0099-missing.md) |#' \
+  "${fixture}/docs/adr/index.md"
+git -C "${fixture}" add docs/adr/0002-rejected.md docs/adr/index.md
+expect_fail "supersession references a missing ADR" \
+  "ADR-0002 Superseded by references missing ADR-0099"
+
+make_fixture invalid-supersession-format
+sed -i 's/^- Status: Rejected$/- Status: Superseded/' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i 's/^- Superseded by: None$/- Superseded by: ADR-0001/' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i \
+  's#| Rejected | Rejected fixture retained | None | None |#| Superseded | Rejected fixture retained | None | ADR-0001 |#' \
+  "${fixture}/docs/adr/index.md"
+git -C "${fixture}" add docs/adr/0002-rejected.md docs/adr/index.md
+expect_fail "supersession metadata uses a non-link value" \
+  "ADR-0002 has invalid Superseded by metadata: ADR-0001"
+
+make_fixture mismatched-supersession-path
+sed -i 's/^- Status: Rejected$/- Status: Superseded/' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i \
+  's|^- Superseded by: None$|- Superseded by: [ADR-0001](0001-wrong.md)|' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i \
+  's#| Rejected | Rejected fixture retained | None | None |#| Superseded | Rejected fixture retained | None | [ADR-0001](0001-wrong.md) |#' \
+  "${fixture}/docs/adr/index.md"
+git -C "${fixture}" add docs/adr/0002-rejected.md docs/adr/index.md
+expect_fail "supersession link path differs from staged ADR" \
+  "ADR-0002 Superseded by path does not match ADR-0001 staged file"
+
+make_fixture self-supersession
+sed -i 's/^- Status: Rejected$/- Status: Superseded/' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i \
+  's|^- Superseded by: None$|- Superseded by: [ADR-0002](0002-rejected.md)|' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i \
+  's#| Rejected | Rejected fixture retained | None | None |#| Superseded | Rejected fixture retained | None | [ADR-0002](0002-rejected.md) |#' \
+  "${fixture}/docs/adr/index.md"
+git -C "${fixture}" add docs/adr/0002-rejected.md docs/adr/index.md
+expect_fail "ADR claims to supersede itself" \
+  "ADR-0002 cannot reference itself in Superseded by"
+
+make_fixture duplicate-supersession-link
+sed -i 's/^- Status: Rejected$/- Status: Superseded/' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i \
+  's|^- Superseded by: None$|- Superseded by: [ADR-0001](0001-accepted.md), [ADR-0001](0001-accepted.md)|' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i \
+  's#| Rejected | Rejected fixture retained | None | None |#| Superseded | Rejected fixture retained | None | [ADR-0001](0001-accepted.md), [ADR-0001](0001-accepted.md) |#' \
+  "${fixture}/docs/adr/index.md"
+git -C "${fixture}" add docs/adr/0002-rejected.md docs/adr/index.md
+expect_fail "ADR repeats a supersession link" \
+  "ADR-0002 repeats ADR-0001 in Superseded by"
+
+make_fixture nonreciprocal-supersession
+sed -i 's/^- Status: Accepted$/- Status: Superseded/' \
+  "${fixture}/docs/adr/0001-accepted.md"
+sed -i \
+  's|^- Superseded by: None$|- Superseded by: [ADR-0002](0002-rejected.md)|' \
+  "${fixture}/docs/adr/0001-accepted.md"
+sed -i \
+  's#| Accepted | Accepted fixture | None | None |#| Superseded | Accepted fixture | None | [ADR-0002](0002-rejected.md) |#' \
+  "${fixture}/docs/adr/index.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md docs/adr/index.md
+expect_fail "supersession omits the reciprocal link" \
+  "ADR-0001 Superseded by ADR-0002 lacks reciprocal Supersedes metadata"
+
+make_fixture reciprocal-supersession
+sed -i 's/^- Status: Accepted$/- Status: Superseded/' \
+  "${fixture}/docs/adr/0001-accepted.md"
+sed -i \
+  's|^- Superseded by: None$|- Superseded by: [ADR-0002](0002-rejected.md)|' \
+  "${fixture}/docs/adr/0001-accepted.md"
+sed -i 's/^- Status: Rejected$/- Status: Accepted/' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i \
+  's|^- Supersedes: None$|- Supersedes: [ADR-0001](0001-accepted.md)|' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i \
+  's#| Accepted | Accepted fixture | None | None |#| Superseded | Accepted fixture | None | [ADR-0002](0002-rejected.md) |#' \
+  "${fixture}/docs/adr/index.md"
+sed -i \
+  's#| Rejected | Rejected fixture retained | None | None |#| Accepted | Rejected fixture retained | [ADR-0001](0001-accepted.md) | None |#' \
+  "${fixture}/docs/adr/index.md"
+git -C "${fixture}" add \
+  docs/adr/0001-accepted.md \
+  docs/adr/0002-rejected.md \
+  docs/adr/index.md
+expect_pass "supersession links remain bidirectional"
+
+make_fixture superseded-without-replacement
+sed -i 's/^- Status: Accepted$/- Status: Superseded/' \
+  "${fixture}/docs/adr/0001-accepted.md"
+sed -i \
+  's#| Accepted | Accepted fixture | None | None |#| Superseded | Accepted fixture | None | None |#' \
+  "${fixture}/docs/adr/index.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md docs/adr/index.md
+expect_fail "superseded ADR omits its replacement" \
+  "ADR-0001 has Superseded status without Superseded by metadata"
+
+make_fixture replacement-link-without-superseded-status
+sed -i \
+  's|^- Superseded by: None$|- Superseded by: [ADR-0002](0002-rejected.md)|' \
+  "${fixture}/docs/adr/0001-accepted.md"
+sed -i 's/^- Status: Rejected$/- Status: Accepted/' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i \
+  's|^- Supersedes: None$|- Supersedes: [ADR-0001](0001-accepted.md)|' \
+  "${fixture}/docs/adr/0002-rejected.md"
+sed -i \
+  's#| Accepted | Accepted fixture | None | None |#| Accepted | Accepted fixture | None | [ADR-0002](0002-rejected.md) |#' \
+  "${fixture}/docs/adr/index.md"
+sed -i \
+  's#| Rejected | Rejected fixture retained | None | None |#| Accepted | Rejected fixture retained | [ADR-0001](0001-accepted.md) | None |#' \
+  "${fixture}/docs/adr/index.md"
+git -C "${fixture}" add \
+  docs/adr/0001-accepted.md \
+  docs/adr/0002-rejected.md \
+  docs/adr/index.md
+expect_fail "replacement link requires Superseded status" \
+  "ADR-0001 has Superseded by metadata without Superseded status"
 
 make_fixture invalid-adr-status
 sed -i 's/^- Status: Accepted$/- Status: Deprecated/' \
@@ -211,6 +389,20 @@ sed -i \
 git -C "${fixture}" add docs/adr/0001-accepted.md docs/adr/index.md
 expect_fail "unsupported ADR status" \
   "docs/adr/0001-accepted.md: invalid ADR status: Deprecated"
+
+make_fixture missing-supersedes-metadata
+sed -i '/^- Supersedes: /d' \
+  "${fixture}/docs/adr/0001-accepted.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md
+expect_fail "ADR omits Supersedes metadata" \
+  "docs/adr/0001-accepted.md: expected exactly one Supersedes metadata field"
+
+make_fixture duplicate-superseded-by-metadata
+printf '%s\n' "- Superseded by: None" \
+  >>"${fixture}/docs/adr/0001-accepted.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md
+expect_fail "ADR duplicates Superseded by metadata" \
+  "docs/adr/0001-accepted.md: expected exactly one Superseded by metadata field"
 
 make_fixture mismatched-adr-identifier
 sed -i '1s/^# ADR-0001:/# ADR-0009:/' \
@@ -247,6 +439,33 @@ git -C "${fixture}" add docs/adr/0001-accepted.md
 expect_fail "ADR duplicates required section" \
   "docs/adr/0001-accepted.md: duplicate required ADR section: Privacy impact"
 
+make_fixture fenced-required-section
+sed -i '/^## Privacy impact$/d' \
+  "${fixture}/docs/adr/0001-accepted.md"
+printf '%s\n' \
+  "" \
+  '```markdown' \
+  "## Privacy impact" \
+  "Hidden privacy impact." \
+  '```' >>"${fixture}/docs/adr/0001-accepted.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md
+expect_fail "ADR hides a required section in a code fence" \
+  "docs/adr/0001-accepted.md: missing required ADR section: Privacy impact"
+
+make_fixture indented-marker-inside-fence
+sed -i '/^## Privacy impact$/d' \
+  "${fixture}/docs/adr/0001-accepted.md"
+printf '%s\n' \
+  "" \
+  '```markdown' \
+  '    ```' \
+  "## Privacy impact" \
+  "Still inside the unclosed outer fence." \
+  >>"${fixture}/docs/adr/0001-accepted.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md
+expect_fail "indented marker does not close a fenced block" \
+  "docs/adr/0001-accepted.md: unclosed HTML comment or fenced code block"
+
 make_fixture missing-template
 git -C "${fixture}" rm -q -f docs/adr/template.md
 expect_fail "ADR template is deleted" \
@@ -279,6 +498,17 @@ git -C "${fixture}" add docs/adr/README.md
 expect_fail "ADR README omits navigation links" \
   "docs/adr/README.md must link to index.md and template.md"
 
+make_fixture commented-readme-links
+printf '%s\n' \
+  "# Architecture decision records" \
+  "" \
+  "<!--" \
+  "[decision index](index.md) and [ADR template](template.md)" \
+  "-->" >"${fixture}/docs/adr/README.md"
+git -C "${fixture}" add docs/adr/README.md
+expect_fail "ADR README hides navigation links in a comment" \
+  "docs/adr/README.md must link to index.md and template.md"
+
 make_fixture missing-readme
 git -C "${fixture}" rm -q -f docs/adr/README.md
 expect_fail "ADR README is deleted" \
@@ -292,6 +522,22 @@ expect_pass "staged ADR is not hidden by worktree edit"
 make_fixture staged-index-wins
 write_index no
 expect_pass "staged index is not hidden by worktree edit"
+
+make_fixture symlinked-adr
+adr_contents="$(<"${fixture}/docs/adr/0001-accepted.md")"
+rm -f -- "${fixture}/docs/adr/0001-accepted.md"
+ln -s -- "${adr_contents}" "${fixture}/docs/adr/0001-accepted.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md
+expect_fail "ADR path is a symlink" \
+  "docs/adr/0001-accepted.md must be a regular non-executable staged file"
+
+make_fixture symlinked-index
+index_contents="$(<"${fixture}/docs/adr/index.md")"
+rm -f -- "${fixture}/docs/adr/index.md"
+ln -s -- "${index_contents}" "${fixture}/docs/adr/index.md"
+git -C "${fixture}" add docs/adr/index.md
+expect_fail "ADR index is a symlink" \
+  "docs/adr/index.md must be a regular non-executable staged file"
 
 make_fixture subdirectory-root
 fixture="${fixture}/docs"

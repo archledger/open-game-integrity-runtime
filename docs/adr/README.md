@@ -25,9 +25,15 @@ Valid states are `Proposed`, `Accepted`, `Superseded`, `Rejected`, and
   stand.
 - A superseding ADR links both directions: the new record names what it
   supersedes, and the old record names its replacement.
+- `Supersedes` and `Superseded by` use `None` or comma-separated links in the
+  canonical form `[ADR-NNNN](NNNN-short-decision-title.md)`. Copy the exact
+  values into the matching decision-index columns; every link must resolve and
+  have its reciprocal metadata in the other ADR.
 - A status change and its index update belong in the same commit.
 - Every required section contains either its analysis or a specific
   not-applicable rationale. A blank heading is not sufficient.
+- Only rendered Markdown structure satisfies the gate. Links, headings, or
+  index rows inside HTML comments or code blocks do not count.
 
 Run the consistency gate before submitting changes:
 
