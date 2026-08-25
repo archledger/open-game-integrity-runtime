@@ -80,6 +80,49 @@ write_index() {
   fi
 }
 
+write_template() {
+  printf '%s\n' \
+    "# ADR-NNNN: Title" \
+    "" \
+    "- Status: Proposed | Accepted | Superseded | Rejected | Experimental" \
+    "- Date: YYYY-MM-DD" \
+    "- Owners: Decision owners" \
+    "- Related issues: Issue links" \
+    "" \
+    "## Context" \
+    "Describe the problem and constraints." \
+    "" \
+    "## Decision drivers" \
+    "List the forces that shape the decision." \
+    "" \
+    "## Options considered" \
+    "Describe each viable option and why it was accepted or rejected." \
+    "" \
+    "## Decision" \
+    "State the selected decision." \
+    "" \
+    "## Consequences" \
+    "Record positive and negative consequences." \
+    "" \
+    "## Threat-model impact" \
+    "Describe changed threats or explain why none apply." \
+    "" \
+    "## Privacy impact" \
+    "Describe changed disclosures or explain why none apply." \
+    "" \
+    "## Dependency and license impact" \
+    "Describe dependency and licensing effects or explain why none apply." \
+    "" \
+    "## Validation" \
+    "List the evidence required to validate the decision." \
+    "" \
+    "## Rollback" \
+    "Describe safe reversal or why reversal requires a superseding ADR." \
+    "" \
+    "## Primary sources" \
+    "List authoritative sources." >"${fixture}/docs/adr/template.md"
+}
+
 make_fixture() {
   local name="$1"
   fixture="${fixture_root}/${name}"
@@ -90,11 +133,7 @@ make_fixture() {
     "" \
     "See the [decision index](index.md) and [ADR template](template.md)." \
     >"${fixture}/docs/adr/README.md"
-  printf '%s\n' \
-    "# ADR-NNNN: Title" \
-    "" \
-    "Template content is supplied by the project." \
-    >"${fixture}/docs/adr/template.md"
+  write_template
   write_adr "${fixture}/docs/adr/0001-accepted.md" "0001" \
     "Accepted fixture" "Accepted"
   write_adr "${fixture}/docs/adr/0002-rejected.md" "0002" \
@@ -154,6 +193,77 @@ printf '%s\n' \
 git -C "${fixture}" add docs/adr/index.md
 expect_fail "duplicate ADR index entry" \
   "ADR-0001 has duplicate entries in docs/adr/index.md"
+
+make_fixture mismatched-index-status
+sed -i \
+  's/| Accepted | Accepted fixture |/| Proposed | Accepted fixture |/' \
+  "${fixture}/docs/adr/index.md"
+git -C "${fixture}" add docs/adr/index.md
+expect_fail "index status differs from ADR" \
+  "ADR-0001 index status does not match staged ADR status"
+
+make_fixture invalid-adr-status
+sed -i 's/^- Status: Accepted$/- Status: Deprecated/' \
+  "${fixture}/docs/adr/0001-accepted.md"
+sed -i \
+  's/| Accepted | Accepted fixture |/| Deprecated | Accepted fixture |/' \
+  "${fixture}/docs/adr/index.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md docs/adr/index.md
+expect_fail "unsupported ADR status" \
+  "docs/adr/0001-accepted.md: invalid ADR status: Deprecated"
+
+make_fixture mismatched-adr-identifier
+sed -i '1s/^# ADR-0001:/# ADR-0009:/' \
+  "${fixture}/docs/adr/0001-accepted.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md
+expect_fail "ADR title identifier differs from filename" \
+  "docs/adr/0001-accepted.md: ADR identifier does not match filename"
+
+make_fixture invalid-adr-title
+sed -i '1s/^# ADR-0001:/# Decision 0001:/' \
+  "${fixture}/docs/adr/0001-accepted.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md
+expect_fail "ADR title does not use canonical form" \
+  "docs/adr/0001-accepted.md: invalid ADR title"
+
+make_fixture missing-required-section
+sed -i '/^## Privacy impact$/d' \
+  "${fixture}/docs/adr/0001-accepted.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md
+expect_fail "ADR omits required security section" \
+  "docs/adr/0001-accepted.md: missing required ADR section: Privacy impact"
+
+make_fixture empty-required-section
+sed -i '/^## Privacy impact$/ { n; d; }' \
+  "${fixture}/docs/adr/0001-accepted.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md
+expect_fail "ADR leaves required security section empty" \
+  "docs/adr/0001-accepted.md: empty required ADR section: Privacy impact"
+
+make_fixture duplicate-required-section
+printf '%s\n' "" "## Privacy impact" "Duplicate impact." \
+  >>"${fixture}/docs/adr/0001-accepted.md"
+git -C "${fixture}" add docs/adr/0001-accepted.md
+expect_fail "ADR duplicates required section" \
+  "docs/adr/0001-accepted.md: duplicate required ADR section: Privacy impact"
+
+make_fixture missing-template
+git -C "${fixture}" rm -q -f docs/adr/template.md
+expect_fail "ADR template is deleted" \
+  "docs/adr/template.md is missing from staged files"
+
+make_fixture incomplete-template
+sed -i '/^## Privacy impact$/d' "${fixture}/docs/adr/template.md"
+git -C "${fixture}" add docs/adr/template.md
+expect_fail "ADR template omits required section" \
+  "docs/adr/template.md: missing required ADR section: Privacy impact"
+
+make_fixture missing-readme-links
+printf '%s\n' "# Architecture decision records" \
+  >"${fixture}/docs/adr/README.md"
+git -C "${fixture}" add docs/adr/README.md
+expect_fail "ADR README omits navigation links" \
+  "docs/adr/README.md must link to index.md and template.md"
 
 if ((failures > 0)); then
   printf '%d ADR index test(s) failed\n' "${failures}" >&2
