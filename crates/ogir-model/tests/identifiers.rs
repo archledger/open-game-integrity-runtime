@@ -4,18 +4,27 @@ use std::fmt::Debug;
 
 use ogir_model::{
     AccountScope, BuildId, EvidenceProfile, GameId, IdentifierError, MAX_IDENTIFIER_LENGTH,
-    MatchId, PolicyId, PolicyVersion, PublisherId, SessionId,
+    MatchId, Nonce, PolicyId, PolicyVersion, ProtocolVersion, PublisherChallenge, PublisherId,
+    SessionId,
 };
+
+fn parse_identifier<T>(value: &str) -> T
+where
+    T: AsRef<str> + Debug,
+    for<'a> T: TryFrom<&'a str, Error = IdentifierError>,
+{
+    match T::try_from(value) {
+        Ok(identifier) => identifier,
+        Err(error) => panic!("expected {value:?} to be valid, got {error:?}"),
+    }
+}
 
 fn assert_valid_identifier<T>(value: &str)
 where
     T: AsRef<str> + Debug,
     for<'a> T: TryFrom<&'a str, Error = IdentifierError>,
 {
-    let identifier = match T::try_from(value) {
-        Ok(identifier) => identifier,
-        Err(error) => panic!("expected {value:?} to be valid, got {error:?}"),
-    };
+    let identifier = parse_identifier::<T>(value);
     assert_eq!(identifier.as_ref(), value);
 }
 
@@ -159,4 +168,28 @@ fn validation_errors_never_echo_hostile_input() {
 fn policy_version_preserves_its_numeric_value() {
     let version = PolicyVersion::new(0);
     assert_eq!(version.get(), 0);
+}
+
+#[test]
+fn publisher_challenge_uses_typed_ids_and_redacts_private_context() {
+    let challenge = PublisherChallenge {
+        version: ProtocolVersion { major: 0, minor: 1 },
+        publisher_id: parse_identifier::<PublisherId>("example.publisher"),
+        game_id: parse_identifier::<GameId>("example.game"),
+        build_id: parse_identifier::<BuildId>("build-1"),
+        account_scope: parse_identifier::<AccountScope>("private-account"),
+        match_id: parse_identifier::<MatchId>("private-match"),
+        policy_id: parse_identifier::<PolicyId>("research-v0"),
+        policy_version: PolicyVersion::new(1),
+        nonce: Nonce::from_bytes([7; 32]),
+        issued_at_unix_seconds: 100,
+        expires_at_unix_seconds: 200,
+    };
+
+    assert_eq!(challenge.validate_structure(), Ok(()));
+    let debug = format!("{challenge:?}");
+    assert!(debug.contains("example.publisher"));
+    assert!(debug.contains("example.game"));
+    assert!(!debug.contains("private-account"));
+    assert!(!debug.contains("private-match"));
 }

@@ -149,6 +149,20 @@ macro_rules! define_identifier {
 
 define_identifier!(
     /// Publisher namespace selected by the relying party.
+    ///
+    /// A publisher identifier cannot be substituted for another identifier type:
+    ///
+    /// ```compile_fail
+    /// use ogir_model::{GameId, PublisherId};
+    ///
+    /// fn needs_game_id(_: GameId) {}
+    ///
+    /// let publisher_id = match PublisherId::try_from("example.publisher") {
+    ///     Ok(value) => value,
+    ///     Err(error) => panic!("unexpected error: {error}"),
+    /// };
+    /// needs_game_id(publisher_id);
+    /// ```
     PublisherId,
     redacted = false
 );
@@ -251,19 +265,19 @@ pub struct PublisherChallenge {
     /// Protocol version selected by the publisher.
     pub version: ProtocolVersion,
     /// Publisher-scoped identifier.
-    pub publisher_id: String,
+    pub publisher_id: PublisherId,
     /// Game identifier.
-    pub game_id: String,
+    pub game_id: GameId,
     /// Exact game build identifier.
-    pub build_id: String,
+    pub build_id: BuildId,
     /// Publisher-scoped account binding.
-    pub account_scope: String,
+    pub account_scope: AccountScope,
     /// Match or protected-session identifier.
-    pub match_id: String,
+    pub match_id: MatchId,
     /// Requested policy identifier.
-    pub policy_id: String,
+    pub policy_id: PolicyId,
     /// Requested policy version.
-    pub policy_version: u32,
+    pub policy_version: PolicyVersion,
     /// Fresh random challenge.
     pub nonce: Nonce,
     /// Challenge issue time as Unix seconds.
@@ -275,13 +289,6 @@ pub struct PublisherChallenge {
 impl PublisherChallenge {
     /// Validates local structural invariants. Signature and freshness checks belong to the verifier.
     pub fn validate_structure(&self) -> Result<(), ModelError> {
-        validate_identifier("publisher_id", &self.publisher_id)?;
-        validate_identifier("game_id", &self.game_id)?;
-        validate_identifier("build_id", &self.build_id)?;
-        validate_identifier("account_scope", &self.account_scope)?;
-        validate_identifier("match_id", &self.match_id)?;
-        validate_identifier("policy_id", &self.policy_id)?;
-
         if self.expires_at_unix_seconds <= self.issued_at_unix_seconds {
             return Err(ModelError::InvalidTimeWindow);
         }
@@ -337,12 +344,6 @@ pub enum ReasonCode {
 /// Errors in pure model validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModelError {
-    /// An identifier was empty.
-    EmptyIdentifier { field: &'static str },
-    /// An identifier exceeded the configured maximum.
-    IdentifierTooLong { field: &'static str },
-    /// An identifier contained a disallowed byte.
-    InvalidIdentifierCharacter { field: &'static str },
     /// Expiry was not after issue time.
     InvalidTimeWindow,
 }
@@ -350,11 +351,6 @@ pub enum ModelError {
 impl fmt::Display for ModelError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::EmptyIdentifier { field } => write!(formatter, "{field} is empty"),
-            Self::IdentifierTooLong { field } => write!(formatter, "{field} is too long"),
-            Self::InvalidIdentifierCharacter { field } => {
-                write!(formatter, "{field} contains a disallowed character")
-            }
             Self::InvalidTimeWindow => {
                 formatter.write_str("challenge expiry must be after issue time")
             }
@@ -364,40 +360,36 @@ impl fmt::Display for ModelError {
 
 impl Error for ModelError {}
 
-fn validate_identifier(field: &'static str, value: &str) -> Result<(), ModelError> {
-    if value.is_empty() {
-        return Err(ModelError::EmptyIdentifier { field });
-    }
-
-    if value.len() > MAX_IDENTIFIER_LENGTH {
-        return Err(ModelError::IdentifierTooLong { field });
-    }
-
-    let valid = value.bytes().all(|byte| {
-        byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/')
-    });
-
-    if !valid {
-        return Err(ModelError::InvalidIdentifierCharacter { field });
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{ModelError, Nonce, ProtocolVersion, PublisherChallenge};
+    use std::fmt::Debug;
+
+    use super::{
+        AccountScope, BuildId, GameId, IdentifierError, MatchId, ModelError, Nonce, PolicyId,
+        PolicyVersion, ProtocolVersion, PublisherChallenge, PublisherId,
+    };
+
+    fn identifier<T>(value: &str) -> T
+    where
+        T: Debug,
+        for<'a> T: TryFrom<&'a str, Error = IdentifierError>,
+    {
+        match T::try_from(value) {
+            Ok(identifier) => identifier,
+            Err(error) => panic!("valid fixture rejected: {error:?}"),
+        }
+    }
 
     fn valid_challenge() -> PublisherChallenge {
         PublisherChallenge {
             version: ProtocolVersion { major: 0, minor: 1 },
-            publisher_id: "example.publisher".to_owned(),
-            game_id: "example.game".to_owned(),
-            build_id: "build-1".to_owned(),
-            account_scope: "account-123".to_owned(),
-            match_id: "match-456".to_owned(),
-            policy_id: "research-v0".to_owned(),
-            policy_version: 1,
+            publisher_id: identifier::<PublisherId>("example.publisher"),
+            game_id: identifier::<GameId>("example.game"),
+            build_id: identifier::<BuildId>("build-1"),
+            account_scope: identifier::<AccountScope>("account-123"),
+            match_id: identifier::<MatchId>("match-456"),
+            policy_id: identifier::<PolicyId>("research-v0"),
+            policy_version: PolicyVersion::new(1),
             nonce: Nonce::from_bytes([7; 32]),
             issued_at_unix_seconds: 100,
             expires_at_unix_seconds: 200,
