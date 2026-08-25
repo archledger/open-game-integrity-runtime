@@ -44,6 +44,9 @@ if ! git -C "${repository_root}" show :docs/adr/index.md >"${index_file}"; then
 fi
 
 declare -A adr_paths=()
+declare -A adr_statuses=()
+declare -A index_paths=()
+declare -A index_statuses=()
 status=0
 
 while IFS= read -r -d '' tracked_entry; do
@@ -77,13 +80,56 @@ while IFS= read -r -d '' tracked_entry; do
       continue
       ;;
   esac
+  adr_statuses["${adr_id}"]="${adr_status}"
+done <"${tracked_paths_file}"
 
-  expected_index_prefix="| [ADR-${adr_id}](${filename}) | ${adr_status} |"
-  if ! grep -a -Fq -- "${expected_index_prefix}" "${index_file}"; then
-    printf 'ADR-%s is missing from docs/adr/index.md\n' "${adr_id}" >&2
+index_row_pattern='^[[:space:]]*\|[[:space:]]*\[ADR-([0-9]{4})\]\(([^)]+)\)[[:space:]]*\|[[:space:]]*([^|]+)[[:space:]]*\|'
+while IFS= read -r index_line; do
+  if [[ ! "${index_line}" =~ ${index_row_pattern} ]]; then
+    continue
+  fi
+
+  index_id="${BASH_REMATCH[1]}"
+  index_path="${BASH_REMATCH[2]}"
+  index_status="${BASH_REMATCH[3]}"
+  index_status="${index_status#"${index_status%%[![:space:]]*}"}"
+  index_status="${index_status%"${index_status##*[![:space:]]}"}"
+
+  if [[ -n "${index_paths[${index_id}]:-}" ]]; then
+    printf 'ADR-%s has duplicate entries in docs/adr/index.md\n' \
+      "${index_id}" >&2
+    status=1
+    continue
+  fi
+
+  index_paths["${index_id}"]="${index_path}"
+  index_statuses["${index_id}"]="${index_status}"
+  full_index_path="docs/adr/${index_path}"
+  if [[ "${adr_paths[${index_id}]:-}" != "${full_index_path}" ]]; then
+    printf 'ADR-%s index entry references missing %s\n' \
+      "${index_id}" "${full_index_path}" >&2
     status=1
   fi
-done <"${tracked_paths_file}"
+done <"${index_file}"
+
+for adr_id in "${!adr_paths[@]}"; do
+  if [[ -z "${index_paths[${adr_id}]:-}" ]]; then
+    printf 'ADR-%s is missing from docs/adr/index.md\n' "${adr_id}" >&2
+    status=1
+    continue
+  fi
+
+  expected_path="${adr_paths[${adr_id}]#docs/adr/}"
+  if [[ "${index_paths[${adr_id}]}" != "${expected_path}" ]]; then
+    printf 'ADR-%s index path does not match staged ADR file\n' "${adr_id}" >&2
+    status=1
+  fi
+  if [[ "${index_statuses[${adr_id}]}" != "${adr_statuses[${adr_id}]}" ]]; then
+    printf 'ADR-%s index status does not match staged ADR status\n' \
+      "${adr_id}" >&2
+    status=1
+  fi
+done
 
 if ((status != 0)); then
   exit 1

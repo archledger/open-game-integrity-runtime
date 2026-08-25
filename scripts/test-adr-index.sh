@@ -139,6 +139,22 @@ git -C "${fixture}" add docs/adr/index.md
 expect_fail "ADR omitted from index" \
   "ADR-0002 is missing from docs/adr/index.md"
 
+make_fixture stale-index-entry
+printf '%s\n' \
+  "| [ADR-0099](0099-deleted.md) | Rejected | Deleted ADR must not disappear |" \
+  >>"${fixture}/docs/adr/index.md"
+git -C "${fixture}" add docs/adr/index.md
+expect_fail "index references deleted ADR" \
+  "ADR-0099 index entry references missing docs/adr/0099-deleted.md"
+
+make_fixture duplicate-index-entry
+printf '%s\n' \
+  "| [ADR-0001](0001-accepted.md) | Accepted | Duplicate fixture |" \
+  >>"${fixture}/docs/adr/index.md"
+git -C "${fixture}" add docs/adr/index.md
+expect_fail "duplicate ADR index entry" \
+  "ADR-0001 has duplicate entries in docs/adr/index.md"
+
 if ((failures > 0)); then
   printf '%d ADR index test(s) failed\n' "${failures}" >&2
   exit 1
