@@ -191,13 +191,13 @@ After replacing repository placeholders and reviewing the scripts, create the
 recommended labels and milestones:
 
 ```bash
-./scripts/bootstrap-github.sh owner/open-game-integrity-runtime
+./scripts/bootstrap-github.sh archledger/open-game-integrity-runtime
 ```
 
 Then review and create the first ten issue specifications:
 
 ```bash
-./scripts/create-initial-issues.sh owner/open-game-integrity-runtime
+./scripts/create-initial-issues.sh archledger/open-game-integrity-runtime
 ```
 
 The scripts do not configure branch protection, secret scanning, CodeQL, or

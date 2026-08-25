@@ -22,6 +22,7 @@ repository_root="$(git -C "${repository_root}" rev-parse --show-toplevel)" || {
 
 account_marker='YOUR-GITHUB-'"ACCOUNT"
 username_marker='YOUR_GITHUB_'"USERNAME"
+generic_owner_marker='owner/'"open-game-integrity-runtime"
 status=0
 
 marker_status=0
@@ -29,6 +30,7 @@ marker_matches="$(
   git -C "${repository_root}" grep -n -F \
     -e "${account_marker}" \
     -e "${username_marker}" \
+    -e "${generic_owner_marker}" \
     -- .
 )" || marker_status=$?
 case "${marker_status}" in

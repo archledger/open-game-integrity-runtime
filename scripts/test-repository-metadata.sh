@@ -67,6 +67,12 @@ printf '%s\n' "${username_marker}" >"${fixture}/README.md"
 git -C "${fixture}" add README.md
 expect_fail "CODEOWNERS username marker" "unresolved repository identity marker"
 
+make_fixture generic-owner-marker
+generic_owner_marker='owner/'"open-game-integrity-runtime"
+printf '%s\n' "${generic_owner_marker}" >"${fixture}/README.md"
+git -C "${fixture}" add README.md
+expect_fail "generic repository owner marker" "unresolved repository identity marker"
+
 make_fixture missing-spdx
 printf '%s\n' 'pub fn missing_license() {}' >"${fixture}/src/missing.rs"
 git -C "${fixture}" add src/missing.rs

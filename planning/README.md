@@ -8,7 +8,7 @@ After creating the repository and running `scripts/bootstrap-github.sh`, review
 each issue body and then run:
 
 ```bash
-./scripts/create-initial-issues.sh owner/open-game-integrity-runtime
+./scripts/create-initial-issues.sh archledger/open-game-integrity-runtime
 ```
 
 The script skips exact-title duplicates. Do not run it until repository
