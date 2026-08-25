@@ -309,21 +309,8 @@ pub struct PublisherChallenge {
     pub policy_version: PolicyVersion,
     /// Fresh random challenge.
     pub nonce: Nonce,
-    /// Challenge issue time as Unix seconds.
-    pub issued_at_unix_seconds: u64,
-    /// Challenge expiry as Unix seconds.
-    pub expires_at_unix_seconds: u64,
-}
-
-impl PublisherChallenge {
-    /// Validates local structural invariants. Signature and freshness checks belong to the verifier.
-    pub fn validate_structure(&self) -> Result<(), ModelError> {
-        if self.expires_at_unix_seconds <= self.issued_at_unix_seconds {
-            return Err(ModelError::InvalidTimeWindow);
-        }
-
-        Ok(())
-    }
+    /// Validated challenge issue/expiry interval.
+    pub window: ChallengeWindow,
 }
 
 /// High-level verifier decision. This type is produced only by verifier logic.
@@ -370,32 +357,15 @@ pub enum ReasonCode {
     ProtectedSessionLost,
 }
 
-/// Errors in pure model validation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ModelError {
-    /// Expiry was not after issue time.
-    InvalidTimeWindow,
-}
-
-impl fmt::Display for ModelError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidTimeWindow => {
-                formatter.write_str("challenge expiry must be after issue time")
-            }
-        }
-    }
-}
-
-impl Error for ModelError {}
-
 #[cfg(test)]
 mod tests {
     use std::fmt::Debug;
+    use std::num::NonZeroU64;
 
     use super::{
-        AccountScope, BuildId, GameId, IdentifierError, MatchId, ModelError, Nonce, PolicyId,
-        PolicyVersion, ProtocolVersion, PublisherChallenge, PublisherId,
+        AccountScope, BuildId, ChallengeLifetime, ChallengeWindow, GameId, IdentifierError,
+        MatchId, Nonce, PolicyId, PolicyVersion, ProtocolVersion, PublisherChallenge, PublisherId,
+        UnixTime,
     };
 
     fn identifier<T>(value: &str) -> T
@@ -410,6 +380,14 @@ mod tests {
     }
 
     fn valid_challenge() -> PublisherChallenge {
+        let maximum = match NonZeroU64::new(100) {
+            Some(value) => ChallengeLifetime::new(value),
+            None => panic!("fixture lifetime must be nonzero"),
+        };
+        let window = match ChallengeWindow::new(UnixTime::new(100), UnixTime::new(200), maximum) {
+            Ok(value) => value,
+            Err(error) => panic!("valid fixture window rejected: {error:?}"),
+        };
         PublisherChallenge {
             version: ProtocolVersion { major: 0, minor: 1 },
             publisher_id: identifier::<PublisherId>("example.publisher"),
@@ -420,23 +398,15 @@ mod tests {
             policy_id: identifier::<PolicyId>("research-v0"),
             policy_version: PolicyVersion::new(1),
             nonce: Nonce::from_bytes([7; 32]),
-            issued_at_unix_seconds: 100,
-            expires_at_unix_seconds: 200,
+            window,
         }
     }
 
     #[test]
-    fn valid_challenge_passes_structure_validation() {
-        assert_eq!(valid_challenge().validate_structure(), Ok(()));
-    }
-
-    #[test]
-    fn invalid_time_window_is_rejected() {
-        let mut challenge = valid_challenge();
-        challenge.expires_at_unix_seconds = challenge.issued_at_unix_seconds;
+    fn publisher_challenge_carries_a_validated_window() {
         assert_eq!(
-            challenge.validate_structure(),
-            Err(ModelError::InvalidTimeWindow)
+            valid_challenge().window.evaluate(UnixTime::new(150)),
+            Ok(())
         );
     }
 

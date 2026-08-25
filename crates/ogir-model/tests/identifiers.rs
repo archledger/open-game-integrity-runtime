@@ -2,11 +2,12 @@
 
 use std::any::TypeId;
 use std::fmt::Debug;
+use std::num::NonZeroU64;
 
 use ogir_model::{
-    AccountScope, BuildId, EvidenceProfile, GameId, IdentifierError, MAX_IDENTIFIER_LENGTH,
-    MatchId, Nonce, PolicyId, PolicyVersion, ProtocolVersion, PublisherChallenge, PublisherId,
-    SessionId,
+    AccountScope, BuildId, ChallengeLifetime, ChallengeWindow, EvidenceProfile, GameId,
+    IdentifierError, MAX_IDENTIFIER_LENGTH, MatchId, Nonce, PolicyId, PolicyVersion,
+    ProtocolVersion, PublisherChallenge, PublisherId, SessionId, UnixTime,
 };
 
 const EXPECTED_MAX_IDENTIFIER_LENGTH: usize = 128;
@@ -237,6 +238,14 @@ fn policy_version_preserves_its_numeric_value() {
 
 #[test]
 fn publisher_challenge_uses_typed_ids_and_redacts_private_context() {
+    let maximum = match NonZeroU64::new(100) {
+        Some(value) => ChallengeLifetime::new(value),
+        None => panic!("fixture lifetime must be nonzero"),
+    };
+    let window = match ChallengeWindow::new(UnixTime::new(100), UnixTime::new(200), maximum) {
+        Ok(value) => value,
+        Err(error) => panic!("valid fixture window rejected: {error:?}"),
+    };
     let challenge = PublisherChallenge {
         version: ProtocolVersion { major: 0, minor: 1 },
         publisher_id: parse_identifier::<PublisherId>("example.publisher"),
@@ -247,11 +256,10 @@ fn publisher_challenge_uses_typed_ids_and_redacts_private_context() {
         policy_id: parse_identifier::<PolicyId>("research-v0"),
         policy_version: PolicyVersion::new(1),
         nonce: Nonce::from_bytes([7; 32]),
-        issued_at_unix_seconds: 100,
-        expires_at_unix_seconds: 200,
+        window,
     };
 
-    assert_eq!(challenge.validate_structure(), Ok(()));
+    assert_eq!(challenge.window.evaluate(UnixTime::new(150)), Ok(()));
     let debug = format!("{challenge:?}");
     assert!(debug.contains("example.publisher"));
     assert!(debug.contains("example.game"));

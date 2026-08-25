@@ -4,8 +4,8 @@
 //! Deterministic verifier interfaces. Cryptographic verification is not implemented yet.
 
 use ogir_model::{
-    AccountScope, BuildId, Decision, GameId, MatchId, PolicyId, PolicyVersion, PublisherChallenge,
-    PublisherId, ReasonCode,
+    AccountScope, BuildId, Decision, FreshnessError, GameId, MatchId, PolicyId, PolicyVersion,
+    PublisherChallenge, PublisherId, ReasonCode, UnixTime,
 };
 use ogir_protocol::EvidenceBundle;
 
@@ -37,8 +37,8 @@ pub struct VerificationRequest {
     pub evidence: EvidenceBundle,
     /// Context supplied by the relying party, not by the client.
     pub expected: ExpectedContext,
-    /// Verifier's current Unix time.
-    pub now_unix_seconds: u64,
+    /// Publisher-verifier authoritative current Unix time.
+    pub now: UnixTime,
 }
 
 /// Deterministic high-level outcome.
@@ -56,16 +56,8 @@ pub struct VerificationOutcome {
 /// never returns `Decision::Allow`.
 #[must_use]
 pub fn verify_research_structure(request: &VerificationRequest) -> VerificationOutcome {
-    if request.challenge.validate_structure().is_err() {
-        return denied(ReasonCode::Malformed);
-    }
-
-    if request.now_unix_seconds < request.challenge.issued_at_unix_seconds {
-        return denied(ReasonCode::NotYetValid);
-    }
-
-    if request.now_unix_seconds >= request.challenge.expires_at_unix_seconds {
-        return denied(ReasonCode::Expired);
+    if let Err(error) = request.challenge.window.evaluate(request.now) {
+        return freshness_failure(error);
     }
 
     let expected = &request.expected;
@@ -93,14 +85,33 @@ const fn denied(reason: ReasonCode) -> VerificationOutcome {
     }
 }
 
+fn freshness_failure(error: FreshnessError) -> VerificationOutcome {
+    match error {
+        FreshnessError::InvalidWindow | FreshnessError::LifetimeExceeded => {
+            denied(ReasonCode::Malformed)
+        }
+        FreshnessError::NotYetValid => denied(ReasonCode::NotYetValid),
+        FreshnessError::Expired => denied(ReasonCode::Expired),
+        FreshnessError::ReplayDetected => denied(ReasonCode::ReplayDetected),
+        FreshnessError::ClockRollback
+        | FreshnessError::StateUnavailable
+        | FreshnessError::CapacityExceeded => VerificationOutcome {
+            decision: Decision::Retry,
+            reason: ReasonCode::AttestationUnavailable,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fmt::Debug;
+    use std::num::NonZeroU64;
 
     use super::{ExpectedContext, VerificationRequest, verify_research_structure};
     use ogir_model::{
-        AccountScope, BuildId, Decision, EvidenceProfile, GameId, IdentifierError, MatchId, Nonce,
-        PolicyId, PolicyVersion, ProtocolVersion, PublisherChallenge, PublisherId, ReasonCode,
+        AccountScope, BuildId, ChallengeLifetime, ChallengeWindow, Decision, EvidenceProfile,
+        GameId, IdentifierError, MatchId, Nonce, PolicyId, PolicyVersion, ProtocolVersion,
+        PublisherChallenge, PublisherId, ReasonCode, UnixTime,
     };
     use ogir_protocol::EvidenceBundle;
 
@@ -116,6 +127,14 @@ mod tests {
     }
 
     fn challenge() -> PublisherChallenge {
+        let maximum = match NonZeroU64::new(100) {
+            Some(value) => ChallengeLifetime::new(value),
+            None => panic!("fixture lifetime must be nonzero"),
+        };
+        let window = match ChallengeWindow::new(UnixTime::new(100), UnixTime::new(200), maximum) {
+            Ok(value) => value,
+            Err(error) => panic!("valid fixture window rejected: {error:?}"),
+        };
         PublisherChallenge {
             version: ProtocolVersion { major: 0, minor: 1 },
             publisher_id: identifier::<PublisherId>("example.publisher"),
@@ -126,8 +145,7 @@ mod tests {
             policy_id: identifier::<PolicyId>("research-v0"),
             policy_version: PolicyVersion::new(1),
             nonce: Nonce::from_bytes([1; 32]),
-            issued_at_unix_seconds: 100,
-            expires_at_unix_seconds: 200,
+            window,
         }
     }
 
@@ -156,7 +174,7 @@ mod tests {
             challenge: challenge(),
             evidence: evidence(),
             expected: expected(),
-            now_unix_seconds: 150,
+            now: UnixTime::new(150),
         };
         let outcome = verify_research_structure(&request);
         assert_eq!(outcome.decision, Decision::Deny);
@@ -169,7 +187,7 @@ mod tests {
             challenge: challenge(),
             evidence: evidence(),
             expected: expected(),
-            now_unix_seconds: 200,
+            now: UnixTime::new(200),
         };
         let outcome = verify_research_structure(&request);
         assert_eq!(outcome.reason, ReasonCode::Expired);
@@ -181,7 +199,7 @@ mod tests {
             challenge: challenge(),
             evidence: evidence(),
             expected: expected(),
-            now_unix_seconds: 99,
+            now: UnixTime::new(99),
         };
         let outcome = verify_research_structure(&request);
         assert_eq!(outcome.reason, ReasonCode::NotYetValid);
@@ -195,7 +213,7 @@ mod tests {
             challenge: challenge(),
             evidence: evidence(),
             expected: context,
-            now_unix_seconds: 150,
+            now: UnixTime::new(150),
         };
         let outcome = verify_research_structure(&request);
         assert_eq!(outcome.reason, ReasonCode::SessionBindingMismatch);
@@ -209,9 +227,23 @@ mod tests {
             challenge: challenge(),
             evidence: evidence(),
             expected: context,
-            now_unix_seconds: 150,
+            now: UnixTime::new(150),
         };
         let outcome = verify_research_structure(&request);
         assert_eq!(outcome.reason, ReasonCode::SessionBindingMismatch);
+    }
+
+    #[test]
+    fn verifier_accepts_freshness_boundaries_before_failing_closed_on_evidence() {
+        for now in [100, 199] {
+            let request = VerificationRequest {
+                challenge: challenge(),
+                evidence: evidence(),
+                expected: expected(),
+                now: UnixTime::new(now),
+            };
+            let outcome = verify_research_structure(&request);
+            assert_eq!(outcome.reason, ReasonCode::EvidenceInvalid);
+        }
     }
 }

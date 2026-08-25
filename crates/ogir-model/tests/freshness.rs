@@ -1,8 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use std::fmt::Debug;
 use std::num::{NonZeroU64, NonZeroUsize};
 
-use ogir_model::{ChallengeLifetime, ChallengeWindow, FreshnessError, FreshnessLimits, UnixTime};
+use ogir_model::{
+    AccountScope, BuildId, ChallengeLifetime, ChallengeWindow, FreshnessError, FreshnessLimits,
+    GameId, IdentifierError, MatchId, Nonce, PolicyId, PolicyVersion, ProtocolVersion,
+    PublisherChallenge, PublisherId, UnixTime,
+};
+
+fn identifier<T>(value: &str) -> T
+where
+    T: Debug,
+    for<'a> T: TryFrom<&'a str, Error = IdentifierError>,
+{
+    match T::try_from(value) {
+        Ok(value) => value,
+        Err(error) => panic!("valid fixture rejected: {error:?}"),
+    }
+}
 
 fn nonzero_u64(value: u64) -> NonZeroU64 {
     match NonZeroU64::new(value) {
@@ -95,4 +111,23 @@ fn limits_are_explicit_and_nonzero() {
     assert_eq!(limits.max_outstanding_per_account().get(), 4);
     assert_eq!(limits.issuance_rate_window_seconds().get(), 60);
     assert_eq!(limits.max_issuances_per_publisher().get(), 20);
+}
+
+#[test]
+fn publisher_challenge_contains_one_validated_window() {
+    let challenge = PublisherChallenge {
+        version: ProtocolVersion { major: 0, minor: 1 },
+        publisher_id: identifier::<PublisherId>("example.publisher"),
+        game_id: identifier::<GameId>("example.game"),
+        build_id: identifier::<BuildId>("build-1"),
+        account_scope: identifier::<AccountScope>("account-1"),
+        match_id: identifier::<MatchId>("match-1"),
+        policy_id: identifier::<PolicyId>("research-v0"),
+        policy_version: PolicyVersion::new(1),
+        nonce: Nonce::from_bytes([7; 32]),
+        window: window(100, 200, 100),
+    };
+
+    assert_eq!(challenge.window.issued_at(), UnixTime::new(100));
+    assert_eq!(challenge.window.expires_at(), UnixTime::new(200));
 }
