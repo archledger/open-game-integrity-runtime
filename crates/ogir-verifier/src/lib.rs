@@ -99,8 +99,8 @@ mod tests {
 
     use super::{ExpectedContext, VerificationRequest, verify_research_structure};
     use ogir_model::{
-        AccountScope, BuildId, Decision, GameId, IdentifierError, MatchId, Nonce, PolicyId,
-        PolicyVersion, ProtocolVersion, PublisherChallenge, PublisherId, ReasonCode,
+        AccountScope, BuildId, Decision, EvidenceProfile, GameId, IdentifierError, MatchId, Nonce,
+        PolicyId, PolicyVersion, ProtocolVersion, PublisherChallenge, PublisherId, ReasonCode,
     };
     use ogir_protocol::EvidenceBundle;
 
@@ -145,7 +145,7 @@ mod tests {
 
     fn evidence() -> EvidenceBundle {
         EvidenceBundle {
-            profile_id: "mock-v0".to_owned(),
+            profile_id: identifier::<EvidenceProfile>("mock-v0"),
             payload: Vec::new(),
         }
     }

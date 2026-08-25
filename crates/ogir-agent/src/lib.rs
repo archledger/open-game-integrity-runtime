@@ -6,14 +6,14 @@
 use std::error::Error;
 use std::fmt;
 
-use ogir_model::PublisherChallenge;
+use ogir_model::{PublisherChallenge, SessionId};
 use ogir_protocol::EvidenceBundle;
 
 /// A race-resistant local session identity supplied by the trusted portal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionIdentity {
     /// Opaque local session identifier.
-    pub local_session_id: String,
+    pub local_session_id: SessionId,
     /// Digest of the independently derived game manifest.
     pub game_manifest_digest: Vec<u8>,
     /// Digest of the independently derived runtime manifest.

@@ -6,7 +6,7 @@
 use std::error::Error;
 use std::fmt;
 
-pub use ogir_model::ProtocolVersion;
+pub use ogir_model::{EvidenceProfile, ProtocolVersion};
 
 /// Maximum accepted local frame size for the research protocol.
 pub const MAX_FRAME_LENGTH: usize = 1024 * 1024;
@@ -18,7 +18,7 @@ pub const MAX_FRAME_LENGTH: usize = 1024 * 1024;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EvidenceBundle {
     /// Evidence profile identifier.
-    pub profile_id: String,
+    pub profile_id: EvidenceProfile,
     /// Encoded payload owned by the selected attestation profile.
     pub payload: Vec<u8>,
 }
