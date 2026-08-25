@@ -3,24 +3,29 @@
 #![forbid(unsafe_code)]
 //! Deterministic verifier interfaces. Cryptographic verification is not implemented yet.
 
-use ogir_model::{Decision, PublisherChallenge, ReasonCode};
+use ogir_model::{
+    AccountScope, BuildId, Decision, GameId, MatchId, PolicyId, PolicyVersion, PublisherChallenge,
+    PublisherId, ReasonCode,
+};
 use ogir_protocol::EvidenceBundle;
 
 /// Expected relying-party context supplied independently of client evidence.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpectedContext {
     /// Expected publisher.
-    pub publisher_id: String,
+    pub publisher_id: PublisherId,
     /// Expected game.
-    pub game_id: String,
+    pub game_id: GameId,
     /// Expected build.
-    pub build_id: String,
+    pub build_id: BuildId,
     /// Expected account scope.
-    pub account_scope: String,
+    pub account_scope: AccountScope,
     /// Expected match.
-    pub match_id: String,
+    pub match_id: MatchId,
     /// Expected policy.
-    pub policy_id: String,
+    pub policy_id: PolicyId,
+    /// Expected policy version.
+    pub policy_version: PolicyVersion,
 }
 
 /// Input to the verifier.
@@ -70,7 +75,8 @@ pub fn verify_research_structure(request: &VerificationRequest) -> VerificationO
         && expected.build_id == challenge.build_id
         && expected.account_scope == challenge.account_scope
         && expected.match_id == challenge.match_id
-        && expected.policy_id == challenge.policy_id;
+        && expected.policy_id == challenge.policy_id
+        && expected.policy_version == challenge.policy_version;
 
     if !binding_matches {
         return denied(ReasonCode::SessionBindingMismatch);
@@ -89,20 +95,36 @@ const fn denied(reason: ReasonCode) -> VerificationOutcome {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Debug;
+
     use super::{ExpectedContext, VerificationRequest, verify_research_structure};
-    use ogir_model::{Decision, Nonce, ProtocolVersion, PublisherChallenge, ReasonCode};
+    use ogir_model::{
+        AccountScope, BuildId, Decision, EvidenceProfile, GameId, IdentifierError, MatchId, Nonce,
+        PolicyId, PolicyVersion, ProtocolVersion, PublisherChallenge, PublisherId, ReasonCode,
+    };
     use ogir_protocol::EvidenceBundle;
+
+    fn identifier<T>(value: &str) -> T
+    where
+        T: Debug,
+        for<'a> T: TryFrom<&'a str, Error = IdentifierError>,
+    {
+        match T::try_from(value) {
+            Ok(identifier) => identifier,
+            Err(error) => panic!("valid fixture rejected: {error:?}"),
+        }
+    }
 
     fn challenge() -> PublisherChallenge {
         PublisherChallenge {
             version: ProtocolVersion { major: 0, minor: 1 },
-            publisher_id: "example.publisher".to_owned(),
-            game_id: "example.game".to_owned(),
-            build_id: "build-1".to_owned(),
-            account_scope: "account-1".to_owned(),
-            match_id: "match-1".to_owned(),
-            policy_id: "research-v0".to_owned(),
-            policy_version: 1,
+            publisher_id: identifier::<PublisherId>("example.publisher"),
+            game_id: identifier::<GameId>("example.game"),
+            build_id: identifier::<BuildId>("build-1"),
+            account_scope: identifier::<AccountScope>("account-1"),
+            match_id: identifier::<MatchId>("match-1"),
+            policy_id: identifier::<PolicyId>("research-v0"),
+            policy_version: PolicyVersion::new(1),
             nonce: Nonce::from_bytes([1; 32]),
             issued_at_unix_seconds: 100,
             expires_at_unix_seconds: 200,
@@ -111,18 +133,19 @@ mod tests {
 
     fn expected() -> ExpectedContext {
         ExpectedContext {
-            publisher_id: "example.publisher".to_owned(),
-            game_id: "example.game".to_owned(),
-            build_id: "build-1".to_owned(),
-            account_scope: "account-1".to_owned(),
-            match_id: "match-1".to_owned(),
-            policy_id: "research-v0".to_owned(),
+            publisher_id: identifier::<PublisherId>("example.publisher"),
+            game_id: identifier::<GameId>("example.game"),
+            build_id: identifier::<BuildId>("build-1"),
+            account_scope: identifier::<AccountScope>("account-1"),
+            match_id: identifier::<MatchId>("match-1"),
+            policy_id: identifier::<PolicyId>("research-v0"),
+            policy_version: PolicyVersion::new(1),
         }
     }
 
     fn evidence() -> EvidenceBundle {
         EvidenceBundle {
-            profile_id: "mock-v0".to_owned(),
+            profile_id: identifier::<EvidenceProfile>("mock-v0"),
             payload: Vec::new(),
         }
     }
@@ -167,7 +190,21 @@ mod tests {
     #[test]
     fn cross_match_context_is_rejected() {
         let mut context = expected();
-        context.match_id = "different-match".to_owned();
+        context.match_id = identifier::<MatchId>("different-match");
+        let request = VerificationRequest {
+            challenge: challenge(),
+            evidence: evidence(),
+            expected: context,
+            now_unix_seconds: 150,
+        };
+        let outcome = verify_research_structure(&request);
+        assert_eq!(outcome.reason, ReasonCode::SessionBindingMismatch);
+    }
+
+    #[test]
+    fn cross_policy_version_context_is_rejected() {
+        let mut context = expected();
+        context.policy_version = PolicyVersion::new(2);
         let request = VerificationRequest {
             challenge: challenge(),
             evidence: evidence(),
