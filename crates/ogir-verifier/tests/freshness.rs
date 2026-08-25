@@ -6,11 +6,14 @@ use std::fmt::Debug;
 use std::num::{NonZeroU64, NonZeroUsize};
 
 use ogir_model::{
-    AccountScope, BuildId, ChallengeLifetime, ChallengeWindow, FreshnessError, FreshnessLimits,
-    GameId, IdentifierError, MatchId, Nonce, PolicyId, PolicyVersion, ProtocolVersion,
-    PublisherChallenge, PublisherId, UnixTime,
+    AccountScope, BuildId, ChallengeLifetime, ChallengeWindow, Decision, EvidenceProfile,
+    FreshnessError, FreshnessLimits, GameId, IdentifierError, MatchId, Nonce, PolicyId,
+    PolicyVersion, ProtocolVersion, PublisherChallenge, PublisherId, ReasonCode, UnixTime,
 };
-use ogir_verifier::FreshnessGuard;
+use ogir_protocol::EvidenceBundle;
+use ogir_verifier::{
+    ExpectedContext, FreshnessGuard, VerificationRequest, verify_research_structure,
+};
 use support::ReferenceReplayStore;
 
 fn identifier<T>(value: &str) -> T
@@ -81,6 +84,38 @@ fn challenge(game: &str, nonce: [u8; 32]) -> PublisherChallenge {
     challenge
 }
 
+fn expected() -> ExpectedContext {
+    ExpectedContext {
+        publisher_id: identifier::<PublisherId>("example.publisher"),
+        game_id: identifier::<GameId>("example.game"),
+        build_id: identifier::<BuildId>("build-1"),
+        account_scope: identifier::<AccountScope>("account-1"),
+        match_id: identifier::<MatchId>("match-1"),
+        policy_id: identifier::<PolicyId>("research-v0"),
+        policy_version: PolicyVersion::new(1),
+    }
+}
+
+fn request_with_expected(
+    challenge: PublisherChallenge,
+    now: u64,
+    expected: ExpectedContext,
+) -> VerificationRequest {
+    VerificationRequest {
+        challenge,
+        evidence: EvidenceBundle {
+            profile_id: identifier::<EvidenceProfile>("mock-v0"),
+            payload: Vec::new(),
+        },
+        expected,
+        now: UnixTime::new(now),
+    }
+}
+
+fn request(challenge: PublisherChallenge, now: u64) -> VerificationRequest {
+    request_with_expected(challenge, now, expected())
+}
+
 #[test]
 fn same_publisher_nonce_is_single_use_across_bindings() {
     let store = ReferenceReplayStore::available();
@@ -121,4 +156,112 @@ fn unavailable_store_never_returns_freshness_capability() {
         guard.register(UnixTime::new(100), &challenge("example.game", [3; 32])),
         Err(FreshnessError::StateUnavailable)
     );
+}
+
+#[test]
+fn first_fresh_request_reaches_fail_closed_evidence_result() {
+    for now in [100, 199] {
+        let store = ReferenceReplayStore::available();
+        let guard = FreshnessGuard::new(&store, limits());
+        let challenge = challenge("example.game", [1; 32]);
+        assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
+        let outcome = verify_research_structure(&request(challenge, now), &guard);
+        assert_eq!(outcome.decision, Decision::Deny);
+        assert_eq!(outcome.reason, ReasonCode::EvidenceInvalid);
+    }
+}
+
+#[test]
+fn verifier_maps_strict_window_failures_before_claim() {
+    for (now, expected_reason) in [
+        (99, ReasonCode::NotYetValid),
+        (200, ReasonCode::Expired),
+        (201, ReasonCode::Expired),
+    ] {
+        let store = ReferenceReplayStore::available();
+        let guard = FreshnessGuard::new(&store, limits());
+        let challenge = challenge("example.game", [12; 32]);
+        assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
+        let outcome = verify_research_structure(&request(challenge, now), &guard);
+        assert_eq!(outcome.decision, Decision::Deny);
+        assert_eq!(outcome.reason, expected_reason);
+    }
+}
+
+#[test]
+fn second_request_with_same_nonce_is_replay() {
+    let store = ReferenceReplayStore::available();
+    let guard = FreshnessGuard::new(&store, limits());
+    let challenge = challenge("example.game", [2; 32]);
+    assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
+    let first = verify_research_structure(&request(challenge.clone(), 100), &guard);
+    let second = verify_research_structure(&request(challenge, 100), &guard);
+    assert_eq!(first.reason, ReasonCode::EvidenceInvalid);
+    assert_eq!(second.reason, ReasonCode::ReplayDetected);
+}
+
+#[test]
+fn every_context_mismatch_rejects_without_consuming_registered_nonce() {
+    let mut mismatches = Vec::new();
+    let mut mismatch = expected();
+    mismatch.publisher_id = identifier::<PublisherId>("other.publisher");
+    mismatches.push(mismatch);
+    let mut mismatch = expected();
+    mismatch.game_id = identifier::<GameId>("other.game");
+    mismatches.push(mismatch);
+    let mut mismatch = expected();
+    mismatch.build_id = identifier::<BuildId>("build-2");
+    mismatches.push(mismatch);
+    let mut mismatch = expected();
+    mismatch.account_scope = identifier::<AccountScope>("account-2");
+    mismatches.push(mismatch);
+    let mut mismatch = expected();
+    mismatch.match_id = identifier::<MatchId>("match-2");
+    mismatches.push(mismatch);
+    let mut mismatch = expected();
+    mismatch.policy_id = identifier::<PolicyId>("research-v1");
+    mismatches.push(mismatch);
+    let mut mismatch = expected();
+    mismatch.policy_version = PolicyVersion::new(2);
+    mismatches.push(mismatch);
+
+    for (nonce, mismatch) in (3_u8..).zip(mismatches) {
+        let store = ReferenceReplayStore::available();
+        let guard = FreshnessGuard::new(&store, limits());
+        let challenge = challenge("example.game", [nonce; 32]);
+        assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
+        assert_eq!(
+            verify_research_structure(
+                &request_with_expected(challenge.clone(), 100, mismatch),
+                &guard,
+            )
+            .reason,
+            ReasonCode::SessionBindingMismatch
+        );
+        assert_eq!(
+            verify_research_structure(&request(challenge, 100), &guard).reason,
+            ReasonCode::EvidenceInvalid
+        );
+    }
+}
+
+#[test]
+fn unavailable_state_returns_retry_without_allow() {
+    let store = ReferenceReplayStore::unavailable();
+    let guard = FreshnessGuard::new(&store, limits());
+    let outcome =
+        verify_research_structure(&request(challenge("example.game", [10; 32]), 100), &guard);
+    assert_eq!(outcome.decision, Decision::Retry);
+    assert_eq!(outcome.reason, ReasonCode::AttestationUnavailable);
+}
+
+#[test]
+fn clock_rollback_returns_retry_without_allow() {
+    let store = ReferenceReplayStore::available();
+    let guard = FreshnessGuard::new(&store, limits());
+    let challenge = challenge("example.game", [11; 32]);
+    assert_eq!(guard.register(UnixTime::new(150), &challenge), Ok(()));
+    let outcome = verify_research_structure(&request(challenge, 140), &guard);
+    assert_eq!(outcome.decision, Decision::Retry);
+    assert_eq!(outcome.reason, ReasonCode::AttestationUnavailable);
 }

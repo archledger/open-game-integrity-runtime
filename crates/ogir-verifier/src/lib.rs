@@ -56,12 +56,17 @@ pub struct VerificationOutcome {
     pub reason: ReasonCode,
 }
 
-/// Performs only structural and relying-party context checks.
+/// Performs the implemented freshness and relying-party context checks.
 ///
-/// This scaffold does not perform signature, TPM, replay, or policy verification and therefore
-/// never returns `Decision::Allow`.
+/// Publisher-signature authentication, TPM evidence appraisal, and policy
+/// evaluation are not implemented in this research scaffold, so this function
+/// never returns [`Decision::Allow`]. A production pipeline must authenticate
+/// the publisher challenge before entering this window/context/claim segment.
 #[must_use]
-pub fn verify_research_structure(request: &VerificationRequest) -> VerificationOutcome {
+pub fn verify_research_structure<Store: ReplayStore + ?Sized>(
+    request: &VerificationRequest,
+    freshness: &FreshnessGuard<'_, Store>,
+) -> VerificationOutcome {
     if let Err(error) = request.challenge.window.evaluate(request.now) {
         return freshness_failure(error);
     }
@@ -79,6 +84,11 @@ pub fn verify_research_structure(request: &VerificationRequest) -> VerificationO
     if !binding_matches {
         return denied(ReasonCode::SessionBindingMismatch);
     }
+
+    let _freshness_checked = match freshness.claim(request.now, &request.challenge) {
+        Ok(capability) => capability,
+        Err(error) => return freshness_failure(error),
+    };
 
     // Deliberate fail-closed scaffold until cryptographic and policy verification exists.
     denied(ReasonCode::EvidenceInvalid)
@@ -105,151 +115,5 @@ fn freshness_failure(error: FreshnessError) -> VerificationOutcome {
             decision: Decision::Retry,
             reason: ReasonCode::AttestationUnavailable,
         },
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fmt::Debug;
-    use std::num::NonZeroU64;
-
-    use super::{ExpectedContext, VerificationRequest, verify_research_structure};
-    use ogir_model::{
-        AccountScope, BuildId, ChallengeLifetime, ChallengeWindow, Decision, EvidenceProfile,
-        GameId, IdentifierError, MatchId, Nonce, PolicyId, PolicyVersion, ProtocolVersion,
-        PublisherChallenge, PublisherId, ReasonCode, UnixTime,
-    };
-    use ogir_protocol::EvidenceBundle;
-
-    fn identifier<T>(value: &str) -> T
-    where
-        T: Debug,
-        for<'a> T: TryFrom<&'a str, Error = IdentifierError>,
-    {
-        match T::try_from(value) {
-            Ok(identifier) => identifier,
-            Err(error) => panic!("valid fixture rejected: {error:?}"),
-        }
-    }
-
-    fn challenge() -> PublisherChallenge {
-        let maximum = match NonZeroU64::new(100) {
-            Some(value) => ChallengeLifetime::new(value),
-            None => panic!("fixture lifetime must be nonzero"),
-        };
-        let window = match ChallengeWindow::new(UnixTime::new(100), UnixTime::new(200), maximum) {
-            Ok(value) => value,
-            Err(error) => panic!("valid fixture window rejected: {error:?}"),
-        };
-        PublisherChallenge {
-            version: ProtocolVersion { major: 0, minor: 1 },
-            publisher_id: identifier::<PublisherId>("example.publisher"),
-            game_id: identifier::<GameId>("example.game"),
-            build_id: identifier::<BuildId>("build-1"),
-            account_scope: identifier::<AccountScope>("account-1"),
-            match_id: identifier::<MatchId>("match-1"),
-            policy_id: identifier::<PolicyId>("research-v0"),
-            policy_version: PolicyVersion::new(1),
-            nonce: Nonce::from_bytes([1; 32]),
-            window,
-        }
-    }
-
-    fn expected() -> ExpectedContext {
-        ExpectedContext {
-            publisher_id: identifier::<PublisherId>("example.publisher"),
-            game_id: identifier::<GameId>("example.game"),
-            build_id: identifier::<BuildId>("build-1"),
-            account_scope: identifier::<AccountScope>("account-1"),
-            match_id: identifier::<MatchId>("match-1"),
-            policy_id: identifier::<PolicyId>("research-v0"),
-            policy_version: PolicyVersion::new(1),
-        }
-    }
-
-    fn evidence() -> EvidenceBundle {
-        EvidenceBundle {
-            profile_id: identifier::<EvidenceProfile>("mock-v0"),
-            payload: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn scaffold_never_allows_unverified_evidence() {
-        let request = VerificationRequest {
-            challenge: challenge(),
-            evidence: evidence(),
-            expected: expected(),
-            now: UnixTime::new(150),
-        };
-        let outcome = verify_research_structure(&request);
-        assert_eq!(outcome.decision, Decision::Deny);
-        assert_eq!(outcome.reason, ReasonCode::EvidenceInvalid);
-    }
-
-    #[test]
-    fn challenge_is_rejected_at_exact_expiry() {
-        let request = VerificationRequest {
-            challenge: challenge(),
-            evidence: evidence(),
-            expected: expected(),
-            now: UnixTime::new(200),
-        };
-        let outcome = verify_research_structure(&request);
-        assert_eq!(outcome.reason, ReasonCode::Expired);
-    }
-
-    #[test]
-    fn challenge_is_rejected_before_issue_time() {
-        let request = VerificationRequest {
-            challenge: challenge(),
-            evidence: evidence(),
-            expected: expected(),
-            now: UnixTime::new(99),
-        };
-        let outcome = verify_research_structure(&request);
-        assert_eq!(outcome.reason, ReasonCode::NotYetValid);
-    }
-
-    #[test]
-    fn cross_match_context_is_rejected() {
-        let mut context = expected();
-        context.match_id = identifier::<MatchId>("different-match");
-        let request = VerificationRequest {
-            challenge: challenge(),
-            evidence: evidence(),
-            expected: context,
-            now: UnixTime::new(150),
-        };
-        let outcome = verify_research_structure(&request);
-        assert_eq!(outcome.reason, ReasonCode::SessionBindingMismatch);
-    }
-
-    #[test]
-    fn cross_policy_version_context_is_rejected() {
-        let mut context = expected();
-        context.policy_version = PolicyVersion::new(2);
-        let request = VerificationRequest {
-            challenge: challenge(),
-            evidence: evidence(),
-            expected: context,
-            now: UnixTime::new(150),
-        };
-        let outcome = verify_research_structure(&request);
-        assert_eq!(outcome.reason, ReasonCode::SessionBindingMismatch);
-    }
-
-    #[test]
-    fn verifier_accepts_freshness_boundaries_before_failing_closed_on_evidence() {
-        for now in [100, 199] {
-            let request = VerificationRequest {
-                challenge: challenge(),
-                evidence: evidence(),
-                expected: expected(),
-                now: UnixTime::new(now),
-            };
-            let outcome = verify_research_structure(&request);
-            assert_eq!(outcome.reason, ReasonCode::EvidenceInvalid);
-        }
     }
 }
