@@ -94,6 +94,21 @@ printf '%s\n' '/* SPDX-License-Identifier: Apache-2.0 */' >"${fixture}/bpf/examp
 git -C "${fixture}" add bpf/example.bpf.c
 expect_fail "incorrect BPF license" "bpf/example.bpf.c: expected SPDX-License-Identifier: GPL-2.0-only"
 
+make_fixture near-match-apache-license
+printf '%s\n' '// SPDX-License-Identifier: Apache-2X0' >"${fixture}/src/lib.rs"
+git -C "${fixture}" add src/lib.rs
+expect_fail "near-match Apache license" "src/lib.rs: invalid SPDX license header"
+
+make_fixture near-match-wine-license
+printf '%s\n' '/* SPDX-License-Identifier: LGPL-2X1-or-later */' >"${fixture}/wine/example.c"
+git -C "${fixture}" add wine/example.c
+expect_fail "near-match Wine license" "wine/example.c: invalid SPDX license header"
+
+make_fixture near-match-bpf-license
+printf '%s\n' '/* SPDX-License-Identifier: GPL-2X0-only */' >"${fixture}/bpf/example.bpf.c"
+git -C "${fixture}" add bpf/example.bpf.c
+expect_fail "near-match BPF license" "bpf/example.bpf.c: invalid SPDX license header"
+
 make_fixture spdx-decoy
 printf '%s\n' 'const char *license = "SPDX-License-Identifier: LGPL-2.1-or-later";' >"${fixture}/wine/example.c"
 git -C "${fixture}" add wine/example.c

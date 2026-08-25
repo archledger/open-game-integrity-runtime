@@ -60,7 +60,10 @@ validate_spdx_header() {
   local source_file="$3"
   local declaration_output
   local declaration_status=0
+  local declaration_text
+  local actual_license
   local line_number
+  local declaration_pattern='^[[:space:]]*(#|//|/\*)[[:space:]]*SPDX-License-Identifier:[[:space:]]*([^[:space:]]+)([[:space:]]*\*/)?[[:space:]]*$'
   local -a declarations=()
 
   declaration_output="$(
@@ -82,10 +85,7 @@ validate_spdx_header() {
       ;;
   esac
 
-  if ((${#declarations[@]} != 1)) ||
-    ! grep -Eq \
-      "^[0-9]+:[[:space:]]*(#|//|/\\*)[[:space:]]*SPDX-License-Identifier:[[:space:]]*${expected_license}([[:space:]]*\\*/)?[[:space:]]*$" \
-      <<<"${declarations[0]:-}"; then
+  if ((${#declarations[@]} != 1)); then
     printf '%s: invalid SPDX license header\n' "${path}" >&2
     printf '%s: expected SPDX-License-Identifier: %s exactly once in the first 5 lines\n' \
       "${path}" "${expected_license}" >&2
@@ -93,8 +93,18 @@ validate_spdx_header() {
     return
   fi
 
+  declaration_text="${declarations[0]#*:}"
+  if [[ ! "${declaration_text}" =~ ${declaration_pattern} ]]; then
+    printf '%s: invalid SPDX license header\n' "${path}" >&2
+    printf '%s: expected SPDX-License-Identifier: %s exactly once in the first 5 lines\n' \
+      "${path}" "${expected_license}" >&2
+    status=1
+    return
+  fi
+
+  actual_license="${BASH_REMATCH[2]}"
   line_number="${declarations[0]%%:*}"
-  if ((line_number > 5)); then
+  if [[ "${actual_license}" != "${expected_license}" ]] || ((line_number > 5)); then
     printf '%s: invalid SPDX license header\n' "${path}" >&2
     printf '%s: expected SPDX-License-Identifier: %s exactly once in the first 5 lines\n' \
       "${path}" "${expected_license}" >&2
