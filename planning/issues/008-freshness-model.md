@@ -1,5 +1,5 @@
 # M1-008: Specify challenge freshness, expiry, and clock behavior
-<!-- labels: type: architecture,type: implementation,area: protocol,risk: cryptography,status: needs-research -->
+<!-- labels: type: architecture,area: protocol,risk: cryptography,status: needs-research -->
 <!-- milestone: M1 Domain Model -->
 
 ## Problem
@@ -31,6 +31,8 @@ Nonce uniqueness alone does not define challenge freshness. The protocol needs e
 
 - RFC 9334 RATS architecture: https://www.rfc-editor.org/rfc/rfc9334.html
 - RFC 9711 EAT: https://www.rfc-editor.org/rfc/rfc9711.html
+- RFC 7519 JWT time boundaries: https://www.rfc-editor.org/rfc/rfc7519.html
+- Rust `SystemTime` behavior: https://doc.rust-lang.org/std/time/struct.SystemTime.html
 
 ## Required tests
 
