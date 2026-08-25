@@ -2,9 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Execution status:** Implemented and independently reviewed. The Independent Review Amendments below supersede the original checker/test code samples in Tasks 1-2.
+
 **Goal:** Replace the bootstrap's unresolved repository identity, document the initial copyright-notice policy, and add an automated fail-closed gate for repository identity and source-license boundaries.
 
-**Architecture:** Add one dependency-free Bash checker that operates only on Git-tracked files and one fixture-based Bash test that exercises the real checker against disposable repositories. Run the gate before Rust setup in CI, and keep the established Apache, Wine/LGPL, and BPF/GPL path boundaries explicit.
+**Architecture:** Add one dependency-free Bash checker that resolves the canonical worktree, fails closed on Git errors, validates staged regular source blobs, and one fixture-based Bash test that exercises the real checker against disposable repositories. Run the gate before Rust setup in CI, and keep the established Apache, Wine/LGPL, and BPF/GPL path boundaries explicit.
 
 **Tech Stack:** Bash, Git 2.x plumbing, GitHub Actions, SPDX license identifiers, existing Markdown/TOML/YAML configuration. No new package, Rust crate, GitHub Action, or network service.
 
@@ -16,7 +18,7 @@
 - Default Rust core, verifier, SDK, documentation, scripts, and attack-lab source remain `Apache-2.0`.
 - Source under `wine/` must declare `LGPL-2.1-or-later`.
 - Source under `bpf/` must declare `GPL-2.0-only` until an approved license-boundary decision changes that rule.
-- Every tracked `.rs`, `.c`, `.h`, and `.sh` file must contain its path-appropriate `SPDX-License-Identifier` declaration.
+- Every tracked `.rs`, `.c`, `.h`, `.sh`, and executable extensionless shell source must contain its path-appropriate `SPDX-License-Identifier` declaration.
 - The current collective notice form remains `Copyright 2026 OGIR contributors.`; it does not assign contributor copyright or claim future contributions.
 - Do not modify the verified license texts: local Apache, LGPL 2.1, and GPL 2.0 texts match their respective official upstream text files byte-for-byte.
 - Do not add dependencies, generate `Cargo.lock`, implement Rust behavior, create a GitHub remote, push, or change external GitHub settings in this issue.
@@ -239,7 +241,7 @@ Run:
 ./scripts/test-repository-metadata.sh
 ```
 
-Expected: six `PASS:` lines followed by `All repository metadata tests passed.`
+Expected after independent-review remediation: fourteen `PASS:` lines followed by `All repository metadata tests passed.`
 
 - [ ] **Step 3: Prove the checker fails against the unresolved bootstrap**
 
@@ -288,12 +290,12 @@ Set `.github/ISSUE_TEMPLATE/config.yml` contact URLs to:
 ```yaml
 blank_issues_enabled: false
 contact_links:
-  - name: Report a security vulnerability privately
+  - name: Private security report
     url: https://github.com/archledger/open-game-integrity-runtime/security/advisories/new
-    about: Do not disclose suspected vulnerabilities in a public issue.
-  - name: Architecture and support discussions
+    about: Do not report vulnerabilities in a public issue.
+  - name: Design discussion
     url: https://github.com/archledger/open-game-integrity-runtime/discussions
-    about: Use Discussions for design questions and general support after reviewing the documentation.
+    about: Use Discussions for broad questions that are not yet implementation-ready.
 ```
 
 Set `.github/CODEOWNERS` to:
@@ -346,7 +348,7 @@ Run:
 ./scripts/test-repository-metadata.sh
 ```
 
-Expected: both commands exit 0; the fixture suite reports six passing cases.
+Expected: both commands exit 0; after independent-review remediation the fixture suite reports fourteen passing cases.
 
 - [ ] **Step 5: Verify official license texts were not modified**
 
@@ -419,6 +421,20 @@ git diff --cached --check
 git commit -m "ci: enforce repository metadata before builds"
 ```
 
+## Independent Review Amendments
+
+The first independent review of `33ea390..be85830` returned `Ready to merge? No`. The following test-first corrections supersede the original Tasks 1-2 checker snippets:
+
+- bare repositories, corrupt indexes, marker-search failures, and tracked-file enumeration failures return infrastructure errors instead of passing;
+- SPDX validation accepts exactly one path-appropriate comment declaration in the first five lines and rejects string decoys, missing, incorrect, duplicate, and conflicting declarations;
+- tracked source symlinks/non-regular modes fail, and regular sources are validated from staged Git blobs rather than mutable worktree targets;
+- any supplied subdirectory resolves to the canonical worktree top level before repository-wide scanning;
+- generic owner/repository marker forms are rejected and all repository examples use `archledger`;
+- executable extensionless shell sources are classified by their staged shebang and require SPDX metadata;
+- the suite contains fourteen positive/negative fixtures covering these behaviors.
+
+The configured repository and security/discussion URLs still return 404 until the public GitHub repository is created. That external acceptance criterion remains a blocker; this plan does not authorize creating or configuring the remote.
+
 ### Task 5: Run the M0-001 completion gate and review the final change
 
 **Files:**
@@ -439,7 +455,7 @@ shellcheck scripts/*.sh
 git diff --check 33ea390..HEAD
 ```
 
-Expected: all commands exit 0 and the fixture suite reports six passing cases.
+Expected: all commands exit 0 and the fixture suite reports fourteen passing cases.
 
 - [ ] **Step 2: Confirm scope and sensitive-data hygiene**
 
@@ -459,8 +475,11 @@ Confirm from the fixture suite and checker output that:
 - a missing source SPDX line makes the gate fail;
 - an Apache declaration under `wine/` makes the gate fail;
 - an Apache declaration under `bpf/` makes the gate fail;
+- SPDX string decoys and conflicting headers make the gate fail;
+- tracked source symlinks, bare repositories, corrupt indexes, and subdirectory-scope attempts fail closed;
+- generic owner markers and executable extensionless shell sources without SPDX metadata make the gate fail;
 - the valid fixture and real repository pass;
-- the checker examines only Git-tracked files and uses NUL-delimited filenames.
+- the checker resolves the canonical worktree and examines staged regular source blobs from NUL-delimited Git index records.
 
 - [ ] **Step 4: Record limitations accurately**
 
@@ -468,6 +487,7 @@ The handoff and final report must state:
 
 - full Rust compilation, Clippy, tests, docs, `cargo deny`, and `Cargo.lock` generation remain M0-003 work;
 - no GitHub remote, repository, ruleset, issue, PR, or security setting was created;
+- configured repository/security/discussion URLs remain an explicit 404 blocker until remote creation is separately authorized;
 - local commits have no AI-applied DCO sign-off and require human review before publication;
 - this gate enforces the issue's source-file subset and is not a claim of full REUSE 3.3 compliance for every repository file.
 
