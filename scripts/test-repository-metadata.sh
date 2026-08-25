@@ -82,6 +82,18 @@ printf '%s\n' '/* SPDX-License-Identifier: Apache-2.0 */' >"${fixture}/bpf/examp
 git -C "${fixture}" add bpf/example.bpf.c
 expect_fail "incorrect BPF license" "bpf/example.bpf.c: expected SPDX-License-Identifier: GPL-2.0-only"
 
+make_fixture spdx-decoy
+printf '%s\n' 'const char *license = "SPDX-License-Identifier: LGPL-2.1-or-later";' >"${fixture}/wine/example.c"
+git -C "${fixture}" add wine/example.c
+expect_fail "SPDX string-literal decoy" "wine/example.c: invalid SPDX license header"
+
+make_fixture conflicting-spdx
+printf '%s\n' \
+  '/* SPDX-License-Identifier: Apache-2.0 */' \
+  '/* SPDX-License-Identifier: LGPL-2.1-or-later */' >"${fixture}/wine/example.c"
+git -C "${fixture}" add wine/example.c
+expect_fail "conflicting SPDX headers" "wine/example.c: invalid SPDX license header"
+
 fixture="${fixture_root}/bare.git"
 git init --bare -q "${fixture}"
 expect_fail "bare repository" "repository metadata check requires a Git worktree"

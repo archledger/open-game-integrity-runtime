@@ -47,6 +47,53 @@ if ! git -C "${repository_root}" ls-files -z >"${tracked_paths_file}"; then
   exit 2
 fi
 
+validate_spdx_header() {
+  local path="$1"
+  local expected_license="$2"
+  local declaration_output
+  local declaration_status=0
+  local line_number
+  local -a declarations=()
+
+  declaration_output="$(
+    grep -a -n -E \
+      '^[[:space:]]*(#|//|/\*)[[:space:]]*SPDX-License-Identifier:' \
+      "${repository_root}/${path}"
+  )" || declaration_status=$?
+
+  case "${declaration_status}" in
+    0)
+      while IFS= read -r declaration; do
+        declarations+=("${declaration}")
+      done <<<"${declaration_output}"
+      ;;
+    1) ;;
+    *)
+      printf '%s: failed to inspect SPDX metadata\n' "${path}" >&2
+      exit 2
+      ;;
+  esac
+
+  if ((${#declarations[@]} != 1)) ||
+    ! grep -Eq \
+      "^[0-9]+:[[:space:]]*(#|//|/\\*)[[:space:]]*SPDX-License-Identifier:[[:space:]]*${expected_license}([[:space:]]*\\*/)?[[:space:]]*$" \
+      <<<"${declarations[0]:-}"; then
+    printf '%s: invalid SPDX license header\n' "${path}" >&2
+    printf '%s: expected SPDX-License-Identifier: %s exactly once in the first 5 lines\n' \
+      "${path}" "${expected_license}" >&2
+    status=1
+    return
+  fi
+
+  line_number="${declarations[0]%%:*}"
+  if ((line_number > 5)); then
+    printf '%s: invalid SPDX license header\n' "${path}" >&2
+    printf '%s: expected SPDX-License-Identifier: %s exactly once in the first 5 lines\n' \
+      "${path}" "${expected_license}" >&2
+    status=1
+  fi
+}
+
 while IFS= read -r -d '' path; do
   case "${path}" in
     *.rs | *.c | *.h | *.sh)
@@ -56,10 +103,7 @@ while IFS= read -r -d '' path; do
         bpf/*) expected_license="GPL-2.0-only" ;;
       esac
 
-      if ! grep -Fq -- "SPDX-License-Identifier: ${expected_license}" "${repository_root}/${path}"; then
-        printf '%s: expected SPDX-License-Identifier: %s\n' "${path}" "${expected_license}" >&2
-        status=1
-      fi
+      validate_spdx_header "${path}" "${expected_license}"
       ;;
   esac
 done <"${tracked_paths_file}"
