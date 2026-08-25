@@ -2,6 +2,29 @@
 
 #![forbid(unsafe_code)]
 //! Pure domain types and invariants for OGIR.
+//!
+//! # Canonical identifier profile
+//!
+//! Text identifiers contain 1 to 128 UTF-8 bytes, but accepted bytes are
+//! deliberately restricted to lowercase ASCII letters, ASCII digits, and the
+//! `.` or `-` separators. A separator must occur between two alphanumeric
+//! bytes; leading, trailing, and adjacent separators are rejected. Inputs are
+//! never trimmed, case-folded, or otherwise normalized: noncanonical text is
+//! rejected at construction and callers retain exactly one representation.
+//!
+//! Distinct newtypes follow the Rust API Guidelines' recommendations for
+//! [static distinctions][newtype] and [boundary validation][validation]. The
+//! deliberately narrow character profile avoids Unicode equivalence and
+//! confusable-identifier behavior; Unicode UTS #39 permits implementations to
+//! define a tighter application profile and document its exceptions.
+//!
+//! Account, match, and local-session identifiers redact their values from
+//! [`Debug`](std::fmt::Debug). Code that genuinely needs canonical text must
+//! request it explicitly through `as_str` or [`AsRef<str>`].
+//!
+//! [newtype]: https://rust-lang.github.io/api-guidelines/type-safety.html#newtypes-provide-static-distinctions-c-newtype
+//! [validation]: https://rust-lang.github.io/api-guidelines/dependability.html#functions-validate-their-arguments-c-validate
+//! [Unicode UTS #39]: https://www.unicode.org/reports/tr39/#Identifier_Characters
 
 use std::error::Error;
 use std::fmt;

@@ -28,7 +28,7 @@ Security-sensitive identifiers are currently plain strings. Cross-field confusio
 ## Primary sources
 
 - Rust API Guidelines: https://rust-lang.github.io/api-guidelines/
-- Unicode security considerations, if Unicode is proposed: https://www.unicode.org/reports/tr36/
+- Unicode security mechanisms and identifier profiles: https://www.unicode.org/reports/tr39/
 
 ## Required tests
 

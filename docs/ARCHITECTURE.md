@@ -232,6 +232,37 @@ sequenceDiagram
 
 The initial protocol model should define these objects before choosing a serializer:
 
+### Identifier profile and trust sources
+
+OGIR's protocol identifiers are typed before they enter the pure model. Text
+identifiers use the canonical grammar
+`[a-z0-9]+(?:[.-][a-z0-9]+)*` and contain at most 128 bytes. Uppercase,
+Unicode, whitespace, control bytes, `_`, `:`, `/`, `\`, edge separators, and
+adjacent separators are rejected. Constructors do not trim, case-fold, or
+normalize input. Internationalized display names, storefront IDs, and
+publisher-specific account formats require explicit mapping outside this
+canonical identifier layer.
+
+This profile follows the Rust API Guidelines for
+[validated newtypes](https://rust-lang.github.io/api-guidelines/dependability.html#functions-validate-their-arguments-c-validate)
+and [static type distinctions](https://rust-lang.github.io/api-guidelines/type-safety.html#newtypes-provide-static-distinctions-c-newtype).
+[Unicode UTS #39](https://www.unicode.org/reports/tr39/#Identifier_Characters)
+permits applications to define profiles narrower than its allowed character
+set. The [UTR #36 status page](https://www.unicode.org/reports/tr36/) marks that
+older report as stabilized and partly superseded; OGIR therefore does not claim
+Unicode normalization or confusable handling for protocol identifiers.
+
+| Field or type | Source | Authority |
+| --- | --- | --- |
+| Challenge publisher, game, build, account, match, policy, and policy version | Publisher challenge | Untrusted until publisher authentication succeeds and every value matches independently supplied relying-party context. |
+| `ExpectedContext` identifiers and policy version | Publisher relying party or game server | Authoritative input for exact challenge binding; never copied from client evidence. |
+| `SessionId` | Trusted local portal/agent | Authoritative only for the local protected-session lifecycle; never accepted from the game process. |
+| `EvidenceProfile` | Selected attestation backend and evidence envelope | A typed profile claim; verifier support policy decides whether the profile is acceptable. |
+
+`AccountScope`, `MatchId`, and `SessionId` redact their values from Rust `Debug`
+output. Logging or disclosing their canonical text requires a separate explicit
+privacy decision.
+
 ### 7.1 PublisherChallenge
 
 Required fields:
