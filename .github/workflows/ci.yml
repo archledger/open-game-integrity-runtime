@@ -30,6 +30,11 @@ jobs:
           ./scripts/test-repository-metadata.sh
           ./scripts/check-repository-metadata.sh
 
+      - name: Check ADR documentation
+        run: |
+          ./scripts/test-adr-index.sh
+          ./scripts/check-adr-index.sh
+
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.98.0 --profile minimal --component clippy,rustfmt
 
