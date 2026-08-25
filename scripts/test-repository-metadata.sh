@@ -73,6 +73,12 @@ printf '%s\n' "${generic_owner_marker}" >"${fixture}/README.md"
 git -C "${fixture}" add README.md
 expect_fail "generic repository owner marker" "unresolved repository identity marker"
 
+make_fixture extensionless-shell
+printf '%s\n' '#!/usr/bin/env bash' 'echo release' >"${fixture}/scripts/release"
+chmod +x "${fixture}/scripts/release"
+git -C "${fixture}" add scripts/release
+expect_fail "extensionless shell source" "scripts/release: expected SPDX-License-Identifier: Apache-2.0"
+
 make_fixture missing-spdx
 printf '%s\n' 'pub fn missing_license() {}' >"${fixture}/src/missing.rs"
 git -C "${fixture}" add src/missing.rs

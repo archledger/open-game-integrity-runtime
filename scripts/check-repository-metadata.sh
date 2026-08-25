@@ -102,33 +102,56 @@ validate_spdx_header() {
   fi
 }
 
+shell_shebang_pattern='^#!.*[[:space:]/](a|ba|da|k|z)?sh([[:space:]]|$)'
+
 while IFS= read -r -d '' tracked_entry; do
   tracked_metadata="${tracked_entry%%$'\t'*}"
   path="${tracked_entry#*$'\t'}"
   tracked_mode="${tracked_metadata%% *}"
+  is_source=0
+  source_blob_loaded=0
 
   case "${path}" in
-    *.rs | *.c | *.h | *.sh)
-      expected_license="Apache-2.0"
-      case "${path}" in
-        wine/*) expected_license="LGPL-2.1-or-later" ;;
-        bpf/*) expected_license="GPL-2.0-only" ;;
-      esac
-
-      if [[ "${tracked_mode}" != "100644" && "${tracked_mode}" != "100755" ]]; then
-        printf '%s: tracked source must be a regular file\n' "${path}" >&2
-        status=1
-        continue
-      fi
-
-      if ! git -C "${repository_root}" show ":${path}" >"${source_blob_file}"; then
-        printf '%s: failed to read staged source content\n' "${path}" >&2
-        exit 2
-      fi
-
-      validate_spdx_header "${path}" "${expected_license}" "${source_blob_file}"
-      ;;
+    *.rs | *.c | *.h | *.sh) is_source=1 ;;
   esac
+
+  if ((is_source == 0)) && [[ "${tracked_mode}" == "100755" ]]; then
+    if ! git -C "${repository_root}" show ":${path}" >"${source_blob_file}"; then
+      printf '%s: failed to read staged source content\n' "${path}" >&2
+      exit 2
+    fi
+    source_blob_loaded=1
+    first_line=""
+    IFS= read -r first_line <"${source_blob_file}" || true
+    if [[ "${first_line}" =~ ${shell_shebang_pattern} ]]; then
+      is_source=1
+    fi
+  fi
+
+  if ((is_source == 0)); then
+    continue
+  fi
+
+  if [[ "${tracked_mode}" != "100644" && "${tracked_mode}" != "100755" ]]; then
+    printf '%s: tracked source must be a regular file\n' "${path}" >&2
+    status=1
+    continue
+  fi
+
+  if ((source_blob_loaded == 0)); then
+    if ! git -C "${repository_root}" show ":${path}" >"${source_blob_file}"; then
+      printf '%s: failed to read staged source content\n' "${path}" >&2
+      exit 2
+    fi
+  fi
+
+  expected_license="Apache-2.0"
+  case "${path}" in
+    wine/*) expected_license="LGPL-2.1-or-later" ;;
+    bpf/*) expected_license="GPL-2.0-only" ;;
+  esac
+
+  validate_spdx_header "${path}" "${expected_license}" "${source_blob_file}"
 done <"${tracked_paths_file}"
 
 if ((status != 0)); then
