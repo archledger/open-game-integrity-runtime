@@ -1,5 +1,5 @@
 # M1-008: Specify challenge freshness, expiry, and clock behavior
-<!-- labels: type: architecture,area: protocol,risk: cryptography,status: needs-research -->
+<!-- labels: type: architecture,area: protocol,risk: cryptography,status: ready -->
 <!-- milestone: M1 Domain Model -->
 
 ## Problem
