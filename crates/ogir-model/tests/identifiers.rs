@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use std::any::TypeId;
 use std::fmt::Debug;
 
 use ogir_model::{
@@ -7,6 +8,8 @@ use ogir_model::{
     MatchId, Nonce, PolicyId, PolicyVersion, ProtocolVersion, PublisherChallenge, PublisherId,
     SessionId,
 };
+
+const EXPECTED_MAX_IDENTIFIER_LENGTH: usize = 128;
 
 fn parse_identifier<T>(value: &str) -> T
 where
@@ -30,7 +33,7 @@ where
 
 fn reference_is_canonical(value: &str) -> bool {
     let bytes = value.as_bytes();
-    if bytes.is_empty() || bytes.len() > MAX_IDENTIFIER_LENGTH {
+    if bytes.is_empty() || bytes.len() > EXPECTED_MAX_IDENTIFIER_LENGTH {
         return false;
     }
 
@@ -64,16 +67,17 @@ fn every_text_identifier_type_preserves_canonical_input() {
 
 #[test]
 fn empty_and_overlong_identifiers_are_rejected_at_byte_boundaries() {
+    assert_eq!(MAX_IDENTIFIER_LENGTH, EXPECTED_MAX_IDENTIFIER_LENGTH);
     assert_eq!(PublisherId::try_from(""), Err(IdentifierError::Empty));
 
-    let maximum = "a".repeat(MAX_IDENTIFIER_LENGTH);
+    let maximum = "a".repeat(EXPECTED_MAX_IDENTIFIER_LENGTH);
     assert_valid_identifier::<PublisherId>(&maximum);
 
-    let overlong = "a".repeat(MAX_IDENTIFIER_LENGTH + 1);
+    let overlong = "a".repeat(EXPECTED_MAX_IDENTIFIER_LENGTH + 1);
     assert_eq!(
         PublisherId::try_from(overlong.as_str()),
         Err(IdentifierError::TooLong {
-            maximum: MAX_IDENTIFIER_LENGTH,
+            maximum: EXPECTED_MAX_IDENTIFIER_LENGTH,
         })
     );
 }
@@ -102,14 +106,16 @@ fn noncanonical_characters_and_separator_confusion_are_rejected() {
 
 #[test]
 fn deterministic_arbitrary_strings_match_the_canonical_grammar() {
-    const ALPHABET: [char; 12] = ['a', 'z', '0', '9', '.', '-', '_', '/', ':', 'A', '\0', 'é'];
+    const ALPHABET: [char; 13] = [
+        'a', 'z', '0', '9', '.', '-', '_', '/', ':', '@', 'A', '\0', 'é',
+    ];
     let mut state = 0x4f47_4952_4d31_3037_u64;
 
     for _ in 0..8_192 {
         state = state
             .wrapping_mul(6_364_136_223_846_793_005)
             .wrapping_add(1);
-        let length = (state as usize) % (MAX_IDENTIFIER_LENGTH + 13);
+        let length = (state as usize) % (EXPECTED_MAX_IDENTIFIER_LENGTH + 13);
         let mut candidate = String::new();
         for _ in 0..length {
             state = state
@@ -128,6 +134,65 @@ fn deterministic_arbitrary_strings_match_the_canonical_grammar() {
         );
         if let Ok(identifier) = actual {
             assert_eq!(identifier.as_ref(), candidate);
+        }
+    }
+}
+
+#[test]
+fn every_ascii_byte_and_representative_unicode_scalar_matches_the_profile() {
+    for byte in 0_u8..=127 {
+        let candidate = format!("a{}b", char::from(byte));
+        let expected =
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'-');
+        assert_eq!(
+            PublisherId::try_from(candidate.as_str()).is_ok(),
+            expected,
+            "ASCII byte: {byte}"
+        );
+    }
+
+    for character in ['é', 'α', 'а', '中', '\u{200b}', '\u{200d}'] {
+        let candidate = format!("a{character}b");
+        assert_eq!(
+            PublisherId::try_from(candidate.as_str()),
+            Err(IdentifierError::InvalidCharacter { index: 1 }),
+            "Unicode scalar: U+{:04X}",
+            u32::from(character)
+        );
+    }
+
+    for first in ['.', '-'] {
+        for second in ['.', '-'] {
+            let candidate = format!("a{first}{second}b");
+            assert_eq!(
+                PublisherId::try_from(candidate.as_str()),
+                Err(IdentifierError::InvalidSeparator { index: 2 }),
+                "separator transition: {first}{second}"
+            );
+        }
+    }
+}
+
+#[test]
+fn every_identifier_type_has_a_distinct_runtime_type_identity() {
+    let types = [
+        ("PublisherId", TypeId::of::<PublisherId>()),
+        ("GameId", TypeId::of::<GameId>()),
+        ("BuildId", TypeId::of::<BuildId>()),
+        ("AccountScope", TypeId::of::<AccountScope>()),
+        ("MatchId", TypeId::of::<MatchId>()),
+        ("PolicyId", TypeId::of::<PolicyId>()),
+        ("SessionId", TypeId::of::<SessionId>()),
+        ("EvidenceProfile", TypeId::of::<EvidenceProfile>()),
+        ("PolicyVersion", TypeId::of::<PolicyVersion>()),
+    ];
+
+    for (index, (left_name, left_type)) in types.iter().enumerate() {
+        for (right_name, right_type) in &types[index + 1..] {
+            assert_ne!(
+                left_type, right_type,
+                "{left_name} and {right_name} must remain distinct"
+            );
         }
     }
 }
