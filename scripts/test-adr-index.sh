@@ -258,12 +258,46 @@ git -C "${fixture}" add docs/adr/template.md
 expect_fail "ADR template omits required section" \
   "docs/adr/template.md: missing required ADR section: Privacy impact"
 
+make_fixture empty-template-section
+sed -i '/^## Privacy impact$/ { n; d; }' \
+  "${fixture}/docs/adr/template.md"
+git -C "${fixture}" add docs/adr/template.md
+expect_fail "ADR template leaves required section empty" \
+  "docs/adr/template.md: empty required ADR section: Privacy impact"
+
 make_fixture missing-readme-links
 printf '%s\n' "# Architecture decision records" \
   >"${fixture}/docs/adr/README.md"
 git -C "${fixture}" add docs/adr/README.md
 expect_fail "ADR README omits navigation links" \
   "docs/adr/README.md must link to index.md and template.md"
+
+make_fixture missing-readme
+git -C "${fixture}" rm -q -f docs/adr/README.md
+expect_fail "ADR README is deleted" \
+  "docs/adr/README.md is missing from staged files"
+
+make_fixture staged-adr-wins
+sed -i '/^## Privacy impact$/d' \
+  "${fixture}/docs/adr/0001-accepted.md"
+expect_pass "staged ADR is not hidden by worktree edit"
+
+make_fixture staged-index-wins
+write_index no
+expect_pass "staged index is not hidden by worktree edit"
+
+make_fixture subdirectory-root
+fixture="${fixture}/docs"
+expect_pass "subdirectory invocation uses canonical repository root"
+
+fixture="${fixture_root}/bare.git"
+git init --bare -q "${fixture}"
+expect_fail "bare repository" "ADR index check requires a Git worktree"
+
+make_fixture corrupt-index
+printf '%s\n' "corrupt-index" >"${fixture}/.git/index"
+expect_fail "corrupt Git index" \
+  "ADR index check failed to enumerate staged ADR files"
 
 if ((failures > 0)); then
   printf '%d ADR index test(s) failed\n' "${failures}" >&2

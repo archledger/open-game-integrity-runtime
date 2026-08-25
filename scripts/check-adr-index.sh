@@ -52,6 +52,11 @@ if ! git -C "${repository_root}" ls-files --error-unmatch -- \
   echo "docs/adr/template.md is missing from staged files" >&2
   exit 1
 fi
+if ! git -C "${repository_root}" ls-files --error-unmatch -- \
+  docs/adr/README.md >/dev/null 2>&1; then
+  echo "docs/adr/README.md is missing from staged files" >&2
+  exit 1
+fi
 if ! git -C "${repository_root}" show :docs/adr/README.md >"${adr_file}"; then
   echo "ADR index check failed to read staged docs/adr/README.md" >&2
   exit 2
@@ -71,6 +76,16 @@ for required_section in "${required_sections[@]}"; do
   )"
   if ((section_count == 0)); then
     printf 'docs/adr/template.md: missing required ADR section: %s\n' \
+      "${required_section}" >&2
+    exit 1
+  fi
+  if ! awk -v heading="## ${required_section}" '
+    $0 == heading { inside = 1; next }
+    inside && /^## / { exit 1 }
+    inside && $0 !~ /^[[:space:]]*$/ { found = 1; exit 0 }
+    END { if (!found) exit 1 }
+  ' "${adr_file}"; then
+    printf 'docs/adr/template.md: empty required ADR section: %s\n' \
       "${required_section}" >&2
     exit 1
   fi
