@@ -328,6 +328,41 @@ expected_milestones=(
   "M11 Publisher Pilot"
   "M12 Production Candidate"
 )
+expected_labels=(
+  $'type: architecture\t5319E7\tDurable trust, protocol, privilege, or component decision'
+  $'type: research\t1D76DB\tEvidence-gathering spike that unblocks a decision'
+  $'type: implementation\t0E8A16\tScoped implementation work'
+  $'type: test\tBFDADC\tUnit, integration, conformance, or regression testing'
+  $'type: fuzzing\tD4C5F9\tFuzz, property, mutation, or parser hardening'
+  $'type: documentation\t0075CA\tDocumentation-only change'
+  $'type: security-hardening\tB60205\tDefense-in-depth or attack-surface reduction'
+  $'type: dependency\t0366D6\tDependency or toolchain review'
+  $'type: release\tFBCA04\tRelease, provenance, signing, or lifecycle work'
+  $'area: model\tC5DEF5\tPure domain model and invariants'
+  $'area: protocol\tC5DEF5\tChallenge, evidence, permit, renewal, and revocation protocol'
+  $'area: verifier\tC5DEF5\tPublisher verifier and relying-party boundary'
+  $'area: agent\tC5DEF5\tLocal portal and attestation agent'
+  $'area: tpm\tC5DEF5\tTPM backend, identity, quote, and enrollment'
+  $'area: measured-boot\tC5DEF5\tMeasured boot, UKI, PCR, and reference values'
+  $'area: proton-bridge\tC5DEF5\tWindows ABI, Wine/Proton transport, and caller binding'
+  $'area: session\tC5DEF5\tProtected-session lifecycle, observation, and enforcement'
+  $'area: wine-tpm\tC5DEF5\tSeparate Wine TPM compatibility workstream'
+  $'area: attack-lab\tC5DEF5\tExecutable adversarial scenarios and test infrastructure'
+  $'area: supply-chain\tC5DEF5\tBuild, dependency, provenance, update, and release security'
+  $'area: privacy\tC5DEF5\tDisclosure minimization, identity scope, and privacy controls'
+  $'risk: trusted-computing-base\tB60205\tChanges trusted code or a trust decision'
+  $'risk: privileged\tB60205\tChanges privileged operations or service isolation'
+  $'risk: cryptography\tB60205\tChanges signature, key, transcript, or cryptographic behavior'
+  $'risk: parser\tD93F0B\tProcesses attacker-controlled structured input'
+  $'risk: privacy\tD93F0B\tChanges claims, identifiers, logs, or disclosed data'
+  $'risk: compatibility\tFBCA04\tMay affect supported platforms, Wine, or Proton'
+  $'status: needs-research\tEDEDED\tBlocked on primary-source research or experiment'
+  $'status: blocked\t000000\tCannot proceed until a named dependency is resolved'
+  $'status: ready\t0E8A16\tSpecification and acceptance criteria are implementation-ready'
+  $'status: needs-review\tFBCA04\tAwaiting adversarial or human review'
+  $'status: experimental\tD4C5F9\tResearch behavior without production guarantees'
+  $'status: do-not-merge\tB60205\tMust not merge until the blocker is removed'
+)
 milestone_description="See docs/ROADMAP.md for scope and exit criteria."
 
 run_bootstrap >/dev/null
@@ -335,6 +370,17 @@ expect_equal "first run creates 33 canonical labels" "33" \
   "$(wc -l <"${fixture_root}/state/labels.tsv")"
 expect_equal "first run creates 13 milestones" "13" \
   "$(wc -l <"${fixture_root}/state/milestones.tsv")"
+
+for expected_label in "${expected_labels[@]}"; do
+  if grep -Fqx -- "${expected_label}" \
+    "${fixture_root}/state/labels.tsv"; then
+    printf 'PASS: label converged: %s\n' "${expected_label%%$'\t'*}"
+  else
+    printf 'FAIL: label did not converge: %s\n' \
+      "${expected_label%%$'\t'*}" >&2
+    failures=$((failures + 1))
+  fi
+done
 
 for title in "${expected_milestones[@]}"; do
   if awk -F '\t' -v title="${title}" -v description="${milestone_description}" '
@@ -353,6 +399,15 @@ done
 PATH="${fixture_root}/bin:${PATH}" \
   OGIR_FAKE_GH=1 \
   OGIR_FAKE_GH_STATE="${fixture_root}/state" \
+  gh label create "status: ready" \
+    --repo "example/ogir" \
+    --color "FFFFFF" \
+    --description "Drifted label" \
+    --force >/dev/null
+
+PATH="${fixture_root}/bin:${PATH}" \
+  OGIR_FAKE_GH=1 \
+  OGIR_FAKE_GH_STATE="${fixture_root}/state" \
   gh api --method PATCH \
     "repos/example/ogir/milestones/13" \
     -f state=closed \
@@ -364,6 +419,14 @@ expect_equal "second run keeps 33 labels" "33" \
   "$(wc -l <"${fixture_root}/state/labels.tsv")"
 expect_equal "second run keeps 13 milestones" "13" \
   "$(wc -l <"${fixture_root}/state/milestones.tsv")"
+if grep -Fqx -- \
+  $'status: ready\t0E8A16\tSpecification and acceptance criteria are implementation-ready' \
+  "${fixture_root}/state/labels.tsv"; then
+  printf 'PASS: second run repairs label drift\n'
+else
+  printf 'FAIL: second run did not repair label drift\n' >&2
+  failures=$((failures + 1))
+fi
 
 if awk -F '\t' -v description="${milestone_description}" '
   $2 == "M12 Production Candidate" &&
