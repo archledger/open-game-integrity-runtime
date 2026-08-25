@@ -116,6 +116,21 @@ printf '%s\n' '/* SPDX-License-Identifier: GPL-2X0-only */' >"${fixture}/bpf/exa
 git -C "${fixture}" add bpf/example.bpf.c
 expect_fail "near-match BPF license" "bpf/example.bpf.c: invalid SPDX license header"
 
+make_fixture shell-wrong-comment-prefix
+printf '%s\n' '#!/usr/bin/env bash' '// SPDX-License-Identifier: Apache-2.0' >"${fixture}/scripts/tool.sh"
+git -C "${fixture}" add scripts/tool.sh
+expect_fail "shell with C++ comment prefix" "scripts/tool.sh: invalid SPDX license header"
+
+make_fixture rust-wrong-comment-prefix
+printf '%s\n' '# SPDX-License-Identifier: Apache-2.0' >"${fixture}/src/lib.rs"
+git -C "${fixture}" add src/lib.rs
+expect_fail "Rust with shell comment prefix" "src/lib.rs: invalid SPDX license header"
+
+make_fixture c-wrong-comment-prefix
+printf '%s\n' '# SPDX-License-Identifier: Apache-2.0' >"${fixture}/src/example.c"
+git -C "${fixture}" add src/example.c
+expect_fail "C with shell comment prefix" "src/example.c: invalid SPDX license header"
+
 make_fixture spdx-decoy
 printf '%s\n' 'const char *license = "SPDX-License-Identifier: LGPL-2.1-or-later";' >"${fixture}/wine/example.c"
 git -C "${fixture}" add wine/example.c

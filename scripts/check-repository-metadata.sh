@@ -58,17 +58,34 @@ validate_spdx_header() {
   local path="$1"
   local expected_license="$2"
   local source_file="$3"
+  local source_kind="$4"
   local declaration_output
   local declaration_status=0
   local declaration_text
   local actual_license
   local line_number
-  local declaration_pattern='^[[:space:]]*(#|//|/\*)[[:space:]]*SPDX-License-Identifier:[[:space:]]*([^[:space:]]+)([[:space:]]*\*/)?[[:space:]]*$'
+  local declaration_search_pattern
+  local declaration_pattern
   local -a declarations=()
+
+  case "${source_kind}" in
+    shell)
+      declaration_search_pattern='^[[:space:]]*#[[:space:]]*SPDX-License-Identifier:'
+      declaration_pattern='^[[:space:]]*#[[:space:]]*SPDX-License-Identifier:[[:space:]]*([^[:space:]]+)[[:space:]]*$'
+      ;;
+    rust | c)
+      declaration_search_pattern='^[[:space:]]*(//|/\*)[[:space:]]*SPDX-License-Identifier:'
+      declaration_pattern='^[[:space:]]*(//|/\*)[[:space:]]*SPDX-License-Identifier:[[:space:]]*([^[:space:]]+)([[:space:]]*\*/)?[[:space:]]*$'
+      ;;
+    *)
+      printf '%s: unknown source kind: %s\n' "${path}" "${source_kind}" >&2
+      exit 2
+      ;;
+  esac
 
   declaration_output="$(
     grep -a -n -E \
-      '^[[:space:]]*(#|//|/\*)[[:space:]]*SPDX-License-Identifier:' \
+      "${declaration_search_pattern}" \
       "${source_file}"
   )" || declaration_status=$?
 
@@ -102,7 +119,11 @@ validate_spdx_header() {
     return
   fi
 
-  actual_license="${BASH_REMATCH[2]}"
+  if [[ "${source_kind}" == "shell" ]]; then
+    actual_license="${BASH_REMATCH[1]}"
+  else
+    actual_license="${BASH_REMATCH[2]}"
+  fi
   line_number="${declarations[0]%%:*}"
   if [[ "${actual_license}" != "${expected_license}" ]] || ((line_number > 5)); then
     printf '%s: invalid SPDX license header\n' "${path}" >&2
@@ -120,9 +141,21 @@ while IFS= read -r -d '' tracked_entry; do
   tracked_mode="${tracked_metadata%% *}"
   is_source=0
   source_blob_loaded=0
+  source_kind=""
 
   case "${path}" in
-    *.rs | *.c | *.h | *.sh) is_source=1 ;;
+    *.rs)
+      is_source=1
+      source_kind="rust"
+      ;;
+    *.c | *.h)
+      is_source=1
+      source_kind="c"
+      ;;
+    *.sh)
+      is_source=1
+      source_kind="shell"
+      ;;
   esac
 
   if ((is_source == 0)) && [[ "${tracked_mode}" == "100755" ]]; then
@@ -135,6 +168,7 @@ while IFS= read -r -d '' tracked_entry; do
     IFS= read -r first_line <"${source_blob_file}" || true
     if [[ "${first_line}" =~ ${shell_shebang_pattern} ]]; then
       is_source=1
+      source_kind="shell"
     fi
   fi
 
@@ -161,7 +195,7 @@ while IFS= read -r -d '' tracked_entry; do
     bpf/*) expected_license="GPL-2.0-only" ;;
   esac
 
-  validate_spdx_header "${path}" "${expected_license}" "${source_blob_file}"
+  validate_spdx_header "${path}" "${expected_license}" "${source_blob_file}" "${source_kind}"
 done <"${tracked_paths_file}"
 
 if ((status != 0)); then
