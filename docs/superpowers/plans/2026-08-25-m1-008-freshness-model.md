@@ -846,7 +846,7 @@ impl ReplayRegistration {
     pub const fn window(&self) -> ChallengeWindow { self.window }
 }
 
-pub trait ReplayStore: fmt::Debug + Send + Sync {
+pub trait ReplayStore: Send + Sync {
     fn register(
         &self,
         now: UnixTime,
@@ -2375,6 +2375,23 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
    window, and consumed state. Its context-free `Display` must describe
    "already registered or consumed"; pin that wording in a model regression and
    record the diagnostic defect in `docs/LESSONS_LEARNED.md`.
+9. TCB review requires a distinct-time context-mismatch regression. Register at
+   100, reject mismatched context at 150, persist/reopen that floor, reject 140
+   as rollback, and prove the original request remains unconsumed at 150.
+   Mutation-probe context comparison moved before window/time evaluation.
+10. Privacy review requires issuance-rate events to expire at the end of the
+    finite rate window during explicit GC, not only during later registration.
+    Mutation-probe skipped rate-event GC.
+11. Reference snapshot/reopen values are handles to one authoritative durable
+    state generation, not detached backup copies. A handle captured before GC
+    must observe later rate-event and record deletion. Mutation-probe detached
+    copying; exported production backups remain separately reviewed work.
+12. Remove the unnecessary `Debug` supertrait from `ReplayStore` and give replay
+    key/binding/registration/guard/reference-store/snapshot explicit redacted
+    debug implementations. Test every binding, version, nonce, and timestamp
+    with unique values; mutation-probe a raw parent debug implementation. Add a
+    machine-readable privacy scenario and record all specialist findings in
+    `docs/LESSONS_LEARNED.md`.
 
 ---
 
@@ -2392,7 +2409,7 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
 | Privacy-minimal state and redacted errors/debug output | Task 3 private fields/getters; Task 5 redaction test; Task 6 ADR/threat/invariant text |
 | Non-disciplinary external error mapping and no `Allow` | Tasks 2 and 4 mapping/tests; Task 7 acceptance review |
 | Database-neutral synchronous boundary; no new dependency or unsafe/async/serialization choice | Task 3 `ReplayStore`; Task 6 dependency ADR; Task 7 manifest and full-matrix scans |
-| Deterministic arbitrary sequences and mutation resistance | Task 5 fixed-seed oracle and fourteen isolated mutation probes after review remediation |
+| Deterministic arbitrary sequences and mutation resistance | Task 5 fixed-seed oracle and eighteen isolated mutation probes after review remediation |
 | Repository governance, issue state, independent review, DCO, and publication | Tasks 0, 6, and 7 |
 
 ---

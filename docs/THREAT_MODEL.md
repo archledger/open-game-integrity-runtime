@@ -105,6 +105,19 @@ through expiry; enforce explicit finite limits without live eviction; and fail
 closed without a stateless fallback. Operational failures map to
 retry/unavailable protected mode and are not cheating evidence.
 
+### Freshness-state disclosure or over-retention
+
+Threat: An overreaching publisher exposes replay bindings through diagnostic
+formatting, retains expired replay records or stale issuance-rate history, or
+uses a detached restart copy to preserve data after garbage collection.
+
+Required response: Redact every replay key, binding, registration, guard,
+store, and durable-state debug surface; retain replay records only through
+challenge expiry and rate events only through their enforcement window; make
+all reopen handles refer to the same authoritative state generation so purge
+is visible through every handle. Exported backups require a separately
+approved finite retention, deletion, access-control, and anti-rollback policy.
+
 ### Cuckoo or relay
 
 Threat: A cheating machine relays attestation to a separate clean machine.

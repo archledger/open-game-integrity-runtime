@@ -49,9 +49,11 @@ At least two independent decoders/verifiers must agree on valid and invalid conf
 Freshness tests must fail when either time edge is widened, replay identity is
 scoped by context, check and consume are split, restart clears records, clock
 rollback is accepted, capacity evicts a live record, a successful claim remains
-issued, future-time rejection skips durable observation, raw claim returns a
-capability, binding/window failure consumes the original issued record, checked
-arithmetic wraps, or nonce/account/match debug output is unredacted. Each
+issued, future-time or context-mismatch rejection skips durable observation,
+raw claim returns a capability, binding/window failure consumes the original
+issued record, checked arithmetic wraps, rate history survives its window,
+durable handles retain purged state, or any replay binding/timestamp debug
+output is unredacted. Each
 mutation runs in a disposable worktree; mutated source never returns to the
 primary branch.
 
@@ -69,7 +71,8 @@ primary branch.
   nonce independence;
 - replay-state restart, rollback, missing/corrupt/unavailable failure,
   rejected-future observation persistence, capacity/rate limits, exact-expiry
-  GC, simultaneous atomic claims, and raw-claim capability exclusion.
+  GC, rate-history GC through every durable-state handle, complete diagnostic
+  redaction, simultaneous atomic claims, and raw-claim capability exclusion.
 
 ### Bare-metal tests
 
@@ -105,10 +108,11 @@ residual_risk:
   - full-session relay requires a separate scenario
 ```
 
-Challenge replay and freshness-state failure are represented by
-`OGIR-PROTOCOL-REPLAY-002` and `OGIR-PROTOCOL-FRESHNESS-001`. Both require
-non-disciplinary deny/retry outcomes and preserve the publisher-authoritative
-time and durable single-use nonce invariants.
+Challenge replay, freshness-state failure, and freshness-state privacy are
+represented by `OGIR-PROTOCOL-REPLAY-002`, `OGIR-PROTOCOL-FRESHNESS-001`, and
+`OGIR-PRIVACY-FRESHNESS-001`. They preserve publisher-authoritative time,
+durable single-use nonce, bounded-retention, and redacted-diagnostic
+invariants without turning failure into disciplinary evidence.
 
 ## Release gates by maturity
 

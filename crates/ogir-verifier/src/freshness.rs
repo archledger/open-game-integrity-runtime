@@ -18,11 +18,7 @@ pub struct ReplayKey {
 
 impl fmt::Debug for ReplayKey {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("ReplayKey")
-            .field("publisher_id", &self.publisher_id)
-            .field("nonce", &self.nonce)
-            .finish()
+        formatter.write_str("ReplayKey([REDACTED])")
     }
 }
 
@@ -41,7 +37,7 @@ impl ReplayKey {
 }
 
 /// Context retained with a replay record but excluded from replay identity.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ChallengeBinding {
     game_id: GameId,
     build_id: BuildId,
@@ -49,6 +45,12 @@ pub struct ChallengeBinding {
     match_id: MatchId,
     policy_id: PolicyId,
     policy_version: PolicyVersion,
+}
+
+impl fmt::Debug for ChallengeBinding {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("ChallengeBinding([REDACTED])")
+    }
 }
 
 impl ChallengeBinding {
@@ -90,11 +92,17 @@ impl ChallengeBinding {
 }
 
 /// Complete replay-state registration derived from a publisher challenge.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ReplayRegistration {
     key: ReplayKey,
     binding: ChallengeBinding,
     window: ChallengeWindow,
+}
+
+impl fmt::Debug for ReplayRegistration {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("ReplayRegistration([REDACTED])")
+    }
 }
 
 impl ReplayRegistration {
@@ -142,7 +150,7 @@ impl ReplayRegistration {
 /// Implementations are publisher-controlled trusted infrastructure. Each
 /// method must update/check its authoritative-time high-water mark and complete
 /// its state transition atomically and durably before returning success.
-pub trait ReplayStore: fmt::Debug + Send + Sync {
+pub trait ReplayStore: Send + Sync {
     /// Atomically checks and advances the authoritative-time high-water mark.
     ///
     /// # Errors
@@ -176,7 +184,10 @@ pub trait ReplayStore: fmt::Debug + Send + Sync {
     fn claim(&self, now: UnixTime, registration: &ReplayRegistration)
     -> Result<(), FreshnessError>;
 
-    /// Atomically removes records expired at the persisted time floor.
+    /// Atomically removes replay records and issuance-rate history whose
+    /// enforcement windows ended at the persisted time floor.
+    ///
+    /// The returned count includes removed replay records, not rate events.
     ///
     /// # Errors
     ///
@@ -216,10 +227,15 @@ pub struct FreshnessChecked {
 }
 
 /// Deep freshness boundary over one trusted replay-store implementation.
-#[derive(Debug)]
 pub struct FreshnessGuard<'store, Store: ?Sized> {
     store: &'store Store,
     limits: FreshnessLimits,
+}
+
+impl<Store: ?Sized> fmt::Debug for FreshnessGuard<'_, Store> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("FreshnessGuard([REDACTED])")
+    }
 }
 
 impl<'store, Store: ReplayStore + ?Sized> FreshnessGuard<'store, Store> {
@@ -287,7 +303,10 @@ impl<'store, Store: ReplayStore + ?Sized> FreshnessGuard<'store, Store> {
         Ok(FreshnessChecked { _private: () })
     }
 
-    /// Removes only records expired at the replay store's time floor.
+    /// Removes only replay and rate-limit state whose enforcement windows ended
+    /// at the replay store's time floor.
+    ///
+    /// The returned count includes removed replay records, not rate events.
     ///
     /// # Errors
     ///

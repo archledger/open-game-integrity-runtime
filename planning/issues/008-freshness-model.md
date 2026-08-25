@@ -66,25 +66,34 @@ Nonce uniqueness alone does not define challenge freshness. The protocol needs e
 - Before issue time, exact expiry, and after expiry reject.
 - Duplicate nonce in the same or altered game/build/account/match/policy/window rejects without consuming the legitimate issued record.
 - Missing, unavailable, corrupt, poisoned, rolled-back, or full state fails closed.
+- Later context mismatch advances durable time before rejection without
+  consuming the correctly bound issued record.
 - Two concurrent claims cannot both succeed; unexpired records are never evicted.
+- Expired replay records and out-of-window issuance history are purged through
+  every authoritative durable-state handle.
 - Extreme-future and overflow-prone timestamps cannot authorize.
 - Raw claim cannot return or construct `FreshnessChecked`.
 
 ## Fuzz/property tests
 
 - A fixed-seed independent oracle checks 16,384 register/claim/time/rollback/restart/unavailable/GC operations.
-- Fourteen isolated mutations cover both window edges, key scope, atomicity,
-  restart, rollback, capacity, claim release/error side effects, time
-  observation, capability bypass, arithmetic, and privacy redaction.
+- Eighteen isolated mutations cover both window edges, key scope, atomicity,
+  restart, rollback, capacity, claim release/error side effects, time/context
+  observation, capability bypass, arithmetic, bounded retention, shared
+  durable-state deletion, and complete privacy redaction.
 - M1-008 adds no parser or wire format, so it adds no fuzz target; parser fuzzing
   remains required when challenge serialization is selected.
 
 ## Privacy impact
 
-Replay state retains `AccountScope` and `MatchId` only as exact authorization
-binding through challenge expiry. They, nonce bytes, and raw bindings remain
-redacted from errors/debug/logging; state is not telemetry and no evidence
-claim or cross-publisher identifier is added.
+Replay records retain exact authorization bindings only through challenge
+expiry; issuance events remain only through their configured rate window.
+Every replay-state debug surface redacts publisher/game/build/account/match/
+policy/version, nonce, and window timestamps. Restart handles share the
+authoritative state generation so purge does not leave an ordinary reopen copy;
+exported backups need separate finite retention and anti-rollback review.
+State is not telemetry and no evidence claim or cross-publisher identifier is
+added.
 
 ## Dependency impact
 

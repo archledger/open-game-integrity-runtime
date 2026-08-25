@@ -305,9 +305,19 @@ Appraisal failure never releases the claim.
 
 Issued and consumed records plus the verifier-time high-water mark survive
 restart. Records are GC-eligible only when the time floor reaches expiry.
+Per-publisher issuance events are GC-eligible when their configured enforcement
+window ends. The reference adapter's reopen handles name the same authoritative
+durable state generation rather than copying it, so a successful purge removes
+data from every such handle. Exported backups require a separate finite
+retention, deletion, and anti-rollback design before production use.
 Rollback, missing/corrupt/unavailable state, or exhausted explicit
 lifetime/capacity/account/rate limits makes protected mode unavailable; no
 stateless fallback or unexpired-record eviction is permitted.
+
+Replay-key, binding, registration, guard, store, and durable-state `Debug`
+implementations emit only redaction markers. Publisher, game, build, account,
+match, policy, policy version, nonce, and challenge-window timestamps never
+appear through those diagnostic surfaces.
 [ADR-0005](adr/0005-verifier-authoritative-challenge-freshness.md) records the
 complete decision and deferred production-adapter obligations.
 

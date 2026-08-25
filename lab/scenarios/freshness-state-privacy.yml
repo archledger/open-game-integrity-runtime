@@ -1,0 +1,22 @@
+id: OGIR-PRIVACY-FRESHNESS-001
+title: Disclose or over-retain challenge replay state
+attacker: A8
+assets:
+  - player_privacy
+  - verifier_freshness_state
+preconditions:
+  - the verifier registered privacy-sensitive challenge binding and issuance-rate state
+steps:
+  - request diagnostic formatting of replay keys, bindings, registrations, stores, guards, or durable-state handles
+  - retain replay records beyond challenge expiry or issuance events beyond their rate window
+  - reopen a previously obtained handle to the same authoritative durable state after garbage collection
+expected:
+  decision: deny
+  reason: privacy-boundary
+  automatic_ban: false
+invariants:
+  - diagnostic output exposes only redaction markers or aggregate counts
+  - replay records are deleted at challenge expiry and rate events at the end of their enforcement window
+  - garbage collection is visible through every handle to the authoritative durable state
+residual_risk:
+  - separately exported production backups require an approved finite retention and anti-rollback lifecycle

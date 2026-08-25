@@ -309,6 +309,34 @@ fn every_context_mismatch_rejects_without_consuming_registered_nonce() {
 }
 
 #[test]
+fn context_mismatch_observes_time_before_rejection_and_preserves_issued_state() {
+    let store = ReferenceReplayStore::available();
+    let challenge = challenge("example.game", [45; 32]);
+    let guard = FreshnessGuard::new(&store, limits());
+    assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
+
+    let mut mismatch = expected();
+    mismatch.game_id = identifier::<GameId>("other.game");
+    let rejected = verify_research_structure(
+        &request_with_expected(challenge.clone(), 150, mismatch),
+        &guard,
+    );
+    assert_eq!(rejected.decision, Decision::Deny);
+    assert_eq!(rejected.reason, ReasonCode::SessionBindingMismatch);
+    assert_eq!(store.high_water(), Ok(Some(UnixTime::new(150))));
+
+    let reopened = ReferenceReplayStore::reopen(snapshot(&store));
+    let reopened_guard = FreshnessGuard::new(&reopened, limits());
+    let rolled_back = verify_research_structure(&request(challenge.clone(), 140), &reopened_guard);
+    assert_eq!(rolled_back.decision, Decision::Retry);
+    assert_eq!(rolled_back.reason, ReasonCode::AttestationUnavailable);
+
+    let original = verify_research_structure(&request(challenge, 150), &reopened_guard);
+    assert_eq!(original.decision, Decision::Deny);
+    assert_eq!(original.reason, ReasonCode::EvidenceInvalid);
+}
+
+#[test]
 fn unavailable_state_returns_retry_without_allow() {
     let store = ReferenceReplayStore::unavailable();
     let guard = FreshnessGuard::new(&store, limits());
@@ -559,6 +587,30 @@ fn gc_keeps_record_before_expiry_and_removes_it_at_expiry() {
 }
 
 #[test]
+fn gc_bounds_rate_history_and_scrubs_every_durable_state_handle() {
+    let store = ReferenceReplayStore::available();
+    let challenge = challenge("example.game", [46; 32]);
+    let key = ReplayRegistration::from_challenge(&challenge).key().clone();
+    let guard = FreshnessGuard::new(&store, limits());
+    assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
+    assert_eq!(store.issuance_event_count(), Ok(1));
+
+    let before_rate_gc = snapshot(&store);
+    assert_eq!(guard.purge_expired(UnixTime::new(160)), Ok(0));
+    assert_eq!(store.issuance_event_count(), Ok(0));
+    let reopened_after_rate_gc = ReferenceReplayStore::reopen(before_rate_gc);
+    assert_eq!(reopened_after_rate_gc.issuance_event_count(), Ok(0));
+    assert_eq!(reopened_after_rate_gc.contains(&key), Ok(true));
+
+    let before_record_gc = snapshot(&store);
+    assert_eq!(guard.purge_expired(UnixTime::new(200)), Ok(1));
+    assert_eq!(store.contains(&key), Ok(false));
+    let reopened_after_record_gc = ReferenceReplayStore::reopen(before_record_gc);
+    assert_eq!(reopened_after_record_gc.record_count(), Ok(0));
+    assert_eq!(reopened_after_record_gc.issuance_event_count(), Ok(0));
+}
+
+#[test]
 fn rollback_or_unavailable_state_blocks_gc() {
     let store = ReferenceReplayStore::available();
     let challenge = challenge("example.game", [36; 32]);
@@ -636,22 +688,55 @@ fn replay_identity_ignores_every_context_and_window_field() {
 }
 
 #[test]
-fn replay_debug_and_errors_redact_nonce_account_and_match() {
-    let challenge = challenge("example.game", [39; 32]);
-    let debug = format!("{:?}", ReplayRegistration::from_challenge(&challenge));
-    assert!(debug.contains("Nonce([REDACTED; 32])"));
-    assert!(!debug.contains("account-1"));
-    assert!(!debug.contains("match-1"));
-    assert!(!debug.contains("39, 39"));
+fn replay_debug_and_errors_redact_every_binding_and_timestamp() {
+    let mut challenge = challenge_for_publisher("private.publisher", [39; 32]);
+    challenge.game_id = identifier::<GameId>("private.game");
+    challenge.build_id = identifier::<BuildId>("private-build-424242");
+    challenge.account_scope = identifier::<AccountScope>("private-account-424242");
+    challenge.match_id = identifier::<MatchId>("private-match-424242");
+    challenge.policy_id = identifier::<PolicyId>("private-policy-424242");
+    challenge.policy_version = PolicyVersion::new(424_242);
+    challenge.window = valid_window(4_242_400, 4_242_499);
+
+    let registration = ReplayRegistration::from_challenge(&challenge);
 
     let store = ReferenceReplayStore::available();
     let guard = FreshnessGuard::new(&store, limits());
-    assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
-    let snapshot_debug = format!("{:?}", snapshot(&store));
-    assert!(snapshot_debug.contains("Nonce([REDACTED; 32])"));
-    assert!(!snapshot_debug.contains("account-1"));
-    assert!(!snapshot_debug.contains("match-1"));
-    assert!(!snapshot_debug.contains("39, 39"));
+    assert_eq!(guard.register(UnixTime::new(4_242_400), &challenge), Ok(()));
+
+    let debug_surfaces = [
+        format!("{registration:?}"),
+        format!("{:?}", registration.key()),
+        format!("{:?}", registration.binding()),
+        format!("{store:?}"),
+        format!("{guard:?}"),
+        format!("{:?}", snapshot(&store)),
+    ];
+    let sensitive_values = [
+        "private.publisher",
+        "private.game",
+        "private-build-424242",
+        "private-account-424242",
+        "private-match-424242",
+        "private-policy-424242",
+        "424242",
+        "4242400",
+        "4242499",
+        "39, 39",
+    ];
+
+    for debug in debug_surfaces {
+        assert!(
+            debug.contains("REDACTED"),
+            "missing redaction marker: {debug}"
+        );
+        for sensitive in sensitive_values {
+            assert!(
+                !debug.contains(sensitive),
+                "debug output exposed {sensitive}: {debug}"
+            );
+        }
+    }
 
     for error in [
         FreshnessError::ReplayDetected,
@@ -660,9 +745,9 @@ fn replay_debug_and_errors_redact_nonce_account_and_match() {
         FreshnessError::CapacityExceeded,
     ] {
         let rendered = format!("{error:?} {error}");
-        assert!(!rendered.contains("account-1"));
-        assert!(!rendered.contains("match-1"));
-        assert!(!rendered.contains("39, 39"));
+        for sensitive in sensitive_values {
+            assert!(!rendered.contains(sensitive));
+        }
     }
 }
 

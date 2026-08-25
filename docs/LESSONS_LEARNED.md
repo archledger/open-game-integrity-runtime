@@ -104,3 +104,65 @@ Do not use this document to expose embargoed vulnerability details before coordi
 - **Documentation or agent-policy updates:** `FreshnessError::ReplayDetected`
   documentation and display wording now both cover registered or consumed
   nonce state without including replay identity or binding values.
+
+## 2026-08-25 — Gate-order claims need distinct-time regressions
+
+- **Context:** M1-008 targeted trusted-computing-base review.
+- **Mistaken assumption:** A context-mismatch test at the existing time floor
+  proved that durable time observation occurred before context rejection.
+- **Observed failure:** Moving context comparison ahead of window evaluation
+  would leave the floor unchanged, yet the same-time test would still pass.
+- **Security or quality impact:** The suite did not prove the documented gate
+  order that prevents a rejected request from hiding a later authoritative time.
+- **Permanent regression test:**
+  `context_mismatch_observes_time_before_rejection_and_preserves_issued_state`
+  uses time 150 above the registration floor, reopens state, rejects time 140
+  as rollback, and proves the original record remains claimable at time 150.
+- **New prevention rule:** Tests for ordered durable transitions must use inputs
+  that make each intermediate state change independently observable.
+- **Documentation or agent-policy updates:** The freshness design, ADR, issue,
+  invariants, test strategy, and mutation plan now name time-before-context
+  ordering explicitly.
+
+## 2026-08-25 — Retention applies to rate history and every durable copy
+
+- **Context:** M1-008 targeted privacy review.
+- **Mistaken assumption:** Purging expired replay records was sufficient to
+  satisfy expiry-driven deletion for the complete freshness store.
+- **Observed failure:** Issuance events survived explicit garbage collection
+  until a later registration, and detached test snapshots retained replay
+  bindings after the live store purged them.
+- **Security or quality impact:** Publisher and binding state could outlive its
+  enforcement purpose through rate history or an ordinary restart copy.
+- **Permanent regression test:**
+  `gc_bounds_rate_history_and_scrubs_every_durable_state_handle` proves exact
+  rate-window deletion and exact-expiry record deletion through handles created
+  before both purges.
+- **New prevention rule:** Enumerate every retained field and every persistence
+  copy when defining deletion; a live-table TTL alone is not end-to-end
+  retention control.
+- **Documentation or agent-policy updates:** The reference adapter now stores a
+  finite lifetime per issuance event and aliases one authoritative durable state
+  generation for reopen; production exports require separate retention and
+  anti-rollback review.
+
+## 2026-08-25 — Redaction must cover the entire derived object graph
+
+- **Context:** M1-008 targeted privacy review of replay-state diagnostics.
+- **Mistaken assumption:** Redacting nonce, account, and match leaf types kept
+  parent replay objects safe to derive `Debug`.
+- **Observed failure:** Parent debug output still exposed publisher, game,
+  build, policy, version, and issuance/expiry timestamps, while the store trait
+  unnecessarily required every adapter to implement `Debug`.
+- **Security or quality impact:** Lower-access diagnostic sinks could receive a
+  nearly complete authorization binding despite leaf-level redaction.
+- **Permanent regression test:**
+  `replay_debug_and_errors_redact_every_binding_and_timestamp` checks replay
+  keys, bindings, registrations, guards, stores, durable-state handles, and
+  errors against distinct values for every binding and timestamp field.
+- **New prevention rule:** Audit formatted roots and all recursively reachable
+  fields; use explicit redacted implementations and do not impose diagnostic
+  trait bounds on security-state adapters without a functional need.
+- **Documentation or agent-policy updates:** ADR-0005, the design, architecture,
+  issue, threat model, test strategy, and privacy scenario now define the full
+  replay diagnostic boundary.

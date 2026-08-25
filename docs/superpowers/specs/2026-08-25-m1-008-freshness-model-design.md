@@ -262,6 +262,14 @@ Garbage collection may delete a record only when the persisted time high-water
 mark is greater than or equal to that record's `expires_at`. If time state is
 unavailable or rolled back, garbage collection stops.
 
+Issuance-rate events remain only while they can affect enforcement. Each event
+records its finite configured rate-window duration and is deleted when the
+persisted high-water mark reaches the end of that window. Reference
+snapshot/reopen handles refer to one authoritative durable state generation,
+not detached copies, so garbage collection is visible through every handle.
+Production backup copies require a separately approved finite retention,
+deletion, access-control, and anti-rollback lifecycle.
+
 Unexpired records are never evicted to make space. Audit retention after expiry
 requires a separately approved purpose, access policy, and finite retention
 period; it is outside the minimum replay-safety contract.
@@ -292,9 +300,11 @@ limits.
 Replay records contain account- and match-scoped binding data. They are
 privacy-sensitive authorization state, not telemetry. A production adapter
 must apply least-privilege access, protection at rest appropriate to publisher
-policy, and expiry-driven deletion. Logs and metrics use aggregate counts or an
-internal opaque record reference; they never include nonce bytes,
-`AccountScope`, or `MatchId`.
+policy, and expiry/rate-window-driven deletion. Logs, metrics, and replay-state
+`Debug` implementations use aggregate counts, explicit redaction markers, or
+an internal opaque record reference; they never include nonce bytes,
+publisher/game/build/account/match/policy bindings, policy versions, or window
+timestamps.
 
 The store retains only the fields required for replay identity, exact binding,
 window evaluation, state, and recovery. Adding player profile, device identity,
@@ -389,6 +399,8 @@ M1-010 owns the final verifier outcome/state-machine representation.
 - equal/high verifier time advances or retains the high-water mark;
 - a rejected future-time window still persists its observation, including
   across snapshot/reopen, and a later lower time fails rollback;
+- a later in-window context mismatch persists its observation before rejection,
+  including across reopen, without consuming the original issued record;
 - any lower verifier time fails `ClockRollback`;
 - a forward jump may create an operational outage but never restores expired
   validity; and
@@ -405,14 +417,16 @@ M1-010 owns the final verifier outcome/state-machine representation.
 - the same nonce bytes under a different authenticated publisher are
   independent;
 - missing registration fails closed; and
-- derived parent debug/errors reveal no nonce or account context.
+- replay-key/binding/registration/guard/store/snapshot debug and errors reveal
+  no raw binding, nonce, policy-version, or window-timestamp context.
 
 ### Atomicity, restart, and failure
 
 - two simultaneous claims produce exactly one `FreshnessChecked` capability;
 - the public raw claim API cannot return or construct `FreshnessChecked`;
 - crash after claim leaves the replay record consumed;
-- snapshot/reopen preserves issued and consumed records plus the time floor;
+- snapshot/reopen preserves issued and consumed records plus the time floor,
+  while every handle observes later authoritative garbage collection;
 - restart with unavailable, missing, or corrupt state cannot issue or verify;
 - explicit epoch/key recovery invalidates old challenges before reset; and
 - no error path releases a consumed nonce.
@@ -424,7 +438,9 @@ M1-010 owns the final verifier outcome/state-machine representation.
 - full state refuses issuance without evicting live records;
 - records persist immediately before expiry;
 - records become GC-eligible at exact expiry only when the time floor reaches
-  expiry; and
+  expiry;
+- issuance events become GC-eligible at the exact end of their configured rate
+  window through every durable-state handle; and
 - rollback/unavailable time blocks GC.
 
 ### Property and mutation tests

@@ -137,11 +137,16 @@ not directly trigger discipline.
 Replay state contains publisher/account/match-scoped binding data. It is
 authorization state, not telemetry. Store only replay identity, exact binding,
 window, state, issuance-rate data, and recovery time floor. Delete records at
-expiry unless a separately approved finite audit purpose exists.
+expiry and issuance events when their configured rate window ends unless a
+separately approved finite audit purpose exists. A restart handle must refer to
+the authoritative durable state generation, so a purge cannot leave a detached
+copy available for ordinary reopen. Exported backups require a separate finite
+retention, deletion, access-control, and anti-rollback policy.
 
-Nonce bytes, `AccountScope`, `MatchId`, and raw replay bindings must not appear
-in errors, logs, metrics, or derived `Debug` output. Aggregate counts or opaque
-internal references are the permitted diagnostic shape.
+Nonce bytes, publisher/game/build/account/match/policy bindings, policy
+versions, and challenge-window timestamps must not appear in errors, logs,
+metrics, or replay-state `Debug` output. Aggregate counts, redaction markers,
+or opaque internal references are the permitted diagnostic shape.
 
 ## Dependency and license impact
 
@@ -157,12 +162,16 @@ All affected Rust, documentation, and attack-lab paths remain Apache-2.0.
 - Altered same-key binding/window rejection leaves the original record issued.
 - Missing/unavailable/corrupt state, restart, and high-water rollback tests.
 - Rejected future-time persistence followed by post-restart rollback.
+- Later context mismatch persists time before rejection and leaves the original
+  issued record claimable at that exact time.
 - Exact lifetime, total, publisher, account, and rate-window limits.
-- Issued/consumed retention and exact-expiry garbage collection.
+- Issued/consumed retention, exact-expiry garbage collection, and rate-history
+  deletion through every authoritative durable-state handle.
 - Two simultaneous claims yielding exactly one capability.
 - Compile-fail proof that raw public claim cannot yield `FreshnessChecked`.
 - 16,384 fixed-seed operations checked against an independent literal oracle.
-- Redaction tests for registration, snapshot, nonce, account, match, and errors.
+- Complete replay-state redaction tests for publisher/game/build/account/match/
+  policy/version, nonce, window timestamps, stores, guards, snapshots, and errors.
 - Isolated mutations for both window edges, key scope, claim atomicity, restart,
   rollback, capacity eviction, claim release, arithmetic, and privacy.
 

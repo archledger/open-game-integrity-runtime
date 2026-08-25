@@ -2,25 +2,25 @@
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::fmt;
 use std::sync::{Arc, Mutex};
 
 use ogir_model::{ChallengeWindow, FreshnessError, FreshnessLimits, PublisherId, UnixTime};
 use ogir_verifier::{ChallengeBinding, ReplayKey, ReplayRegistration, ReplayStore};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ReferenceReplayStore {
+    availability: Arc<Mutex<Availability>>,
     state: Arc<Mutex<State>>,
 }
 
-#[derive(Debug, Clone)]
 struct State {
-    availability: Availability,
     high_water: Option<UnixTime>,
     records: HashMap<ReplayKey, StoredRecord>,
-    issuance_events: Vec<(UnixTime, PublisherId)>,
+    issuance_events: Vec<IssuanceEvent>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Availability {
     Available,
     Unavailable,
@@ -28,31 +28,47 @@ enum Availability {
     Corrupt,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum StoredState {
     Issued,
     Consumed,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct StoredRecord {
     binding: ChallengeBinding,
     window: ChallengeWindow,
     state: StoredState,
 }
 
-#[derive(Debug, Clone)]
+struct IssuanceEvent {
+    observed_at: UnixTime,
+    publisher_id: PublisherId,
+    retain_for_seconds: u64,
+}
+
+#[derive(Clone)]
 pub struct Snapshot {
-    high_water: Option<UnixTime>,
-    records: HashMap<ReplayKey, StoredRecord>,
-    issuance_events: Vec<(UnixTime, PublisherId)>,
+    state: Arc<Mutex<State>>,
+}
+
+impl fmt::Debug for ReferenceReplayStore {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("ReferenceReplayStore([REDACTED])")
+    }
+}
+
+impl fmt::Debug for Snapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("Snapshot([REDACTED])")
+    }
 }
 
 impl ReferenceReplayStore {
     fn with_availability(availability: Availability) -> Self {
         Self {
+            availability: Arc::new(Mutex::new(availability)),
             state: Arc::new(Mutex::new(State {
-                availability,
                 high_water: None,
                 records: HashMap::new(),
                 issuance_events: Vec::new(),
@@ -78,31 +94,25 @@ impl ReferenceReplayStore {
 
     pub fn reopen(snapshot: Snapshot) -> Self {
         Self {
-            state: Arc::new(Mutex::new(State {
-                availability: Availability::Available,
-                high_water: snapshot.high_water,
-                records: snapshot.records,
-                issuance_events: snapshot.issuance_events,
-            })),
+            availability: Arc::new(Mutex::new(Availability::Available)),
+            state: snapshot.state,
         }
     }
 
     pub fn snapshot(&self) -> Result<Snapshot, FreshnessError> {
-        self.with_state(|state| {
+        self.with_state(|_| {
             Ok(Snapshot {
-                high_water: state.high_water,
-                records: state.records.clone(),
-                issuance_events: state.issuance_events.clone(),
+                state: Arc::clone(&self.state),
             })
         })
     }
 
     pub fn set_unavailable(&self) -> Result<(), FreshnessError> {
-        let mut state = self
-            .state
+        let mut availability = self
+            .availability
             .lock()
             .map_err(|_| FreshnessError::StateUnavailable)?;
-        state.availability = Availability::Unavailable;
+        *availability = Availability::Unavailable;
         Ok(())
     }
 
@@ -114,6 +124,10 @@ impl ReferenceReplayStore {
         self.with_state(|state| Ok(state.records.len()))
     }
 
+    pub fn issuance_event_count(&self) -> Result<usize, FreshnessError> {
+        self.with_state(|state| Ok(state.issuance_events.len()))
+    }
+
     pub fn contains(&self, key: &ReplayKey) -> Result<bool, FreshnessError> {
         self.with_state(|state| Ok(state.records.contains_key(key)))
     }
@@ -122,13 +136,17 @@ impl ReferenceReplayStore {
         &self,
         operation: impl FnOnce(&mut State) -> Result<T, FreshnessError>,
     ) -> Result<T, FreshnessError> {
+        let availability = self
+            .availability
+            .lock()
+            .map_err(|_| FreshnessError::StateUnavailable)?;
+        if *availability != Availability::Available {
+            return Err(FreshnessError::StateUnavailable);
+        }
         let mut state = self
             .state
             .lock()
             .map_err(|_| FreshnessError::StateUnavailable)?;
-        if state.availability != Availability::Available {
-            return Err(FreshnessError::StateUnavailable);
-        }
         operation(&mut state)
     }
 }
@@ -141,8 +159,22 @@ fn observe_time(state: &mut State, now: UnixTime) -> Result<(), FreshnessError> 
     Ok(())
 }
 
-fn purge_expired_records(state: &mut State) -> Result<usize, FreshnessError> {
+fn purge_expired_state(state: &mut State) -> Result<usize, FreshnessError> {
     let high_water = state.high_water.ok_or(FreshnessError::StateUnavailable)?;
+    if state
+        .issuance_events
+        .iter()
+        .any(|event| event.observed_at > high_water)
+    {
+        return Err(FreshnessError::StateUnavailable);
+    }
+    state.issuance_events.retain(|event| {
+        high_water
+            .seconds()
+            .checked_sub(event.observed_at.seconds())
+            .is_some_and(|age| age < event.retain_for_seconds)
+    });
+
     let before = state.records.len();
     state
         .records
@@ -180,22 +212,10 @@ impl ReplayStore for ReferenceReplayStore {
             }
             window.evaluate(now)?;
 
-            let _removed = purge_expired_records(state)?;
+            let _removed = purge_expired_state(state)?;
             if state.records.contains_key(registration.key()) {
                 return Err(FreshnessError::ReplayDetected);
             }
-
-            for (event_time, _) in &state.issuance_events {
-                if now.seconds().checked_sub(event_time.seconds()).is_none() {
-                    return Err(FreshnessError::ClockRollback);
-                }
-            }
-            let rate_window = limits.issuance_rate_window_seconds().get();
-            state.issuance_events.retain(|(event_time, _)| {
-                now.seconds()
-                    .checked_sub(event_time.seconds())
-                    .is_some_and(|age| age < rate_window)
-            });
 
             let total = state.records.len();
             let publisher = registration.key().publisher_id();
@@ -215,7 +235,7 @@ impl ReplayStore for ReferenceReplayStore {
             let issuance_total = state
                 .issuance_events
                 .iter()
-                .filter(|(_, event_publisher)| event_publisher == publisher)
+                .filter(|event| &event.publisher_id == publisher)
                 .count();
 
             if total >= limits.max_outstanding_total().get()
@@ -236,9 +256,11 @@ impl ReplayStore for ReferenceReplayStore {
                 }
                 Entry::Occupied(_) => return Err(FreshnessError::ReplayDetected),
             }
-            state
-                .issuance_events
-                .push((now, registration.key().publisher_id().clone()));
+            state.issuance_events.push(IssuanceEvent {
+                observed_at: now,
+                publisher_id: registration.key().publisher_id().clone(),
+                retain_for_seconds: limits.issuance_rate_window_seconds().get(),
+            });
             Ok(())
         })
     }
@@ -271,7 +293,7 @@ impl ReplayStore for ReferenceReplayStore {
     fn purge_expired(&self, now: UnixTime) -> Result<usize, FreshnessError> {
         self.with_state(|state| {
             observe_time(state, now)?;
-            purge_expired_records(state)
+            purge_expired_state(state)
         })
     }
 }
