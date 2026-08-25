@@ -24,6 +24,8 @@ struct State {
 enum Availability {
     Available,
     Unavailable,
+    Missing,
+    Corrupt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +39,13 @@ struct StoredRecord {
     binding: ChallengeBinding,
     window: ChallengeWindow,
     state: StoredState,
+}
+
+#[derive(Debug, Clone)]
+pub struct Snapshot {
+    high_water: Option<UnixTime>,
+    records: HashMap<ReplayKey, StoredRecord>,
+    issuance_events: Vec<(UnixTime, PublisherId)>,
 }
 
 impl ReferenceReplayStore {
@@ -57,6 +66,56 @@ impl ReferenceReplayStore {
 
     pub fn unavailable() -> Self {
         Self::with_availability(Availability::Unavailable)
+    }
+
+    pub fn missing() -> Self {
+        Self::with_availability(Availability::Missing)
+    }
+
+    pub fn corrupt() -> Self {
+        Self::with_availability(Availability::Corrupt)
+    }
+
+    pub fn reopen(snapshot: Snapshot) -> Self {
+        Self {
+            state: Arc::new(Mutex::new(State {
+                availability: Availability::Available,
+                high_water: snapshot.high_water,
+                records: snapshot.records,
+                issuance_events: snapshot.issuance_events,
+            })),
+        }
+    }
+
+    pub fn snapshot(&self) -> Result<Snapshot, FreshnessError> {
+        self.with_state(|state| {
+            Ok(Snapshot {
+                high_water: state.high_water,
+                records: state.records.clone(),
+                issuance_events: state.issuance_events.clone(),
+            })
+        })
+    }
+
+    pub fn set_unavailable(&self) -> Result<(), FreshnessError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| FreshnessError::StateUnavailable)?;
+        state.availability = Availability::Unavailable;
+        Ok(())
+    }
+
+    pub fn high_water(&self) -> Result<Option<UnixTime>, FreshnessError> {
+        self.with_state(|state| Ok(state.high_water))
+    }
+
+    pub fn record_count(&self) -> Result<usize, FreshnessError> {
+        self.with_state(|state| Ok(state.records.len()))
+    }
+
+    pub fn contains(&self, key: &ReplayKey) -> Result<bool, FreshnessError> {
+        self.with_state(|state| Ok(state.records.contains_key(key)))
     }
 
     fn with_state<T>(
@@ -88,7 +147,9 @@ fn purge_expired_records(state: &mut State) -> Result<usize, FreshnessError> {
     state
         .records
         .retain(|_, record| record.window.expires_at() > high_water);
-    Ok(before - state.records.len())
+    before
+        .checked_sub(state.records.len())
+        .ok_or(FreshnessError::StateUnavailable)
 }
 
 impl ReplayStore for ReferenceReplayStore {

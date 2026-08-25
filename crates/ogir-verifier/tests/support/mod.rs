@@ -2,4 +2,4 @@
 
 mod reference_replay_store;
 
-pub use reference_replay_store::ReferenceReplayStore;
+pub use reference_replay_store::{ReferenceReplayStore, Snapshot};

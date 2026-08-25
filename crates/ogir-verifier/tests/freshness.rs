@@ -2,8 +2,11 @@
 
 mod support;
 
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::num::{NonZeroU64, NonZeroUsize};
+use std::sync::{Arc, Barrier};
+use std::thread;
 
 use ogir_model::{
     AccountScope, BuildId, ChallengeLifetime, ChallengeWindow, Decision, EvidenceProfile,
@@ -12,9 +15,10 @@ use ogir_model::{
 };
 use ogir_protocol::EvidenceBundle;
 use ogir_verifier::{
-    ExpectedContext, FreshnessGuard, VerificationRequest, verify_research_structure,
+    ExpectedContext, FreshnessGuard, ReplayKey, ReplayRegistration, VerificationRequest,
+    verify_research_structure,
 };
-use support::ReferenceReplayStore;
+use support::{ReferenceReplayStore, Snapshot};
 
 fn identifier<T>(value: &str) -> T
 where
@@ -82,6 +86,58 @@ fn challenge(game: &str, nonce: [u8; 32]) -> PublisherChallenge {
     let mut challenge = challenge_for_publisher("example.publisher", nonce);
     challenge.game_id = identifier::<GameId>(game);
     challenge
+}
+
+fn challenge_for_account(publisher: &str, account: &str, nonce: [u8; 32]) -> PublisherChallenge {
+    let mut challenge = challenge_for_publisher(publisher, nonce);
+    challenge.account_scope = identifier::<AccountScope>(account);
+    challenge
+}
+
+fn challenge_with_window(
+    publisher: &str,
+    nonce: [u8; 32],
+    issued_at: u64,
+    expires_at: u64,
+) -> PublisherChallenge {
+    let mut challenge = challenge_for_publisher(publisher, nonce);
+    challenge.window = valid_window(issued_at, expires_at);
+    challenge
+}
+
+fn limits_for(
+    total: usize,
+    publisher: usize,
+    account: usize,
+    rate_window: u64,
+    rate_maximum: usize,
+) -> FreshnessLimits {
+    FreshnessLimits::new(
+        ChallengeLifetime::new(nonzero_u64(100)),
+        nonzero_usize(total),
+        nonzero_usize(publisher),
+        nonzero_usize(account),
+        nonzero_u64(rate_window),
+        nonzero_usize(rate_maximum),
+    )
+}
+
+fn limits_with_lifetime(seconds: u64) -> FreshnessLimits {
+    FreshnessLimits::new(
+        ChallengeLifetime::new(nonzero_u64(seconds)),
+        nonzero_usize(16),
+        nonzero_usize(16),
+        nonzero_usize(16),
+        nonzero_u64(60),
+        nonzero_usize(16),
+    )
+}
+
+fn snapshot(store: &ReferenceReplayStore) -> Snapshot {
+    match store.snapshot() {
+        Ok(snapshot) => snapshot,
+        Err(error) => panic!("available reference store did not snapshot: {error:?}"),
+    }
 }
 
 fn expected() -> ExpectedContext {
@@ -264,4 +320,673 @@ fn clock_rollback_returns_retry_without_allow() {
     let outcome = verify_research_structure(&request(challenge, 140), &guard);
     assert_eq!(outcome.decision, Decision::Retry);
     assert_eq!(outcome.reason, ReasonCode::AttestationUnavailable);
+}
+
+#[test]
+fn clock_rollback_and_restart_never_reset_security_state() {
+    let store = ReferenceReplayStore::available();
+    let challenge = challenge("example.game", [20; 32]);
+    let guard = FreshnessGuard::new(&store, limits());
+    assert_eq!(guard.register(UnixTime::new(150), &challenge), Ok(()));
+
+    let reopened = ReferenceReplayStore::reopen(snapshot(&store));
+    let reopened_guard = FreshnessGuard::new(&reopened, limits());
+    assert_eq!(
+        reopened_guard.claim(UnixTime::new(149), &challenge),
+        Err(FreshnessError::ClockRollback)
+    );
+    assert_eq!(reopened.high_water(), Ok(Some(UnixTime::new(150))));
+}
+
+#[test]
+fn consumed_state_survives_snapshot_and_reopen() {
+    let store = ReferenceReplayStore::available();
+    let challenge = challenge("example.game", [21; 32]);
+    let guard = FreshnessGuard::new(&store, limits());
+    assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
+    assert!(guard.claim(UnixTime::new(100), &challenge).is_ok());
+
+    let reopened = ReferenceReplayStore::reopen(snapshot(&store));
+    let reopened_guard = FreshnessGuard::new(&reopened, limits());
+    assert_eq!(
+        reopened_guard.claim(UnixTime::new(100), &challenge),
+        Err(FreshnessError::ReplayDetected)
+    );
+}
+
+#[test]
+fn issuance_rate_state_survives_snapshot_and_reopen() {
+    let store = ReferenceReplayStore::available();
+    let rate_limits = limits_for(8, 8, 8, 60, 2);
+    let guard = FreshnessGuard::new(&store, rate_limits);
+    for nonce in [42, 43] {
+        assert_eq!(
+            guard.register(UnixTime::new(100), &challenge("example.game", [nonce; 32]),),
+            Ok(())
+        );
+    }
+
+    let reopened = ReferenceReplayStore::reopen(snapshot(&store));
+    let reopened_guard = FreshnessGuard::new(&reopened, rate_limits);
+    assert_eq!(
+        reopened_guard.register(UnixTime::new(100), &challenge("example.game", [44; 32]),),
+        Err(FreshnessError::CapacityExceeded)
+    );
+}
+
+#[test]
+fn missing_or_corrupt_snapshot_fails_closed() {
+    let challenge = challenge("example.game", [22; 32]);
+    for store in [
+        ReferenceReplayStore::missing(),
+        ReferenceReplayStore::corrupt(),
+    ] {
+        let guard = FreshnessGuard::new(&store, limits());
+        assert_eq!(
+            guard.register(UnixTime::new(100), &challenge),
+            Err(FreshnessError::StateUnavailable)
+        );
+        assert_eq!(
+            guard.claim(UnixTime::new(100), &challenge),
+            Err(FreshnessError::StateUnavailable)
+        );
+        assert_eq!(
+            guard.purge_expired(UnixTime::new(200)),
+            Err(FreshnessError::StateUnavailable)
+        );
+    }
+}
+
+#[test]
+fn capacity_refuses_issuance_without_evicting_unexpired_records() {
+    let store = ReferenceReplayStore::available();
+    let guard = FreshnessGuard::new(&store, limits_for(2, 2, 1, 60, 2));
+    let first = challenge_for_publisher("publisher-one", [23; 32]);
+    let second = challenge_for_publisher("publisher-two", [24; 32]);
+    let rejected = challenge_for_publisher("publisher-three", [25; 32]);
+    let first_key = ReplayRegistration::from_challenge(&first).key().clone();
+    let second_key = ReplayRegistration::from_challenge(&second).key().clone();
+
+    assert_eq!(guard.register(UnixTime::new(100), &first), Ok(()));
+    assert_eq!(guard.register(UnixTime::new(100), &second), Ok(()));
+    assert_eq!(
+        guard.register(UnixTime::new(100), &rejected),
+        Err(FreshnessError::CapacityExceeded)
+    );
+    assert_eq!(store.record_count(), Ok(2));
+    assert_eq!(store.contains(&first_key), Ok(true));
+    assert_eq!(store.contains(&second_key), Ok(true));
+}
+
+#[test]
+fn consumed_unexpired_records_still_count_toward_capacity() {
+    let store = ReferenceReplayStore::available();
+    let guard = FreshnessGuard::new(&store, limits_for(2, 2, 1, 60, 2));
+    let first = challenge("example.game", [45; 32]);
+    let second = challenge("example.game", [46; 32]);
+    assert_eq!(guard.register(UnixTime::new(100), &first), Ok(()));
+    assert!(guard.claim(UnixTime::new(100), &first).is_ok());
+    assert_eq!(
+        guard.register(UnixTime::new(100), &second),
+        Err(FreshnessError::CapacityExceeded)
+    );
+}
+
+#[test]
+fn registration_reclaims_only_records_expired_at_the_time_floor() {
+    let store = ReferenceReplayStore::available();
+    let guard = FreshnessGuard::new(&store, limits_for(1, 1, 1, 60, 2));
+    let old = challenge("example.game", [47; 32]);
+    let replacement = challenge_with_window("example.publisher", [48; 32], 200, 300);
+    let old_key = ReplayRegistration::from_challenge(&old).key().clone();
+    let replacement_key = ReplayRegistration::from_challenge(&replacement)
+        .key()
+        .clone();
+
+    assert_eq!(guard.register(UnixTime::new(100), &old), Ok(()));
+    assert_eq!(guard.register(UnixTime::new(200), &replacement), Ok(()));
+    assert_eq!(store.contains(&old_key), Ok(false));
+    assert_eq!(store.contains(&replacement_key), Ok(true));
+}
+
+#[test]
+fn registration_rechecks_active_lifetime_policy_atomically() {
+    let challenge = challenge("example.game", [41; 32]);
+
+    let exact_store = ReferenceReplayStore::available();
+    let exact_guard = FreshnessGuard::new(&exact_store, limits_with_lifetime(100));
+    assert_eq!(exact_guard.register(UnixTime::new(100), &challenge), Ok(()));
+
+    let over_store = ReferenceReplayStore::available();
+    let over_guard = FreshnessGuard::new(&over_store, limits_with_lifetime(99));
+    assert_eq!(
+        over_guard.register(UnixTime::new(100), &challenge),
+        Err(FreshnessError::LifetimeExceeded)
+    );
+    assert_eq!(over_store.record_count(), Ok(0));
+}
+
+#[test]
+fn publisher_account_and_rate_limits_accept_limit_and_reject_one_over() {
+    let publisher_store = ReferenceReplayStore::available();
+    let publisher_guard = FreshnessGuard::new(&publisher_store, limits_for(4, 2, 2, 60, 4));
+    for (account, nonce) in [("account-one", 26), ("account-two", 27)] {
+        let challenge = challenge_for_account("publisher-one", account, [nonce; 32]);
+        assert_eq!(
+            publisher_guard.register(UnixTime::new(100), &challenge),
+            Ok(())
+        );
+    }
+    let publisher_over = challenge_for_account("publisher-one", "account-three", [28; 32]);
+    assert_eq!(
+        publisher_guard.register(UnixTime::new(100), &publisher_over),
+        Err(FreshnessError::CapacityExceeded)
+    );
+
+    let account_store = ReferenceReplayStore::available();
+    let account_guard = FreshnessGuard::new(&account_store, limits_for(4, 4, 2, 60, 4));
+    for nonce in [29, 30] {
+        let challenge = challenge("example.game", [nonce; 32]);
+        assert_eq!(
+            account_guard.register(UnixTime::new(100), &challenge),
+            Ok(())
+        );
+    }
+    assert_eq!(
+        account_guard.register(UnixTime::new(100), &challenge("example.game", [31; 32]),),
+        Err(FreshnessError::CapacityExceeded)
+    );
+
+    let rate_store = ReferenceReplayStore::available();
+    let rate_guard = FreshnessGuard::new(&rate_store, limits_for(4, 4, 4, 60, 2));
+    for nonce in [32, 33] {
+        let challenge = challenge("example.game", [nonce; 32]);
+        assert_eq!(rate_guard.register(UnixTime::new(100), &challenge), Ok(()));
+    }
+    let after_limit = challenge("example.game", [34; 32]);
+    assert_eq!(
+        rate_guard.register(UnixTime::new(100), &after_limit),
+        Err(FreshnessError::CapacityExceeded)
+    );
+    assert_eq!(
+        rate_guard.register(UnixTime::new(160), &after_limit),
+        Ok(())
+    );
+}
+
+#[test]
+fn gc_keeps_record_before_expiry_and_removes_it_at_expiry() {
+    let store = ReferenceReplayStore::available();
+    let challenge = challenge("example.game", [35; 32]);
+    let key = ReplayRegistration::from_challenge(&challenge).key().clone();
+    let guard = FreshnessGuard::new(&store, limits());
+    assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
+    assert!(guard.claim(UnixTime::new(100), &challenge).is_ok());
+    assert_eq!(guard.purge_expired(UnixTime::new(199)), Ok(0));
+    assert_eq!(store.contains(&key), Ok(true));
+    assert_eq!(guard.purge_expired(UnixTime::new(200)), Ok(1));
+    assert_eq!(store.contains(&key), Ok(false));
+    assert_eq!(
+        guard.claim(UnixTime::new(200), &challenge),
+        Err(FreshnessError::Expired)
+    );
+}
+
+#[test]
+fn rollback_or_unavailable_state_blocks_gc() {
+    let store = ReferenceReplayStore::available();
+    let challenge = challenge("example.game", [36; 32]);
+    let key = ReplayRegistration::from_challenge(&challenge).key().clone();
+    let guard = FreshnessGuard::new(&store, limits());
+    assert_eq!(guard.register(UnixTime::new(150), &challenge), Ok(()));
+    assert_eq!(
+        guard.purge_expired(UnixTime::new(149)),
+        Err(FreshnessError::ClockRollback)
+    );
+    assert_eq!(store.contains(&key), Ok(true));
+
+    let unavailable = ReferenceReplayStore::unavailable();
+    let unavailable_guard = FreshnessGuard::new(&unavailable, limits());
+    assert_eq!(
+        unavailable_guard.purge_expired(UnixTime::new(200)),
+        Err(FreshnessError::StateUnavailable)
+    );
+}
+
+#[test]
+fn missing_registration_fails_closed() {
+    let store = ReferenceReplayStore::available();
+    let guard = FreshnessGuard::new(&store, limits());
+    assert_eq!(
+        guard.claim(UnixTime::new(100), &challenge("example.game", [37; 32]),),
+        Err(FreshnessError::StateUnavailable)
+    );
+}
+
+#[test]
+fn replay_identity_ignores_every_context_and_window_field() {
+    let baseline = challenge("example.game", [38; 32]);
+    let mut variants = Vec::new();
+
+    let mut changed = baseline.clone();
+    changed.game_id = identifier::<GameId>("other.game");
+    variants.push(changed);
+    let mut changed = baseline.clone();
+    changed.build_id = identifier::<BuildId>("build-2");
+    variants.push(changed);
+    let mut changed = baseline.clone();
+    changed.account_scope = identifier::<AccountScope>("account-2");
+    variants.push(changed);
+    let mut changed = baseline.clone();
+    changed.match_id = identifier::<MatchId>("match-2");
+    variants.push(changed);
+    let mut changed = baseline.clone();
+    changed.policy_id = identifier::<PolicyId>("research-v1");
+    variants.push(changed);
+    let mut changed = baseline.clone();
+    changed.policy_version = PolicyVersion::new(2);
+    variants.push(changed);
+    variants.push(challenge_with_window(
+        "example.publisher",
+        [38; 32],
+        100,
+        199,
+    ));
+
+    for changed in variants {
+        let store = ReferenceReplayStore::available();
+        let guard = FreshnessGuard::new(&store, limits());
+        assert_eq!(guard.register(UnixTime::new(100), &baseline), Ok(()));
+        assert!(guard.claim(UnixTime::new(100), &baseline).is_ok());
+        assert_eq!(
+            guard.claim(UnixTime::new(100), &changed),
+            Err(FreshnessError::ReplayDetected)
+        );
+    }
+}
+
+#[test]
+fn replay_debug_and_errors_redact_nonce_account_and_match() {
+    let challenge = challenge("example.game", [39; 32]);
+    let debug = format!("{:?}", ReplayRegistration::from_challenge(&challenge));
+    assert!(debug.contains("Nonce([REDACTED; 32])"));
+    assert!(!debug.contains("account-1"));
+    assert!(!debug.contains("match-1"));
+    assert!(!debug.contains("39, 39"));
+
+    let store = ReferenceReplayStore::available();
+    let guard = FreshnessGuard::new(&store, limits());
+    assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
+    let snapshot_debug = format!("{:?}", snapshot(&store));
+    assert!(snapshot_debug.contains("Nonce([REDACTED; 32])"));
+    assert!(!snapshot_debug.contains("account-1"));
+    assert!(!snapshot_debug.contains("match-1"));
+    assert!(!snapshot_debug.contains("39, 39"));
+
+    for error in [
+        FreshnessError::ReplayDetected,
+        FreshnessError::ClockRollback,
+        FreshnessError::StateUnavailable,
+        FreshnessError::CapacityExceeded,
+    ] {
+        let rendered = format!("{error:?} {error}");
+        assert!(!rendered.contains("account-1"));
+        assert!(!rendered.contains("match-1"));
+        assert!(!rendered.contains("39, 39"));
+    }
+}
+
+#[test]
+fn two_concurrent_claims_produce_exactly_one_capability() {
+    let store = ReferenceReplayStore::available();
+    let challenge = challenge("example.game", [40; 32]);
+    let guard = FreshnessGuard::new(&store, limits());
+    assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
+
+    let barrier = Arc::new(Barrier::new(3));
+    let mut handles = Vec::new();
+    for _ in 0..2 {
+        let thread_store = store.clone();
+        let thread_challenge = challenge.clone();
+        let thread_barrier = Arc::clone(&barrier);
+        handles.push(thread::spawn(move || {
+            let thread_guard = FreshnessGuard::new(&thread_store, limits());
+            thread_barrier.wait();
+            thread_guard.claim(UnixTime::new(100), &thread_challenge)
+        }));
+    }
+    barrier.wait();
+
+    let mut successes = 0;
+    let mut replays = 0;
+    for handle in handles {
+        match handle.join() {
+            Ok(Ok(_capability)) => successes += 1,
+            Ok(Err(FreshnessError::ReplayDetected)) => replays += 1,
+            Ok(Err(error)) => panic!("unexpected claim error: {error:?}"),
+            Err(_) => panic!("claim worker panicked"),
+        }
+    }
+    assert_eq!(successes, 1);
+    assert_eq!(replays, 1);
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Action {
+    Register { publisher: u8, nonce: u8 },
+    Claim { publisher: u8, nonce: u8 },
+    Advance(u8),
+    Rollback(u8),
+    Restart,
+    SetUnavailable,
+    Purge,
+}
+
+struct Lcg(u64);
+
+impl Lcg {
+    fn next(&mut self) -> u64 {
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        self.0
+    }
+
+    fn action(&mut self) -> Action {
+        let value = self.next();
+        let bytes = value.to_le_bytes();
+        let publisher = bytes[1];
+        let nonce = bytes[2];
+        let delta = (bytes[3] % 16) + 1;
+        match value % 7 {
+            0 => Action::Register { publisher, nonce },
+            1 => Action::Claim { publisher, nonce },
+            2 => Action::Advance(delta),
+            3 => Action::Rollback(delta),
+            4 => Action::Restart,
+            5 => Action::SetUnavailable,
+            6 => Action::Purge,
+            _ => unreachable!("modulo seven is exhaustive"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OracleRecordState {
+    Issued,
+    Consumed,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OracleRecord {
+    issued_at: u64,
+    expires_at: u64,
+    state: OracleRecordState,
+}
+
+type OracleKey = (u8, u8);
+
+#[derive(Debug, Clone)]
+struct OracleState {
+    available: bool,
+    high_water: Option<u64>,
+    records: HashMap<OracleKey, OracleRecord>,
+    challenges: HashMap<OracleKey, PublisherChallenge>,
+    replay_keys: HashMap<OracleKey, ReplayKey>,
+    windows: HashMap<OracleKey, (u64, u64)>,
+    ever_issued: HashSet<OracleKey>,
+    capability_counts: HashMap<OracleKey, usize>,
+}
+
+impl OracleState {
+    fn initialized() -> Self {
+        Self {
+            available: true,
+            high_water: None,
+            records: HashMap::new(),
+            challenges: HashMap::new(),
+            replay_keys: HashMap::new(),
+            windows: HashMap::new(),
+            ever_issued: HashSet::new(),
+            capability_counts: HashMap::new(),
+        }
+    }
+}
+
+fn property_expiry(now: u64) -> u64 {
+    match now.checked_add(100) {
+        Some(value) => value,
+        None => panic!("property clock overflowed"),
+    }
+}
+
+fn property_challenge(publisher: u8, nonce: u8, now: u64) -> PublisherChallenge {
+    let publisher_id = format!("publisher-{publisher}");
+    let account = format!("account-{publisher}");
+    let expires_at = property_expiry(now);
+    let mut challenge = challenge_for_account(&publisher_id, &account, [nonce; 32]);
+    challenge.window = valid_window(now, expires_at);
+    challenge
+}
+
+fn next_unused_property_key(
+    publisher: u8,
+    nonce: u8,
+    ever_issued: &HashSet<OracleKey>,
+) -> OracleKey {
+    let start = u16::from_be_bytes([publisher, nonce]);
+    let mut candidate = start;
+    loop {
+        let bytes = candidate.to_be_bytes();
+        let key = (bytes[0], bytes[1]);
+        if !ever_issued.contains(&key) {
+            return key;
+        }
+        candidate = candidate.wrapping_add(1);
+        if candidate == start {
+            panic!("property replay-key space exhausted");
+        }
+    }
+}
+
+#[test]
+fn deterministic_arbitrary_sequences_preserve_freshness_invariants() {
+    let property_limits = limits_for(65_535, 65_535, 65_535, 1, 65_535);
+
+    for seed in 0_u64..64 {
+        let mut rng = Lcg(seed);
+        let mut now = 100_u64;
+        let mut store = ReferenceReplayStore::available();
+        let mut oracle = OracleState::initialized();
+        let mut last_good_store = snapshot(&store);
+        let mut last_good_oracle = oracle.clone();
+
+        for action_index in 0_usize..256 {
+            let action = rng.action();
+            let prior_high_water = oracle.high_water;
+
+            match action {
+                Action::Register { publisher, nonce } => {
+                    let key = next_unused_property_key(publisher, nonce, &oracle.ever_issued);
+                    let challenge = property_challenge(key.0, key.1, now);
+                    let expires_at = property_expiry(now);
+                    let actual = FreshnessGuard::new(&store, property_limits)
+                        .register(UnixTime::new(now), &challenge);
+                    let expected = if !oracle.available {
+                        Err(FreshnessError::StateUnavailable)
+                    } else if oracle.high_water.is_some_and(|high_water| now < high_water) {
+                        Err(FreshnessError::ClockRollback)
+                    } else {
+                        oracle.high_water = Some(now);
+                        oracle.records.retain(|_, record| record.expires_at > now);
+                        oracle.records.insert(
+                            key,
+                            OracleRecord {
+                                issued_at: now,
+                                expires_at,
+                                state: OracleRecordState::Issued,
+                            },
+                        );
+                        oracle.challenges.insert(key, challenge.clone());
+                        oracle.replay_keys.insert(
+                            key,
+                            ReplayRegistration::from_challenge(&challenge).key().clone(),
+                        );
+                        oracle.windows.insert(key, (now, expires_at));
+                        oracle.ever_issued.insert(key);
+                        Ok(())
+                    };
+                    assert_eq!(
+                        actual, expected,
+                        "seed={seed} action={action_index} {action:?}"
+                    );
+                }
+                Action::Claim { publisher, nonce } => {
+                    let key = (publisher, nonce);
+                    let challenge = match oracle.challenges.get(&key) {
+                        Some(challenge) => challenge.clone(),
+                        None => property_challenge(publisher, nonce, now),
+                    };
+                    let (issued_at, expires_at) = match oracle.windows.get(&key) {
+                        Some(window) => *window,
+                        None => (now, property_expiry(now)),
+                    };
+                    let actual = FreshnessGuard::new(&store, property_limits)
+                        .claim(UnixTime::new(now), &challenge)
+                        .map(|_capability| ());
+                    let expected = if now < issued_at {
+                        Err(FreshnessError::NotYetValid)
+                    } else if now >= expires_at {
+                        Err(FreshnessError::Expired)
+                    } else if !oracle.available {
+                        Err(FreshnessError::StateUnavailable)
+                    } else if oracle.high_water.is_some_and(|high_water| now < high_water) {
+                        Err(FreshnessError::ClockRollback)
+                    } else {
+                        oracle.high_water = Some(now);
+                        match oracle.records.get_mut(&key) {
+                            None => Err(FreshnessError::StateUnavailable),
+                            Some(record) if record.state == OracleRecordState::Consumed => {
+                                Err(FreshnessError::ReplayDetected)
+                            }
+                            Some(record) => {
+                                record.state = OracleRecordState::Consumed;
+                                let count = oracle.capability_counts.entry(key).or_insert(0);
+                                *count = match count.checked_add(1) {
+                                    Some(value) => value,
+                                    None => panic!("capability count overflowed"),
+                                };
+                                assert!(
+                                    now >= record.issued_at && now < record.expires_at,
+                                    "capability outside window: seed={seed} action={action_index}"
+                                );
+                                Ok(())
+                            }
+                        }
+                    };
+                    assert_eq!(
+                        actual, expected,
+                        "seed={seed} action={action_index} {action:?}"
+                    );
+                }
+                Action::Advance(delta) => {
+                    now = match now.checked_add(u64::from(delta)) {
+                        Some(value) => value,
+                        None => {
+                            panic!("property clock overflow: seed={seed} action={action_index}")
+                        }
+                    };
+                }
+                Action::Rollback(delta) => {
+                    now = now.saturating_sub(u64::from(delta));
+                }
+                Action::Restart => {
+                    if oracle.available {
+                        store = ReferenceReplayStore::reopen(snapshot(&store));
+                    } else {
+                        store = ReferenceReplayStore::reopen(last_good_store.clone());
+                        oracle = last_good_oracle.clone();
+                    }
+                }
+                Action::SetUnavailable => {
+                    assert_eq!(
+                        store.set_unavailable(),
+                        Ok(()),
+                        "seed={seed} action={action_index} {action:?}"
+                    );
+                    oracle.available = false;
+                }
+                Action::Purge => {
+                    let actual = FreshnessGuard::new(&store, property_limits)
+                        .purge_expired(UnixTime::new(now));
+                    let expected = if !oracle.available {
+                        Err(FreshnessError::StateUnavailable)
+                    } else if oracle.high_water.is_some_and(|high_water| now < high_water) {
+                        Err(FreshnessError::ClockRollback)
+                    } else {
+                        oracle.high_water = Some(now);
+                        let before = oracle.records.len();
+                        oracle.records.retain(|_, record| record.expires_at > now);
+                        match before.checked_sub(oracle.records.len()) {
+                            Some(removed) => Ok(removed),
+                            None => panic!("purge increased oracle record count"),
+                        }
+                    };
+                    assert_eq!(
+                        actual, expected,
+                        "seed={seed} action={action_index} {action:?}"
+                    );
+                }
+            }
+
+            if let (Some(previous), Some(current)) = (prior_high_water, oracle.high_water) {
+                assert!(
+                    current >= previous,
+                    "high-water decreased: seed={seed} action={action_index} {action:?}"
+                );
+            }
+            for (key, count) in &oracle.capability_counts {
+                assert!(
+                    *count <= 1,
+                    "multiple capabilities for {key:?}: seed={seed} action={action_index}"
+                );
+            }
+
+            match store.snapshot() {
+                Ok(store_snapshot) => {
+                    assert!(oracle.available, "store available while oracle unavailable");
+                    assert_eq!(
+                        store.high_water(),
+                        Ok(oracle.high_water.map(UnixTime::new)),
+                        "high-water mismatch: seed={seed} action={action_index}"
+                    );
+                    assert_eq!(
+                        store.record_count(),
+                        Ok(oracle.records.len()),
+                        "record-count mismatch: seed={seed} action={action_index}"
+                    );
+                    for key in oracle.records.keys() {
+                        let replay_key = match oracle.replay_keys.get(key) {
+                            Some(replay_key) => replay_key,
+                            None => panic!("missing replay key for oracle record {key:?}"),
+                        };
+                        assert_eq!(
+                            store.contains(replay_key),
+                            Ok(true),
+                            "unexpired record disappeared: seed={seed} action={action_index} key={key:?}"
+                        );
+                    }
+                    last_good_store = store_snapshot;
+                    last_good_oracle = oracle.clone();
+                }
+                Err(FreshnessError::StateUnavailable) => {
+                    assert!(!oracle.available, "available oracle had unavailable store");
+                }
+                Err(error) => {
+                    panic!("unexpected snapshot error {error:?}: seed={seed} action={action_index}")
+                }
+            }
+        }
+    }
 }
