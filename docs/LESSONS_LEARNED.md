@@ -58,3 +58,49 @@ Do not use this document to expose embargoed vulnerability details before coordi
   implementation plan, architecture, invariants, threat model, and test
   strategy now distinguish raw consumption from crate-internal capability
   creation.
+
+## 2026-08-25 — Triage metadata must follow the implemented review surface
+
+- **Context:** Final M1-008 standards review after implementation.
+- **Mistaken assumption:** The original architecture/protocol/cryptography
+  taxonomy and concise research issue remained sufficient after the issue
+  gained model code, verifier acceptance logic, and privacy-sensitive durable
+  binding state.
+- **Observed failure:** The canonical issue omitted model/verifier areas,
+  trusted-computing-base/privacy risks, and seven mandatory AI-task sections,
+  so required specialist routing and the complete implementation contract were
+  absent at needs-review.
+- **Security or quality impact:** A verifier/retention change could reach human
+  review without the specialist signals and explicit privacy/dependency/test
+  obligations required by repository policy.
+- **Permanent regression test:** Repository metadata/live-state verification
+  requires the exact expanded label set, while final review checks the issue's
+  threats, interfaces, positive/negative/property tests, privacy, and dependency
+  sections.
+- **New prevention rule:** Reconcile issue taxonomy and mandatory task sections
+  against the actual changed files/trust boundaries before implementation and
+  again before advancing to needs-review.
+- **Documentation or agent-policy updates:** M1-008's canonical issue source and
+  executable live-sync plan now carry the complete review surface; targeted TCB
+  and privacy reviews are required before DCO freeze.
+
+## 2026-08-25 — Error text must describe every producing state
+
+- **Context:** Final M1-008 standards review of freshness diagnostics.
+- **Mistaken assumption:** `ReplayDetected` meant the stored nonce had already
+  been consumed.
+- **Observed failure:** Duplicate registration and altered binding/window claims
+  also returned `ReplayDetected` while the legitimate record remained issued,
+  but `Display` stated that it was already consumed.
+- **Security or quality impact:** Operator diagnostics contradicted actual state
+  and could mislead incident triage even though authorization still failed
+  closed.
+- **Permanent regression test:**
+  `replay_error_describes_registered_or_consumed_state` pins accurate,
+  context-free wording.
+- **New prevention rule:** Before finalizing a shared error message, enumerate
+  every branch that produces the variant and describe their common condition
+  without claiming a narrower internal state.
+- **Documentation or agent-policy updates:** `FreshnessError::ReplayDetected`
+  documentation and display wording now both cover registered or consumed
+  nonce state without including replay identity or binding values.

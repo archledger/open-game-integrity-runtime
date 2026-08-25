@@ -1,5 +1,5 @@
 # M1-008: Specify challenge freshness, expiry, and clock behavior
-<!-- labels: type: architecture,area: protocol,risk: cryptography,status: needs-review -->
+<!-- labels: type: architecture,area: model,area: protocol,area: verifier,risk: cryptography,risk: privacy,risk: trusted-computing-base,status: needs-review -->
 <!-- milestone: M1 Domain Model -->
 
 ## Problem
@@ -34,12 +34,62 @@ Nonce uniqueness alone does not define challenge freshness. The protocol needs e
 - RFC 7519 JWT time boundaries: https://www.rfc-editor.org/rfc/rfc7519.html
 - Rust `SystemTime` behavior: https://doc.rust-lang.org/std/time/struct.SystemTime.html
 
-## Required tests
+## Threats addressed
 
-- Before issue time, exact issue time, just before expiry, exact expiry, and after expiry.
-- Duplicate nonce in the same and different game contexts.
-- Verifier restart and cache-unavailable behavior fail closed.
-- Extreme future and overflow-prone timestamps are rejected.
+- Replay of one publisher nonce in the same or altered context.
+- Check-then-consume races that yield two freshness capabilities.
+- Restart, state loss, or clock rollback that makes an old challenge reusable.
+- Capacity pressure that evicts a live replay record or degrades to stateless validation.
+- Nonce/account/match disclosure through errors, debug output, or retained state.
+
+## Required interfaces
+
+- Dependency-free `UnixTime`, `ChallengeLifetime`, `ChallengeWindow`,
+  `FreshnessLimits`, and `FreshnessError` model types.
+- Synchronous database-neutral `ReplayStore` operations for durable time-floor
+  observation, atomic registration, atomic claim, and expiry-only GC.
+- `FreshnessGuard` with a public raw claim that returns no capability; only the
+  ordered verifier context/claim transition constructs `FreshnessChecked`.
+- Non-disciplinary mapping of replay to deny and operational state/time/capacity
+  failure to retry/unavailable protected mode.
+
+## Positive tests
+
+- Exact issuance and the final second before expiry reach later appraisal.
+- First registered claim succeeds exactly once.
+- Identical nonce bytes under different authenticated publishers are independent.
+- Issued/consumed records, issuance-rate state, and high-water survive reopen.
+- Every configured lifetime/capacity/rate boundary is accepted at its exact limit.
+
+## Negative tests
+
+- Before issue time, exact expiry, and after expiry reject.
+- Duplicate nonce in the same or altered game/build/account/match/policy/window rejects without consuming the legitimate issued record.
+- Missing, unavailable, corrupt, poisoned, rolled-back, or full state fails closed.
+- Two concurrent claims cannot both succeed; unexpired records are never evicted.
+- Extreme-future and overflow-prone timestamps cannot authorize.
+- Raw claim cannot return or construct `FreshnessChecked`.
+
+## Fuzz/property tests
+
+- A fixed-seed independent oracle checks 16,384 register/claim/time/rollback/restart/unavailable/GC operations.
+- Fourteen isolated mutations cover both window edges, key scope, atomicity,
+  restart, rollback, capacity, claim release/error side effects, time
+  observation, capability bypass, arithmetic, and privacy redaction.
+- M1-008 adds no parser or wire format, so it adds no fuzz target; parser fuzzing
+  remains required when challenge serialization is selected.
+
+## Privacy impact
+
+Replay state retains `AccountScope` and `MatchId` only as exact authorization
+binding through challenge expiry. They, nonce bytes, and raw bindings remain
+redacted from errors/debug/logging; state is not telemetry and no evidence
+claim or cross-publisher identifier is added.
+
+## Dependency impact
+
+Standard library only. No manifest/lockfile change and no database, clock, RNG,
+serialization, async, cryptographic, or unsafe-code dependency is selected.
 
 ## Acceptance criteria
 

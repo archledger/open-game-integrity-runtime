@@ -211,7 +211,7 @@ impl fmt::Display for FreshnessError {
             Self::LifetimeExceeded => "challenge lifetime exceeds policy",
             Self::NotYetValid => "challenge is not yet valid",
             Self::Expired => "challenge is expired",
-            Self::ReplayDetected => "challenge nonce was already consumed",
+            Self::ReplayDetected => "challenge nonce is already registered or consumed",
             Self::ClockRollback => "authoritative clock moved backward",
             Self::StateUnavailable => "freshness state is unavailable",
             Self::CapacityExceeded => "freshness state capacity is exhausted",

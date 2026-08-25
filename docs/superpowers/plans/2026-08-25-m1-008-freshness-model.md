@@ -2231,18 +2231,26 @@ Expected: no raw time fields, dependency changes, or sensitive patterns.
 
 Provide exact base/head plus issue #8 and the approved spec. Require attacks against boundary widening, context-scoped replay, check-then-consume races, restart clearing, rollback acceptance, capacity eviction, claim release, error/privacy leakage, and tests that pass under those mutations. Fix every Critical/Important finding test-first and rerun this task from Step 1 until independent verdict is Yes.
 
+The final issue taxonomy includes `risk: trusted-computing-base` and
+`risk: privacy`; obtain explicit fresh-context TCB and privacy specialist Yes
+verdicts on the final head before Step 4.
+
 - [ ] **Step 4: Synchronize live issue #8**
 
 After all issue-source edits are committed:
 
 ```bash
-issue_source_commit=$(git log -1 --format=%H -- planning/issues/008-freshness-model.md)
-test "$(gh api repos/archledger/open-game-integrity-runtime/issues/8 --template '{{.body}}' | sha256sum | cut -d' ' -f1)" = "$(git show "$issue_source_commit^:planning/issues/008-freshness-model.md" | sha256sum | cut -d' ' -f1)"
+issue_ready_commit=eec0150ee8b522e6adff93146077f0bb100efaaf
+test "$(gh api repos/archledger/open-game-integrity-runtime/issues/8 --template '{{.body}}' | sha256sum | cut -d' ' -f1)" = "$(git show "$issue_ready_commit:planning/issues/008-freshness-model.md" | sha256sum | cut -d' ' -f1)"
 test "$(gh issue view 8 --repo archledger/open-game-integrity-runtime --json labels --jq '[.labels[].name] | sort | join("|")')" = 'area: protocol|risk: cryptography|status: ready|type: architecture'
 gh issue edit 8 --repo archledger/open-game-integrity-runtime \
   --body-file planning/issues/008-freshness-model.md \
   --remove-label 'status: ready' \
-  --add-label 'status: needs-review'
+  --add-label 'status: needs-review' \
+  --add-label 'area: model' \
+  --add-label 'area: verifier' \
+  --add-label 'risk: privacy' \
+  --add-label 'risk: trusted-computing-base'
 gh api repos/archledger/open-game-integrity-runtime/issues/8 --template '{{.body}}' | sha256sum
 sha256sum planning/issues/008-freshness-model.md
 gh issue view 8 --repo archledger/open-game-integrity-runtime \
@@ -2251,7 +2259,8 @@ gh issue view 8 --repo archledger/open-game-integrity-runtime \
 ```
 
 Expected: hashes match; the issue is open in `M1 Domain Model` with exactly
-`area: protocol`, `risk: cryptography`, `status: needs-review`, and
+`area: model`, `area: protocol`, `area: verifier`, `risk: cryptography`,
+`risk: privacy`, `risk: trusted-computing-base`, `status: needs-review`, and
 `type: architecture`.
 
 If post-write verification fails, restore the verified ready-state body and
@@ -2259,8 +2268,12 @@ label before stopping:
 
 ```bash
 gh issue edit 8 --repo archledger/open-game-integrity-runtime \
-  --body-file <(git show "$issue_source_commit^:planning/issues/008-freshness-model.md") \
+  --body-file <(git show "$issue_ready_commit:planning/issues/008-freshness-model.md") \
   --remove-label 'status: needs-review' \
+  --remove-label 'area: model' \
+  --remove-label 'area: verifier' \
+  --remove-label 'risk: privacy' \
+  --remove-label 'risk: trusted-computing-base' \
   --add-label 'status: ready'
 ```
 
@@ -2355,6 +2368,13 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
    Mutation-probe a premature `Consumed` write before binding/window validation.
    Record both confirmed defects in `docs/LESSONS_LEARNED.md` as required by the
    AI development policy.
+7. Final standards review requires issue taxonomy for model/verifier,
+   trusted-computing-base, and privacy scope plus all mandatory AI-task sections.
+   Obtain targeted TCB and privacy specialist Yes verdicts before live sync.
+8. `ReplayDetected` is produced for duplicate registration, altered binding/
+   window, and consumed state. Its context-free `Display` must describe
+   "already registered or consumed"; pin that wording in a model regression and
+   record the diagnostic defect in `docs/LESSONS_LEARNED.md`.
 
 ---
 

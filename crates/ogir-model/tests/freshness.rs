@@ -131,3 +131,11 @@ fn publisher_challenge_contains_one_validated_window() {
     assert_eq!(challenge.window.issued_at(), UnixTime::new(100));
     assert_eq!(challenge.window.expires_at(), UnixTime::new(200));
 }
+
+#[test]
+fn replay_error_describes_registered_or_consumed_state() {
+    assert_eq!(
+        FreshnessError::ReplayDetected.to_string(),
+        "challenge nonce is already registered or consumed"
+    );
+}
