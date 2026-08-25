@@ -3,6 +3,12 @@
 #![forbid(unsafe_code)]
 //! Deterministic verifier interfaces. Cryptographic verification is not implemented yet.
 
+mod freshness;
+
+pub use freshness::{
+    ChallengeBinding, FreshnessChecked, FreshnessGuard, ReplayKey, ReplayRegistration, ReplayStore,
+};
+
 use ogir_model::{
     AccountScope, BuildId, Decision, FreshnessError, GameId, MatchId, PolicyId, PolicyVersion,
     PublisherChallenge, PublisherId, ReasonCode, UnixTime,
