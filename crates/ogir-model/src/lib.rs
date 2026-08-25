@@ -29,6 +29,12 @@
 use std::error::Error;
 use std::fmt;
 
+mod freshness;
+
+pub use freshness::{
+    ChallengeLifetime, ChallengeWindow, FreshnessError, FreshnessLimits, UnixTime,
+};
+
 /// Protocol nonce length in bytes.
 pub const NONCE_LENGTH: usize = 32;
 /// Maximum length for externally visible identifiers.
