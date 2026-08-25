@@ -67,7 +67,7 @@ pub fn verify_research_structure<Store: ReplayStore + ?Sized>(
     request: &VerificationRequest,
     freshness: &FreshnessGuard<'_, Store>,
 ) -> VerificationOutcome {
-    if let Err(error) = request.challenge.window.evaluate(request.now) {
+    if let Err(error) = freshness.evaluate_window(request.now, &request.challenge) {
         return freshness_failure(error);
     }
 
@@ -85,7 +85,7 @@ pub fn verify_research_structure<Store: ReplayStore + ?Sized>(
         return denied(ReasonCode::SessionBindingMismatch);
     }
 
-    let _freshness_checked = match freshness.claim(request.now, &request.challenge) {
+    let _freshness_checked = match freshness.claim_checked(request.now, &request.challenge) {
         Ok(capability) => capability,
         Err(error) => return freshness_failure(error),
     };

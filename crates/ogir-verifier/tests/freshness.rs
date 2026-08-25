@@ -229,18 +229,25 @@ fn first_fresh_request_reaches_fail_closed_evidence_result() {
 
 #[test]
 fn verifier_maps_strict_window_failures_before_claim() {
-    for (now, expected_reason) in [
-        (99, ReasonCode::NotYetValid),
-        (200, ReasonCode::Expired),
-        (201, ReasonCode::Expired),
-    ] {
+    let not_yet_store = ReferenceReplayStore::available();
+    let not_yet_guard = FreshnessGuard::new(&not_yet_store, limits());
+    let not_yet = verify_research_structure(
+        &request(challenge("example.game", [12; 32]), 99),
+        &not_yet_guard,
+    );
+    assert_eq!(not_yet.decision, Decision::Deny);
+    assert_eq!(not_yet.reason, ReasonCode::NotYetValid);
+    assert_eq!(not_yet_store.high_water(), Ok(Some(UnixTime::new(99))));
+
+    for now in [200, 201] {
         let store = ReferenceReplayStore::available();
         let guard = FreshnessGuard::new(&store, limits());
         let challenge = challenge("example.game", [12; 32]);
         assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
         let outcome = verify_research_structure(&request(challenge, now), &guard);
         assert_eq!(outcome.decision, Decision::Deny);
-        assert_eq!(outcome.reason, expected_reason);
+        assert_eq!(outcome.reason, ReasonCode::Expired);
+        assert_eq!(store.high_water(), Ok(Some(UnixTime::new(now))));
     }
 }
 
@@ -320,6 +327,25 @@ fn clock_rollback_returns_retry_without_allow() {
     let outcome = verify_research_structure(&request(challenge, 140), &guard);
     assert_eq!(outcome.decision, Decision::Retry);
     assert_eq!(outcome.reason, ReasonCode::AttestationUnavailable);
+}
+
+#[test]
+fn rejected_future_time_persists_floor_across_restart() {
+    let store = ReferenceReplayStore::available();
+    let challenge = challenge("example.game", [13; 32]);
+    let guard = FreshnessGuard::new(&store, limits());
+    assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
+
+    let expired = verify_research_structure(&request(challenge.clone(), 300), &guard);
+    assert_eq!(expired.decision, Decision::Deny);
+    assert_eq!(expired.reason, ReasonCode::Expired);
+    assert_eq!(store.high_water(), Ok(Some(UnixTime::new(300))));
+
+    let reopened = ReferenceReplayStore::reopen(snapshot(&store));
+    let reopened_guard = FreshnessGuard::new(&reopened, limits());
+    let rolled_back = verify_research_structure(&request(challenge, 150), &reopened_guard);
+    assert_eq!(rolled_back.decision, Decision::Retry);
+    assert_eq!(rolled_back.reason, ReasonCode::AttestationUnavailable);
 }
 
 #[test]
@@ -853,35 +879,36 @@ fn deterministic_arbitrary_sequences_preserve_freshness_invariants() {
                         None => (now, property_expiry(now)),
                     };
                     let actual = FreshnessGuard::new(&store, property_limits)
-                        .claim(UnixTime::new(now), &challenge)
-                        .map(|_capability| ());
-                    let expected = if now < issued_at {
-                        Err(FreshnessError::NotYetValid)
-                    } else if now >= expires_at {
-                        Err(FreshnessError::Expired)
-                    } else if !oracle.available {
+                        .claim(UnixTime::new(now), &challenge);
+                    let expected = if !oracle.available {
                         Err(FreshnessError::StateUnavailable)
                     } else if oracle.high_water.is_some_and(|high_water| now < high_water) {
                         Err(FreshnessError::ClockRollback)
                     } else {
                         oracle.high_water = Some(now);
-                        match oracle.records.get_mut(&key) {
-                            None => Err(FreshnessError::StateUnavailable),
-                            Some(record) if record.state == OracleRecordState::Consumed => {
-                                Err(FreshnessError::ReplayDetected)
-                            }
-                            Some(record) => {
-                                record.state = OracleRecordState::Consumed;
-                                let count = oracle.capability_counts.entry(key).or_insert(0);
-                                *count = match count.checked_add(1) {
-                                    Some(value) => value,
-                                    None => panic!("capability count overflowed"),
-                                };
-                                assert!(
-                                    now >= record.issued_at && now < record.expires_at,
-                                    "capability outside window: seed={seed} action={action_index}"
-                                );
-                                Ok(())
+                        if now < issued_at {
+                            Err(FreshnessError::NotYetValid)
+                        } else if now >= expires_at {
+                            Err(FreshnessError::Expired)
+                        } else {
+                            match oracle.records.get_mut(&key) {
+                                None => Err(FreshnessError::StateUnavailable),
+                                Some(record) if record.state == OracleRecordState::Consumed => {
+                                    Err(FreshnessError::ReplayDetected)
+                                }
+                                Some(record) => {
+                                    record.state = OracleRecordState::Consumed;
+                                    let count = oracle.capability_counts.entry(key).or_insert(0);
+                                    *count = match count.checked_add(1) {
+                                        Some(value) => value,
+                                        None => panic!("capability count overflowed"),
+                                    };
+                                    assert!(
+                                        now >= record.issued_at && now < record.expires_at,
+                                        "capability outside window: seed={seed} action={action_index}"
+                                    );
+                                    Ok(())
+                                }
                             }
                         }
                     };

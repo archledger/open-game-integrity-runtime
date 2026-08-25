@@ -97,11 +97,13 @@ restart, corrupt the time floor, exhaust capacity, or make the store
 unavailable so an old or duplicate challenge is accepted.
 
 Required response: Persist the authoritative-time high-water mark and every
-unexpired issued/consumed record; reject lower time; perform register/claim/GC
-as atomic durable operations; retain records through expiry; enforce explicit
-finite limits without live eviction; and fail closed without a stateless
-fallback. Operational failures map to retry/unavailable protected mode and are
-not cheating evidence.
+unexpired issued/consumed record; durably check/advance the floor before window
+evaluation so rejection cannot hide a future observation; reject lower time;
+perform register/claim/GC as atomic durable operations; construct the freshness
+capability only inside the ordered verifier context/claim path; retain records
+through expiry; enforce explicit finite limits without live eviction; and fail
+closed without a stateless fallback. Operational failures map to
+retry/unavailable protected mode and are not cheating evidence.
 
 ### Cuckoo or relay
 

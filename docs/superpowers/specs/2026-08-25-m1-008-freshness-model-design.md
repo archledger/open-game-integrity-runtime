@@ -208,7 +208,8 @@ Verification order is:
 
 1. bounded parse and structural checks;
 2. publisher authentication of the challenge;
-3. strict window evaluation using authoritative verifier time;
+3. durably check/advance the authoritative-time high-water mark, then apply
+   strict window evaluation;
 4. exact comparison with relying-party publisher/game/build/account/match/
    policy context;
 5. one atomic replay-store operation that rechecks the time floor, record
@@ -220,9 +221,13 @@ later transient error leaves the nonce consumed. The caller obtains a new
 challenge to retry. This permits a holder to burn its own challenge, but it
 prevents ambiguous replay after a crash or unknown downstream result.
 
-The atomic claim returns a `FreshnessChecked` capability with private fields.
-No public constructor exists. Later verifier-state work may advance toward an
-allow result only while holding this capability.
+Only the ordered verifier transition constructs a `FreshnessChecked`
+capability with private fields after context comparison and atomic claim. The
+public raw claim operation consumes state but returns no capability, so a
+downstream caller cannot bypass verifier ordering. Later verifier-state work
+may advance toward an allow result only while holding this capability; the
+current research scaffold still performs no publisher authentication and never
+returns `Allow`.
 
 ## Persistent state, restart, and rollback
 
@@ -230,8 +235,10 @@ Replay records and the authoritative-time high-water mark are security state
 and must survive process restart. A protected-mode process cannot issue or
 verify challenges until the store is opened and its integrity is validated.
 
-Every issuance, claim, and garbage-collection transaction observes a current
-authoritative `UnixTime`:
+Every authoritative issuance or verification observation, claim, and
+garbage-collection transaction observes a current authoritative `UnixTime`.
+The time-floor check/advance commits before later window rejection, so an
+expired or not-yet-valid request cannot hide a forward observation:
 
 - `now >= persisted_high_water`: operation may proceed and the high-water mark
   advances to `now` if needed;
@@ -319,8 +326,9 @@ Owns one deep freshness boundary:
 - the private-constructor `FreshnessChecked` capability.
 
 The M1 implementation defines a synchronous, database-neutral `ReplayStore`
-contract consistent with the current deterministic verifier. It exposes atomic
-register, claim, and expiry-GC operations. It must not expose separate
+contract consistent with the current deterministic verifier. It exposes
+atomic time-floor observation, register, claim, and expiry-GC operations. It
+must not expose separate
 `contains` and `mark_consumed` operations, select a database, or add a database
 dependency. A future async service may adapt this boundary without moving
 freshness rules into transport code.
@@ -379,6 +387,8 @@ M1-010 owns the final verifier outcome/state-machine representation.
 
 - client time is absent from the freshness API;
 - equal/high verifier time advances or retains the high-water mark;
+- a rejected future-time window still persists its observation, including
+  across snapshot/reopen, and a later lower time fails rollback;
 - any lower verifier time fails `ClockRollback`;
 - a forward jump may create an operational outage but never restores expired
   validity; and
@@ -398,6 +408,7 @@ M1-010 owns the final verifier outcome/state-machine representation.
 ### Atomicity, restart, and failure
 
 - two simultaneous claims produce exactly one `FreshnessChecked` capability;
+- the public raw claim API cannot return or construct `FreshnessChecked`;
 - crash after claim leaves the replay record consumed;
 - snapshot/reopen preserves issued and consumed records plus the time floor;
 - restart with unavailable, missing, or corrupt state cannot issue or verify;

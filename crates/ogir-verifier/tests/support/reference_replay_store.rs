@@ -153,6 +153,10 @@ fn purge_expired_records(state: &mut State) -> Result<usize, FreshnessError> {
 }
 
 impl ReplayStore for ReferenceReplayStore {
+    fn observe_time(&self, now: UnixTime) -> Result<(), FreshnessError> {
+        self.with_state(|state| observe_time(state, now))
+    }
+
     fn register(
         &self,
         now: UnixTime,

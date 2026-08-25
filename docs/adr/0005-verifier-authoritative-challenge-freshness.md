@@ -85,11 +85,14 @@ version are stored as the binding and never become key components.
 Issued and consumed records plus the authoritative-time high-water mark are
 durable security state. Registration atomically rechecks time/window/lifetime,
 uniqueness, total/publisher/account capacity, and per-publisher issuance rate
-before insertion. Verification checks the strict window and relying-party
-context, then one atomic operation rechecks the time floor, window, binding,
-and state before irreversibly changing `Issued` to `Consumed`. Expensive
-evidence and policy appraisal follows the claim; later denial or failure never
-releases it.
+before insertion. Verification durably checks/advances the time floor before
+strict window evaluation, so even a rejected future observation survives
+restart. It then checks relying-party context, and one atomic operation
+rechecks the time floor, window, binding, and state before irreversibly changing
+`Issued` to `Consumed`. Only this ordered crate-internal transition constructs
+`FreshnessChecked`; the public raw claim returns no capability. Expensive
+evidence and policy appraisal follows the claim, and later denial or failure
+never releases it.
 
 Records may be deleted only when the persisted high-water mark is at or after
 their expiry. Missing, corrupt, unavailable, rolled-back, or capacity-exhausted
@@ -98,9 +101,10 @@ Every lifetime/capacity/account/rate limit is explicit, finite, nonzero, and
 has no permissive default.
 
 `ogir-model` owns pure time/window/limit/error types. The synchronous,
-database-neutral `ogir-verifier` boundary exposes only atomic register, claim,
-and expiry-GC operations. No production storage adapter, clock source, random
-generator, serializer, async runtime, or cryptographic primitive is selected.
+database-neutral `ogir-verifier` boundary exposes atomic time observation,
+register, claim, and expiry-GC operations without separate replay check/consume
+calls. No production storage adapter, clock source, random generator,
+serializer, async runtime, or cryptographic primitive is selected.
 
 ## Consequences
 
@@ -151,9 +155,11 @@ All affected Rust, documentation, and attack-lab paths remain Apache-2.0.
 - Equal/reversed/excessive/near-`u64::MAX` construction tests.
 - Same-key same/different-context replay and cross-publisher independence.
 - Missing/unavailable/corrupt state, restart, and high-water rollback tests.
+- Rejected future-time persistence followed by post-restart rollback.
 - Exact lifetime, total, publisher, account, and rate-window limits.
 - Issued/consumed retention and exact-expiry garbage collection.
 - Two simultaneous claims yielding exactly one capability.
+- Compile-fail proof that raw public claim cannot yield `FreshnessChecked`.
 - 16,384 fixed-seed operations checked against an independent literal oracle.
 - Redaction tests for registration, snapshot, nonce, account, match, and errors.
 - Isolated mutations for both window edges, key scope, claim atomicity, restart,

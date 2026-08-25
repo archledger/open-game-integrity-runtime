@@ -2326,6 +2326,33 @@ Verify remote main still equals `883f8adb4672b8748365b6a254ff9626d8773399` and n
 
 ---
 
+## Adversarial Review Amendments
+
+The fresh-context review of `883f8ad..2eb6b9a` returned No with two Important
+findings. The following amendments supersede earlier Task 3–5 snippets:
+
+1. `ReplayStore` also exposes atomic durable `observe_time(now)`. The verifier
+   calls `FreshnessGuard::evaluate_window`, which commits/checks the time floor
+   before strict window evaluation. `register` and raw `claim` call their store
+   operations directly because those operations already observe time first.
+2. A rejected future-time request must leave its time floor durable across
+   snapshot/reopen; any later lower request is `ClockRollback`/retry rather than
+   becoming eligible again.
+3. Public `FreshnessGuard::claim` returns `Result<(), FreshnessError>` and can
+   consume but cannot mint `FreshnessChecked`. Only crate-private
+   `claim_checked`, called after the verifier's context comparison, constructs
+   the capability. The research verifier still lacks publisher authentication
+   and therefore never authorizes.
+4. The arbitrary-sequence oracle applies unavailable → rollback → durable
+   high-water advance → window → replay-state precedence, independently of the
+   implementation.
+5. Add a failing future-observation/restart regression and a compile-fail raw
+   capability-bypass test before the fixes. Mutation-probe both fixes, rerun the
+   complete matrix, and obtain a fresh independent Yes verdict before live
+   issue sync or DCO freeze.
+
+---
+
 ## Approved-Spec Coverage Map
 
 | Approved design obligation | Implemented/proved in |
@@ -2340,7 +2367,7 @@ Verify remote main still equals `883f8adb4672b8748365b6a254ff9626d8773399` and n
 | Privacy-minimal state and redacted errors/debug output | Task 3 private fields/getters; Task 5 redaction test; Task 6 ADR/threat/invariant text |
 | Non-disciplinary external error mapping and no `Allow` | Tasks 2 and 4 mapping/tests; Task 7 acceptance review |
 | Database-neutral synchronous boundary; no new dependency or unsafe/async/serialization choice | Task 3 `ReplayStore`; Task 6 dependency ADR; Task 7 manifest and full-matrix scans |
-| Deterministic arbitrary sequences and mutation resistance | Task 5 fixed-seed oracle and eleven isolated mutation probes |
+| Deterministic arbitrary sequences and mutation resistance | Task 5 fixed-seed oracle and thirteen isolated mutation probes after review remediation |
 | Repository governance, issue state, independent review, DCO, and publication | Tasks 0, 6, and 7 |
 
 ---

@@ -49,7 +49,8 @@ At least two independent decoders/verifiers must agree on valid and invalid conf
 Freshness tests must fail when either time edge is widened, replay identity is
 scoped by context, check and consume are split, restart clears records, clock
 rollback is accepted, capacity evicts a live record, a successful claim remains
-issued, checked arithmetic wraps, or nonce/account/match debug output is
+issued, future-time rejection skips durable observation, raw claim returns a
+capability, checked arithmetic wraps, or nonce/account/match debug output is
 unredacted. Each mutation runs in a disposable worktree; mutated source never
 returns to the primary branch.
 
@@ -66,7 +67,8 @@ returns to the primary branch.
 - challenge first/repeat claim, same-key changed context, and cross-publisher
   nonce independence;
 - replay-state restart, rollback, missing/corrupt/unavailable failure,
-  capacity/rate limits, exact-expiry GC, and simultaneous atomic claims.
+  rejected-future observation persistence, capacity/rate limits, exact-expiry
+  GC, simultaneous atomic claims, and raw-claim capability exclusion.
 
 ### Bare-metal tests
 

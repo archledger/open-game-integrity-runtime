@@ -143,6 +143,15 @@ impl ReplayRegistration {
 /// method must update/check its authoritative-time high-water mark and complete
 /// its state transition atomically and durably before returning success.
 pub trait ReplayStore: fmt::Debug + Send + Sync {
+    /// Atomically checks and advances the authoritative-time high-water mark.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FreshnessError::ClockRollback`] when `now` is below the
+    /// persisted floor, or [`FreshnessError::StateUnavailable`] when the floor
+    /// cannot be trusted or durably advanced.
+    fn observe_time(&self, now: UnixTime) -> Result<(), FreshnessError>;
+
     /// Atomically validates limits and registers an issued challenge.
     ///
     /// # Errors
@@ -177,12 +186,28 @@ pub trait ReplayStore: fmt::Debug + Send + Sync {
     fn purge_expired(&self, now: UnixTime) -> Result<usize, FreshnessError>;
 }
 
-/// Proof that one registered challenge passed the atomic freshness claim.
+/// Proof that one registered challenge passed the ordered verifier freshness
+/// and relying-party-context gates plus the atomic claim.
 ///
 /// ```compile_fail
 /// use ogir_verifier::FreshnessChecked;
 ///
 /// let forged = FreshnessChecked { _private: () };
+/// ```
+///
+/// A raw store claim cannot be used as a capability-producing shortcut:
+///
+/// ```compile_fail
+/// use ogir_model::{FreshnessError, PublisherChallenge, UnixTime};
+/// use ogir_verifier::{FreshnessChecked, FreshnessGuard, ReplayStore};
+///
+/// fn bypass<S: ReplayStore + ?Sized>(
+///     guard: &FreshnessGuard<'_, S>,
+///     now: UnixTime,
+///     challenge: &PublisherChallenge,
+/// ) -> Result<FreshnessChecked, FreshnessError> {
+///     guard.claim(now, challenge)
+/// }
 /// ```
 #[must_use]
 #[derive(Debug, PartialEq, Eq)]
@@ -204,6 +229,21 @@ impl<'store, Store: ReplayStore + ?Sized> FreshnessGuard<'store, Store> {
         Self { store, limits }
     }
 
+    /// Durably observes authoritative time, then evaluates a challenge window.
+    ///
+    /// # Errors
+    ///
+    /// Propagates time-floor/store failures before returning strict window
+    /// errors. The observed time remains persisted even when the window fails.
+    pub fn evaluate_window(
+        &self,
+        now: UnixTime,
+        challenge: &PublisherChallenge,
+    ) -> Result<(), FreshnessError> {
+        self.store.observe_time(now)?;
+        challenge.window.evaluate(now)
+    }
+
     /// Validates and atomically registers a challenge before it is returned.
     ///
     /// # Errors
@@ -215,7 +255,6 @@ impl<'store, Store: ReplayStore + ?Sized> FreshnessGuard<'store, Store> {
         now: UnixTime,
         challenge: &PublisherChallenge,
     ) -> Result<(), FreshnessError> {
-        challenge.window.evaluate(now)?;
         self.store.register(
             now,
             &ReplayRegistration::from_challenge(challenge),
@@ -223,20 +262,28 @@ impl<'store, Store: ReplayStore + ?Sized> FreshnessGuard<'store, Store> {
         )
     }
 
-    /// Atomically claims a registered challenge and returns unforgeable proof.
+    /// Atomically consumes a registered challenge without creating a capability.
     ///
     /// # Errors
     ///
     /// Propagates strict window failures and every error returned by
-    /// [`ReplayStore::claim`]. No error path creates a capability.
+    /// [`ReplayStore::claim`]. External callers cannot use this raw operation
+    /// to mint [`FreshnessChecked`].
     pub fn claim(
         &self,
         now: UnixTime,
         challenge: &PublisherChallenge,
-    ) -> Result<FreshnessChecked, FreshnessError> {
-        challenge.window.evaluate(now)?;
+    ) -> Result<(), FreshnessError> {
         self.store
-            .claim(now, &ReplayRegistration::from_challenge(challenge))?;
+            .claim(now, &ReplayRegistration::from_challenge(challenge))
+    }
+
+    pub(crate) fn claim_checked(
+        &self,
+        now: UnixTime,
+        challenge: &PublisherChallenge,
+    ) -> Result<FreshnessChecked, FreshnessError> {
+        self.claim(now, challenge)?;
         Ok(FreshnessChecked { _private: () })
     }
 

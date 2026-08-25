@@ -178,7 +178,8 @@ The service must expose no arbitrary file, process, kernel, BPF, TPM, or command
 
 Responsibilities:
 
-- obtain publisher-authoritative time rather than trusting a client clock;
+- durably check/advance publisher-authoritative time before evaluating a
+  window, even when that window will be rejected;
 - require strict challenge validity at `issued_at <= now < expires_at` with no
   acceptance leeway;
 - atomically claim `(PublisherId, Nonce)` single-use state after exact context
@@ -230,9 +231,13 @@ sequenceDiagram
     A->>T: Collect platform/session evidence and quote
     T-->>A: Quote + measured state
     A->>V: Evidence bundle over authenticated channel
-    V->>V: Authenticate challenge + check strict window/context
+    V->>V: Authenticate challenge
+    V->>F: Durably observe/check authoritative time
+    F-->>V: Time floor committed
+    V->>V: Check strict window + relying-party context
     V->>F: Atomically claim publisher nonce
-    F-->>V: Irreversible freshness capability
+    F-->>V: Irreversible claim committed
+    V->>V: Construct internal FreshnessChecked capability
     V->>V: Verify quote, policy, references, revocations
     V-->>S: Signed short-lived Attestation Result
     S-->>G: Session permit
@@ -286,13 +291,17 @@ signing or returning the challenge. The publisher verifier supplies the only
 authoritative evaluation time. Game, bridge, attester, and local-client clocks
 or nonce caches are untrusted.
 
-`ChallengeWindow` is a validated half-open interval
+Every authoritative time observation durably checks/advances the persisted
+floor before strict window evaluation; later window rejection does not erase a
+future observation. `ChallengeWindow` is a validated half-open interval
 `[issued_at, expires_at)` with zero acceptance leeway. Replay identity is
 exactly `(PublisherId, Nonce)`; game, build, account, match, policy, and policy
 version remain stored binding fields. After challenge authentication and exact
 relying-party context comparison, one atomic store operation rechecks the
 persisted time floor, window, binding, and issued state before irreversibly
-changing it to consumed. Appraisal failure never releases the claim.
+changing it to consumed. Only that ordered crate-internal verifier path creates
+`FreshnessChecked`; public raw claim consumes state but yields no capability.
+Appraisal failure never releases the claim.
 
 Issued and consumed records plus the verifier-time high-water mark survive
 restart. Records are GC-eligible only when the time floor reaches expiry.

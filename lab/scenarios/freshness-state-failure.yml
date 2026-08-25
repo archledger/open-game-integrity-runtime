@@ -7,8 +7,9 @@ assets:
 preconditions:
   - the verifier persisted a challenge record and authoritative-time high-water mark
 steps:
-  - present a lower authoritative time or make replay state missing, corrupt, or unavailable
-  - submit an otherwise in-window challenge
+  - submit an expired challenge while authoritative time is far in the future so the observation must persist
+  - restart, present a lower authoritative time, or make replay state missing, corrupt, or unavailable
+  - submit a challenge that would otherwise be in-window at the lower time
 expected:
   decision: retry
   reason: attestation-unavailable
