@@ -4,7 +4,11 @@
 
 ### Unit tests
 
-Pure domain invariants, length checks, state transitions, policy evaluation, redaction, expiry, identifier validation, and fail-closed behavior.
+Pure domain invariants, length checks, state transitions, policy evaluation,
+redaction, expiry, identifier validation, and fail-closed behavior. Challenge
+freshness includes checked window construction and literal before/exact issue,
+last-second, exact/after expiry, excessive lifetime, and near-`u64::MAX`
+boundaries.
 
 ### Property tests
 
@@ -16,7 +20,10 @@ Examples:
 - malformed or unknown critical input never produces `Allow`;
 - encode/decode round trips preserve one canonical representation;
 - renewal never lowers the active policy;
-- disclosure output is a subset of the profile's allowed claims.
+- disclosure output is a subset of the profile's allowed claims;
+- fixed-seed register/claim/time-advance/rollback/restart/unavailable/GC
+  sequences preserve at most one freshness capability, monotonic persisted
+  time, no success from unavailable state, and no loss of an unexpired record.
 
 ### Fuzz tests
 
@@ -37,6 +44,15 @@ Every untrusted parser:
 
 At least two independent decoders/verifiers must agree on valid and invalid conformance vectors before the signed production format is frozen.
 
+### Mutation tests
+
+Freshness tests must fail when either time edge is widened, replay identity is
+scoped by context, check and consume are split, restart clears records, clock
+rollback is accepted, capacity evicts a live record, a successful claim remains
+issued, checked arithmetic wraps, or nonce/account/match debug output is
+unredacted. Each mutation runs in a disposable worktree; mutated source never
+returns to the primary branch.
+
 ### Integration tests
 
 - mock attester -> verifier -> permit;
@@ -46,7 +62,11 @@ At least two independent decoders/verifiers must agree on valid and invalid conf
 - measured boot evidence replay;
 - session-key proof of possession;
 - renewal and expiry;
-- revocation propagation.
+- revocation propagation;
+- challenge first/repeat claim, same-key changed context, and cross-publisher
+  nonce independence;
+- replay-state restart, rollback, missing/corrupt/unavailable failure,
+  capacity/rate limits, exact-expiry GC, and simultaneous atomic claims.
 
 ### Bare-metal tests
 
@@ -81,6 +101,11 @@ invariants:
 residual_risk:
   - full-session relay requires a separate scenario
 ```
+
+Challenge replay and freshness-state failure are represented by
+`OGIR-PROTOCOL-REPLAY-002` and `OGIR-PROTOCOL-FRESHNESS-001`. Both require
+non-disciplinary deny/retry outcomes and preserve the publisher-authoritative
+time and durable single-use nonce invariants.
 
 ## Release gates by maturity
 

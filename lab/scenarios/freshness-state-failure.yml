@@ -1,0 +1,20 @@
+id: OGIR-PROTOCOL-FRESHNESS-001
+title: Roll back time or remove verifier freshness state
+attacker: A5
+assets:
+  - protected_session_authorization
+  - verifier_freshness_state
+preconditions:
+  - the verifier persisted a challenge record and authoritative-time high-water mark
+steps:
+  - present a lower authoritative time or make replay state missing, corrupt, or unavailable
+  - submit an otherwise in-window challenge
+expected:
+  decision: retry
+  reason: attestation-unavailable
+  automatic_ban: false
+invariants:
+  - clock rollback never extends validity
+  - unavailable security state never falls back to stateless validation
+residual_risk:
+  - a forward clock jump can cause a fail-closed protected-mode outage

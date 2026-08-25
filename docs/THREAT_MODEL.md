@@ -10,6 +10,7 @@ OGIR does not claim to detect every cheat or resist every unknown vulnerability.
 
 - ranked or otherwise protected session authorization;
 - publisher verifier signing keys;
+- publisher challenge replay records and authoritative-time high-water state;
 - TPM attestation identities and ephemeral session keys;
 - integrity-policy definitions and reference values;
 - agent, bridge, verifier, and update supply chain;
@@ -42,7 +43,9 @@ The first hardware-backed prototype assumes:
 - the accepted boot measurement chain is meaningful and verifiable;
 - the publisher verifier and its keys are not compromised;
 - the accepted local agent and kernel have no successful unknown exploit during the session;
-- server time and challenge generation are trustworthy;
+- the publisher challenge issuer's nonce generation, authoritative clock, and
+  durable replay adapter satisfy
+  [ADR-0005](adr/0005-verifier-authoritative-challenge-freshness.md);
 - the game server correctly validates the permit and session-key proof;
 - the user understands that a protected mode may reject custom or unrecognized platform profiles.
 
@@ -59,6 +62,7 @@ These assumptions must become narrower as evidence and enforcement mature.
 7. Verifier -> matchmaking relying party.
 8. Source repository -> CI and release artifacts.
 9. Publisher policy -> local privacy and enforcement constraints.
+10. Publisher issuer/verifier -> authoritative clock and durable replay store.
 
 Every boundary requires explicit authentication, authorization, framing, limits, error handling, and adversarial tests.
 
@@ -80,7 +84,24 @@ Required response: Derive caller and process-tree identity through kernel creden
 
 Threat: Reuse a prior challenge, quote, evidence bundle, permit, or renewal.
 
-Required response: Single-use nonces, strict expiry, match/account/session binding, verifier replay cache, and transcript-bound session-key proof.
+Required response: Strict zero-leeway challenge windows; a replay key exactly
+`(PublisherId, Nonce)` across all contexts; durable issued/consumed records; an
+atomic irreversible claim after exact binding checks; and transcript-bound
+session-key proof for later permits. Same-key reuse returns a non-disciplinary
+replay result.
+
+### Freshness-state rollback or loss
+
+Threat: Roll back publisher time, race two claims, clear replay state on
+restart, corrupt the time floor, exhaust capacity, or make the store
+unavailable so an old or duplicate challenge is accepted.
+
+Required response: Persist the authoritative-time high-water mark and every
+unexpired issued/consumed record; reject lower time; perform register/claim/GC
+as atomic durable operations; retain records through expiry; enforce explicit
+finite limits without live eviction; and fail closed without a stateless
+fallback. Operational failures map to retry/unavailable protected mode and are
+not cheating evidence.
 
 ### Cuckoo or relay
 
@@ -152,6 +173,8 @@ Required response: structured non-disciplinary outcome classes and separation of
 - dynamic/JIT code that cannot be fully represented by file measurement alone;
 - incomplete IMA or enforcement policies that omit a relevant object or interface;
 - compromised publisher infrastructure;
+- replay-store/clock outage or a forward time jump causing fail-closed
+  protected-mode unavailability;
 - social engineering and account abuse.
 
 ## 8. Threat-to-test rule

@@ -2023,6 +2023,7 @@ empty, and both focused suites pass.
 - Create: `lab/scenarios/challenge-replay.yml`
 - Create: `lab/scenarios/freshness-state-failure.yml`
 - Modify: `planning/issues/008-freshness-model.md` from `status: ready` to `status: needs-review` after deterministic evidence exists
+- Modify: `docs/superpowers/plans/2026-08-25-m1-008-freshness-model.md` only to keep executable gate commands correct
 
 **Interfaces:**
 - Consumes: completed behavior and verified tests from Tasks 1-5.
@@ -2158,12 +2159,13 @@ source workflow label from `status: ready` to `status: needs-review`:
 - [ ] **Step 4: Run documentation gates**
 
 ```bash
+git add docs/adr/0005-verifier-authoritative-challenge-freshness.md docs/adr/index.md docs/SECURITY_INVARIANTS.md docs/ARCHITECTURE.md docs/THREAT_MODEL.md docs/TEST_STRATEGY.md lab/scenarios/challenge-replay.yml lab/scenarios/freshness-state-failure.yml planning/issues/008-freshness-model.md docs/superpowers/plans/2026-08-25-m1-008-freshness-model.md
 ./scripts/test-adr-index.sh
 ./scripts/check-adr-index.sh
 ./scripts/test-repository-metadata.sh
 ./scripts/check-repository-metadata.sh
 RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps
-rg -n 'TBD|TODO|FIXME|PLACEHOLDER' docs/adr/0005-verifier-authoritative-challenge-freshness.md docs/SECURITY_INVARIANTS.md docs/ARCHITECTURE.md docs/THREAT_MODEL.md docs/TEST_STRATEGY.md
+if rg -n 'TBD|TODO|FIXME|PLACEHOLDER' docs/adr/0005-verifier-authoritative-challenge-freshness.md docs/SECURITY_INVARIANTS.md docs/ARCHITECTURE.md docs/THREAT_MODEL.md docs/TEST_STRATEGY.md; then exit 1; fi
 python3 -c 'import pathlib, yaml; required={"id","title","attacker","assets","preconditions","steps","expected","invariants","residual_risk"}; [(required <= set(yaml.safe_load(path.read_text()))) or (_ for _ in ()).throw(SystemExit(f"missing attack-scenario key: {path}")) for path in pathlib.Path("lab/scenarios").glob("*.yml")]'
 git diff --check
 ```
@@ -2173,7 +2175,7 @@ Expected: ADR tests/check pass, rustdoc exits 0, placeholder search returns no m
 - [ ] **Step 5: Commit documentation**
 
 ```bash
-git add docs/adr/0005-verifier-authoritative-challenge-freshness.md docs/adr/index.md docs/SECURITY_INVARIANTS.md docs/ARCHITECTURE.md docs/THREAT_MODEL.md docs/TEST_STRATEGY.md lab/scenarios/challenge-replay.yml lab/scenarios/freshness-state-failure.yml planning/issues/008-freshness-model.md
+git add docs/adr/0005-verifier-authoritative-challenge-freshness.md docs/adr/index.md docs/SECURITY_INVARIANTS.md docs/ARCHITECTURE.md docs/THREAT_MODEL.md docs/TEST_STRATEGY.md lab/scenarios/challenge-replay.yml lab/scenarios/freshness-state-failure.yml planning/issues/008-freshness-model.md docs/superpowers/plans/2026-08-25-m1-008-freshness-model.md
 git diff --cached --check
 git commit -m "docs: record challenge freshness decision"
 ```
