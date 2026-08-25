@@ -136,6 +136,16 @@ printf '%s\n' '# SPDX-License-Identifier: Apache-2.0' >"${fixture}/src/example.c
 git -C "${fixture}" add src/example.c
 expect_fail "C with shell comment prefix" "src/example.c: invalid SPDX license header"
 
+make_fixture line-comment-with-block-closer
+printf '%s\n' '// SPDX-License-Identifier: Apache-2.0 */' >"${fixture}/src/lib.rs"
+git -C "${fixture}" add src/lib.rs
+expect_fail "line comment with block closer" "src/lib.rs: invalid SPDX license header"
+
+make_fixture unclosed-block-comment
+printf '%s\n' '/* SPDX-License-Identifier: Apache-2.0' >"${fixture}/src/example.c"
+git -C "${fixture}" add src/example.c
+expect_fail "unclosed block comment" "src/example.c: invalid SPDX license header"
+
 make_fixture spdx-decoy
 printf '%s\n' 'const char *license = "SPDX-License-Identifier: LGPL-2.1-or-later";' >"${fixture}/wine/example.c"
 git -C "${fixture}" add wine/example.c

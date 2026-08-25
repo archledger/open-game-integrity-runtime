@@ -65,17 +65,18 @@ validate_spdx_header() {
   local actual_license
   local line_number
   local declaration_search_pattern
-  local declaration_pattern
+  local shell_declaration_pattern='^[[:space:]]*#[[:space:]]*SPDX-License-Identifier:[[:space:]]*([^[:space:]]+)[[:space:]]*$'
+  local line_declaration_pattern='^[[:space:]]*//[[:space:]]*SPDX-License-Identifier:[[:space:]]*([^[:space:]]+)[[:space:]]*$'
+  local block_declaration_pattern='^[[:space:]]*/\*[[:space:]]*SPDX-License-Identifier:[[:space:]]*([^[:space:]]+)[[:space:]]*\*/[[:space:]]*$'
+  local declaration_valid=0
   local -a declarations=()
 
   case "${source_kind}" in
     shell)
       declaration_search_pattern='^[[:space:]]*#[[:space:]]*SPDX-License-Identifier:'
-      declaration_pattern='^[[:space:]]*#[[:space:]]*SPDX-License-Identifier:[[:space:]]*([^[:space:]]+)[[:space:]]*$'
       ;;
     rust | c)
       declaration_search_pattern='^[[:space:]]*(//|/\*)[[:space:]]*SPDX-License-Identifier:'
-      declaration_pattern='^[[:space:]]*(//|/\*)[[:space:]]*SPDX-License-Identifier:[[:space:]]*([^[:space:]]+)([[:space:]]*\*/)?[[:space:]]*$'
       ;;
     *)
       printf '%s: unknown source kind: %s\n' "${path}" "${source_kind}" >&2
@@ -111,7 +112,25 @@ validate_spdx_header() {
   fi
 
   declaration_text="${declarations[0]#*:}"
-  if [[ ! "${declaration_text}" =~ ${declaration_pattern} ]]; then
+  case "${source_kind}" in
+    shell)
+      if [[ "${declaration_text}" =~ ${shell_declaration_pattern} ]]; then
+        actual_license="${BASH_REMATCH[1]}"
+        declaration_valid=1
+      fi
+      ;;
+    rust | c)
+      if [[ "${declaration_text}" =~ ${line_declaration_pattern} ]]; then
+        actual_license="${BASH_REMATCH[1]}"
+        declaration_valid=1
+      elif [[ "${declaration_text}" =~ ${block_declaration_pattern} ]]; then
+        actual_license="${BASH_REMATCH[1]}"
+        declaration_valid=1
+      fi
+      ;;
+  esac
+
+  if ((declaration_valid == 0)); then
     printf '%s: invalid SPDX license header\n' "${path}" >&2
     printf '%s: expected SPDX-License-Identifier: %s exactly once in the first 5 lines\n' \
       "${path}" "${expected_license}" >&2
@@ -119,11 +138,6 @@ validate_spdx_header() {
     return
   fi
 
-  if [[ "${source_kind}" == "shell" ]]; then
-    actual_license="${BASH_REMATCH[1]}"
-  else
-    actual_license="${BASH_REMATCH[2]}"
-  fi
   line_number="${declarations[0]%%:*}"
   if [[ "${actual_license}" != "${expected_license}" ]] || ((line_number > 5)); then
     printf '%s: invalid SPDX license header\n' "${path}" >&2
