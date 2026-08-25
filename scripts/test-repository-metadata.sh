@@ -73,6 +73,13 @@ printf '%s\n' "${generic_owner_marker}" >"${fixture}/README.md"
 git -C "${fixture}" add README.md
 expect_fail "generic repository owner marker" "unresolved repository identity marker"
 
+make_fixture staged-marker-hidden
+account_marker='YOUR-GITHUB-'"ACCOUNT"
+printf '%s\n' "${account_marker}" >"${fixture}/README.md"
+git -C "${fixture}" add README.md
+printf '%s\n' 'working tree hides the staged marker' >"${fixture}/README.md"
+expect_fail "staged marker hidden by worktree edit" "unresolved repository identity marker"
+
 make_fixture extensionless-shell
 printf '%s\n' '#!/usr/bin/env bash' 'echo release' >"${fixture}/scripts/release"
 chmod +x "${fixture}/scripts/release"

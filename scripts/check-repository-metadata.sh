@@ -27,7 +27,7 @@ status=0
 
 marker_status=0
 marker_matches="$(
-  git -C "${repository_root}" grep -n -F \
+  git -C "${repository_root}" grep --cached -n -F \
     -e "${account_marker}" \
     -e "${username_marker}" \
     -e "${generic_owner_marker}" \
