@@ -1,5 +1,5 @@
 # M0-006: Establish labels, milestones, and triage policy
-<!-- labels: type: documentation,area: supply-chain,status: ready -->
+<!-- labels: type: documentation,area: supply-chain,risk: trusted-computing-base,status: ready -->
 <!-- milestone: M0 Repository Foundation -->
 
 ## Problem

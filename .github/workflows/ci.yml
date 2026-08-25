@@ -35,6 +35,9 @@ jobs:
           ./scripts/test-adr-index.sh
           ./scripts/check-adr-index.sh
 
+      - name: Check GitHub bootstrap
+        run: ./scripts/test-bootstrap-github.sh
+
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.98.0 --profile minimal --component clippy,rustfmt
 

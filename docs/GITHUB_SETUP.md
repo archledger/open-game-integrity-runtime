@@ -270,6 +270,11 @@ release trust. Those controls require explicit review in the repository settings
 
 ## 10. Labels
 
+The canonical meanings, cardinality, ownership, and state transitions are in
+the [issue triage policy](TRIAGE_POLICY.md). GitHub's unprefixed default labels
+may remain for historical metadata but are not used for OGIR workflow state or
+security-risk decisions.
+
 Create these labels:
 
 ### Type
@@ -329,6 +334,10 @@ Avoid using severity labels for public untriaged vulnerability reports; those be
 
 ## 11. Milestones
 
+Milestones are roadmap scope/exit-gate groupings, not schedules or production
+promises. Keep every milestone free of a due date; see the
+[issue triage policy](TRIAGE_POLICY.md#milestones).
+
 Create GitHub milestones:
 
 ```text
@@ -365,6 +374,8 @@ Done with evidence
 ```
 
 “Done with evidence” means the issue links to tests and exact verification output, not merely a merged patch.
+The required closing evidence is defined in the
+[issue triage policy](TRIAGE_POLICY.md#done-with-evidence).
 
 ## 13. Initial pull-request workflow
 
