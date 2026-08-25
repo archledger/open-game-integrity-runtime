@@ -30,7 +30,7 @@
 
 ## File and Responsibility Map
 
-- Create `crates/ogir-model/src/freshness.rs`: pure time/window/limit/replay-key/binding types and `FreshnessError`.
+- Create `crates/ogir-model/src/freshness.rs`: pure time/window/limit types and `FreshnessError`.
 - Modify `crates/ogir-model/src/lib.rs`: expose freshness types and replace raw challenge timestamps with `ChallengeWindow`.
 - Create `crates/ogir-model/tests/freshness.rs`: independent literal boundary and overflow contracts.
 - Create `crates/ogir-verifier/src/freshness.rs`: `ReplayStore`, `FreshnessGuard`, replay registration, and private-constructor `FreshnessChecked`.
