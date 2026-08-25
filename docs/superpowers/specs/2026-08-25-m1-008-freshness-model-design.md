@@ -466,17 +466,14 @@ transition-window semantics that M1 does not need.
 
 ## Migration and sequencing
 
-1. PR #7 must merge and its exact tree must be verified on `main`.
-2. This research branch must rebase onto that verified main before an
-   implementation plan is executed.
-3. The implementation replaces the two raw challenge timestamp fields with a
+1. The M1-007 typed identifier model is a prerequisite. M1-008 implementation
+   begins only from a verified `main` descendant containing that model.
+2. The implementation replaces the two raw challenge timestamp fields with a
    typed `ChallengeWindow` and updates verifier call sites/tests.
-4. A new ADR, expected to be ADR-0005, records the nonce-first,
+3. A new ADR, expected to be ADR-0005, records the nonce-first,
    verifier-authoritative, durable replay decision and alternatives.
-5. Production storage/time adapters, numeric limits, and operational recovery
+4. Production storage/time adapters, numeric limits, and operational recovery
    remain separately reviewed follow-ups.
-
-No M1-008 code or PR is stacked on the unmerged M1-007 branch.
 
 ## Acceptance-criteria traceability
 
