@@ -13,7 +13,10 @@ if [[ -z "${repository}" ]]; then
 fi
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-existing_titles="$(gh issue list --repo "${repository}" --state all --limit 500 --json title --jq '.[].title')"
+existing_titles="$(
+  gh api --paginate "repos/${repository}/issues?state=all&per_page=100" \
+    --jq '.[] | select(.pull_request == null) | .title'
+)"
 
 for file in "${root}"/planning/issues/*.md; do
   title="$(sed -n '1s/^# //p' "${file}")"

@@ -33,7 +33,7 @@ fake_issue() {
 
   case "${operation}" in
     list)
-      cat "${state_root}/issues.txt"
+      fake_issue_list "${state_root}" "$@"
       ;;
     create)
       fake_issue_create "${state_root}" "$@"
@@ -44,6 +44,30 @@ fake_issue() {
       return 2
       ;;
   esac
+}
+
+fake_issue_list() {
+  local state_root="$1"
+  shift
+  local limit="500"
+
+  while (($# > 0)); do
+    case "$1" in
+      --repo | --state | --json | --jq)
+        shift 2
+        ;;
+      --limit)
+        limit="$2"
+        shift 2
+        ;;
+      *)
+        printf 'unsupported fake issue-list argument: %s\n' "$1" >&2
+        return 2
+        ;;
+    esac
+  done
+
+  sed -n "1,${limit}p" "${state_root}/issues.txt"
 }
 
 fake_issue_create() {
@@ -159,6 +183,7 @@ fake_api() {
   local method="GET"
   local endpoint=""
   local jq_filter=""
+  local paginate="false"
   local -a fields=()
 
   while (($# > 0)); do
@@ -168,6 +193,7 @@ fake_api() {
         shift 2
         ;;
       --paginate)
+        paginate="true"
         shift
         ;;
       --jq)
@@ -197,6 +223,14 @@ fake_api() {
         awk -F '\t' 'BEGIN { OFS = "\t" } { print $1, $2, $3, $4, $5 }' \
           "${state_root}/milestones.tsv"
       fi
+      ;;
+    GET:*/issues\?*)
+      if [[ "${paginate}" != "true" ||
+        "${jq_filter}" != '.[] | select(.pull_request == null) | .title' ]]; then
+        echo "issue API query must paginate and exclude pull requests" >&2
+        return 2
+      fi
+      cat "${state_root}/issues.txt"
       ;;
     POST:*/milestones)
       fake_create_milestone "${state_root}" "${fields[@]}"
@@ -328,6 +362,21 @@ expected_milestones=(
   "M11 Publisher Pilot"
   "M12 Production Candidate"
 )
+expected_milestone_descriptions=(
+  "Create a public, reviewable project where unsafe process choices are difficult from the first commit. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Define what OGIR means before deciding how bytes are encoded or which libraries implement it. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Prove challenge, evidence, verifier, permit, and session-key binding without involving TPM complexity. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Replace the mock attester with real TPM-backed freshness and key possession while keeping the rest of the system backend-agnostic. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Prove one narrow, documented Linux platform profile rather than claiming generic Linux trust. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Allow a Windows sample game under stock Proton to invoke OGIR without trusting Windows-provided identity fields. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Make the integration experience credible for a game studio while retaining publisher control. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Bind the attestation report to the actual live game process tree before enforcing restrictions. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Add only the minimum game-scoped controls needed for a clearly defined threat class. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Turn the threat model into executable, repeatable adversarial testing. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Improve ordinary Windows TPM API compatibility under Wine without conflating it with physical-host attestation. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Earn justified trust rather than asking publishers to trust project reputation alone. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Offer one supportable, versioned profile with explicit lifecycle and residual risk. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+)
 expected_labels=(
   $'type: architecture\t5319E7\tDurable trust, protocol, privilege, or component decision'
   $'type: research\t1D76DB\tEvidence-gathering spike that unblocks a decision'
@@ -363,8 +412,6 @@ expected_labels=(
   $'status: experimental\tD4C5F9\tResearch behavior without production guarantees'
   $'status: do-not-merge\tB60205\tMust not merge until the blocker is removed'
 )
-milestone_description="See docs/ROADMAP.md for scope and exit criteria."
-
 run_bootstrap >/dev/null
 expect_equal "first run creates 33 canonical labels" "33" \
   "$(wc -l <"${fixture_root}/state/labels.tsv")"
@@ -382,8 +429,10 @@ for expected_label in "${expected_labels[@]}"; do
   fi
 done
 
-for title in "${expected_milestones[@]}"; do
-  if awk -F '\t' -v title="${title}" -v description="${milestone_description}" '
+for milestone_index in "${!expected_milestones[@]}"; do
+  title="${expected_milestones[${milestone_index}]}"
+  description="${expected_milestone_descriptions[${milestone_index}]}"
+  if awk -F '\t' -v title="${title}" -v description="${description}" '
     $2 == title && $3 == "open" && $4 == description && $5 == "" {
       found = 1
     }
@@ -428,7 +477,7 @@ else
   failures=$((failures + 1))
 fi
 
-if awk -F '\t' -v description="${milestone_description}" '
+if awk -F '\t' -v description="${expected_milestone_descriptions[12]}" '
   $2 == "M12 Production Candidate" &&
     $3 == "open" && $4 == description && $5 == "" { found = 1 }
   END { exit !found }
@@ -474,6 +523,47 @@ PATH="${fixture_root}/bin:${PATH}" \
   "${create_issues}" "example/ogir" >/dev/null
 expect_equal "sample issue creation is idempotent" "1" \
   "$(wc -l <"${fixture_root}/state/issue-creations.tsv")"
+
+: >"${fixture_root}/state/issues.txt"
+: >"${fixture_root}/state/issue-creations.tsv"
+for issue_file in "${repository_root}"/planning/issues/*.md; do
+  if [[ "${issue_file}" == */006-triage-taxonomy.md ]]; then
+    continue
+  fi
+  sed -n '1s/^# //p' "${issue_file}" \
+    >>"${fixture_root}/state/issues.txt"
+done
+for ((issue_number = 1; issue_number <= 491; issue_number++)); do
+  printf 'Existing filler issue %03d\n' "${issue_number}" \
+    >>"${fixture_root}/state/issues.txt"
+done
+printf '%s\n' "M0-006: Establish labels, milestones, and triage policy" \
+  >>"${fixture_root}/state/issues.txt"
+
+PATH="${fixture_root}/bin:${PATH}" \
+  OGIR_FAKE_GH=1 \
+  OGIR_FAKE_GH_STATE="${fixture_root}/state" \
+  "${create_issues}" "example/ogir" >/dev/null
+expect_equal "existing issue beyond 500 is not duplicated" "0" \
+  "$(wc -l <"${fixture_root}/state/issue-creations.tsv")"
+
+printf '%s\t%s\t%s\t%s\t%s\n' \
+  "99" \
+  "M0 Repository Foundation" \
+  "closed" \
+  "Ambiguous duplicate" \
+  "2030-01-01T00:00:00Z" \
+  >>"${fixture_root}/state/milestones.tsv"
+if duplicate_output="$(run_bootstrap 2>&1)"; then
+  printf 'FAIL: duplicate milestone titles unexpectedly passed\n' >&2
+  failures=$((failures + 1))
+elif [[ "${duplicate_output}" == *"duplicate milestone title: M0 Repository Foundation"* ]]; then
+  printf 'PASS: duplicate milestone titles fail closed\n'
+else
+  printf 'FAIL: duplicate milestone error was not specific\n%s\n' \
+    "${duplicate_output}" >&2
+  failures=$((failures + 1))
+fi
 
 if ((failures > 0)); then
   printf '%d GitHub bootstrap test(s) failed\n' "${failures}" >&2

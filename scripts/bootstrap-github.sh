@@ -84,13 +84,38 @@ milestones=(
   "M11 Publisher Pilot"
   "M12 Production Candidate"
 )
+milestone_descriptions=(
+  "Create a public, reviewable project where unsafe process choices are difficult from the first commit. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Define what OGIR means before deciding how bytes are encoded or which libraries implement it. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Prove challenge, evidence, verifier, permit, and session-key binding without involving TPM complexity. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Replace the mock attester with real TPM-backed freshness and key possession while keeping the rest of the system backend-agnostic. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Prove one narrow, documented Linux platform profile rather than claiming generic Linux trust. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Allow a Windows sample game under stock Proton to invoke OGIR without trusting Windows-provided identity fields. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Make the integration experience credible for a game studio while retaining publisher control. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Bind the attestation report to the actual live game process tree before enforcing restrictions. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Add only the minimum game-scoped controls needed for a clearly defined threat class. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Turn the threat model into executable, repeatable adversarial testing. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Improve ordinary Windows TPM API compatibility under Wine without conflating it with physical-host attestation. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Earn justified trust rather than asking publishers to trust project reputation alone. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+  "Offer one supportable, versioned profile with explicit lifecycle and residual risk. See docs/ROADMAP.md for exit criteria; no delivery date is assigned."
+)
 
-milestone_description="See docs/ROADMAP.md for scope and exit criteria."
 existing_milestones="$(
   gh api --paginate "repos/${repository}/milestones?state=all&per_page=100" \
     --jq '.[] | [.number, .title, .state, (.description // ""), (.due_on // "")] | @tsv'
 )"
-for title in "${milestones[@]}"; do
+for milestone_index in "${!milestones[@]}"; do
+  title="${milestones[${milestone_index}]}"
+  milestone_description="${milestone_descriptions[${milestone_index}]}"
+  milestone_match_count="$(
+    awk -F '\t' -v title="${title}" \
+      '$2 == title { count++ } END { print count + 0 }' \
+      <<<"${existing_milestones}"
+  )"
+  if ((milestone_match_count > 1)); then
+    printf 'duplicate milestone title: %s\n' "${title}" >&2
+    exit 1
+  fi
   existing_milestone="$(
     awk -F '\t' -v title="${title}" '$2 == title { print; exit }' \
       <<<"${existing_milestones}"
