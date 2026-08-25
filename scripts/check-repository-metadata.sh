@@ -158,7 +158,8 @@ while IFS= read -r -d '' tracked_entry; do
       ;;
   esac
 
-  if ((is_source == 0)) && [[ "${tracked_mode}" == "100755" ]]; then
+  if ((is_source == 0)) &&
+    [[ "${tracked_mode}" == "100644" || "${tracked_mode}" == "100755" ]]; then
     if ! git -C "${repository_root}" show ":${path}" >"${source_blob_file}"; then
       printf '%s: failed to read staged source content\n' "${path}" >&2
       exit 2

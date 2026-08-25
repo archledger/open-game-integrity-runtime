@@ -86,6 +86,11 @@ chmod +x "${fixture}/scripts/release"
 git -C "${fixture}" add scripts/release
 expect_fail "extensionless shell source" "scripts/release: expected SPDX-License-Identifier: Apache-2.0"
 
+make_fixture non-executable-extensionless-shell
+printf '%s\n' '#!/usr/bin/env bash' 'echo helper' >"${fixture}/scripts/helper"
+git -C "${fixture}" add scripts/helper
+expect_fail "non-executable extensionless shell source" "scripts/helper: expected SPDX-License-Identifier: Apache-2.0"
+
 make_fixture missing-spdx
 printf '%s\n' 'pub fn missing_license() {}' >"${fixture}/src/missing.rs"
 git -C "${fixture}" add src/missing.rs
