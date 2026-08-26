@@ -294,15 +294,6 @@ impl<'store, Store: ReplayStore + ?Sized> FreshnessGuard<'store, Store> {
             .claim(now, &ReplayRegistration::from_challenge(challenge))
     }
 
-    pub(crate) fn claim_checked(
-        &self,
-        now: UnixTime,
-        challenge: &PublisherChallenge,
-    ) -> Result<FreshnessChecked, FreshnessError> {
-        self.claim(now, challenge)?;
-        Ok(FreshnessChecked { _private: () })
-    }
-
     /// Removes only replay and rate-limit state whose enforcement windows ended
     /// at the replay store's time floor.
     ///
