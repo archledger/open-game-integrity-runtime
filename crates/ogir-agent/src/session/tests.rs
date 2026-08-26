@@ -177,9 +177,9 @@ const DEEP_PATH_ACTIONS: [TestAction; 10] = [
     TestAction::Permit,
     TestAction::Activate,
     TestAction::Renewal,
+    TestAction::Activate,
     TestAction::Permit,
     TestAction::Activate,
-    TestAction::End,
 ];
 
 fn deep_path_action(seed: u64, action_index: usize) -> Option<TestAction> {
