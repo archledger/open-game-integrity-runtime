@@ -9,13 +9,13 @@
 
 OGIR will model each local protected session as one non-cloneable, deterministic
 runtime state machine in `ogir-agent`. The machine exposes a safe public phase
-view but keeps construction, session identity, and internal state confined to
-the trusted crate boundary. Explicit
+view but keeps session identity and internal state confined to the trusted
+crate boundary. M1 ships no production session/capability minting API because
+the trusted adapters do not exist yet. Explicit
 transition methods consume opaque, non-cloneable completion capabilities bound
-to the same `SessionId`. Capability constructors remain confined to the crate,
-so future trusted local adapters can mint them only after their corresponding
-operation succeeds without exposing protocol, cryptographic, process, or policy
-payloads through the lifecycle API.
+to the same `SessionId`. Future trusted local adapters introduce crate-confined
+factories only with their corresponding real operations, without exposing
+protocol, cryptographic, process, or policy payloads through the lifecycle API.
 
 The initial path is:
 
@@ -59,6 +59,13 @@ On 2026-08-26, the decision owner approved, in sequence:
 The decision owner then approved the written specification captured in commit
 `fc9acbbe01714a8c8337555efb101f1d592e7428`; this status-only follow-up records
 that review.
+
+During implementation planning, a Rust 1.98 `-D warnings` probe confirmed that
+an unused `pub(crate)` factory is dead code. Under the decision owner's prior
+authorization for evidence-backed in-scope refinements, M1-009 therefore ships
+no speculative session/capability constructor or lint suppression. Private
+child tests construct fixtures directly; future trusted adapters introduce
+crate-confined factories with their real callers.
 
 Evidence-backed refinements may proceed inside this approved task and trust
 scope when their source, rationale, and falsifying test are recorded. Any
@@ -167,9 +174,11 @@ semantic sources.
 by the architecture. The game, bridge, environment, PID text, path, App ID, or
 publisher cannot supply the authoritative local session identity.
 
-`LocalSession` owns one `SessionId`, is not `Clone` or `Copy`, and has no public
-constructor. A crate-confined constructor is reserved for future trusted local
-portal/agent code after it derives the authoritative session identity. This
+`LocalSession` owns one `SessionId`, is not `Clone` or `Copy`, and has no
+production constructor in M1-009. Private child tests construct fixtures
+through Rust module privacy without adding a lint suppression or speculative
+factory. Future trusted local portal/agent code introduces a crate-confined
+factory only when it can derive the authoritative session identity. This
 prevents external safe Rust callers from manufacturing or directly copying a
 lifecycle machine. The trusted local owner remains responsible for creating at
 most one authoritative machine per `SessionId`; M1-009 adds no global registry
@@ -192,8 +201,9 @@ The five input capabilities are:
 
 Each capability contains only a private local session binding. It contains no
 raw challenge, account, evidence, policy, permit, key, signature, process, or
-path payload. It is public only so boundary APIs may name and pass it;
-construction is `pub(crate)`, and the binding is never publicly readable.
+path payload. It is public only so boundary APIs may name and pass it; M1-009
+ships no constructor, and the binding is never publicly readable. A later real
+adapter may add only crate-confined construction.
 
 `ValidatedPermit` means a trusted future local permit-validation adapter has
 accepted a verifier result for this session. It deliberately does not define
@@ -362,7 +372,6 @@ The conceptual public surface is:
 pub struct LocalSession { /* private */ }
 
 impl LocalSession {
-    pub(crate) fn new(session_id: SessionId) -> Self;
     pub fn phase(&self) -> SessionPhase;
     pub fn cleanup_status(&self) -> CleanupStatus;
 
@@ -403,10 +412,10 @@ This is a contract sketch, not implementation text. The implementation plan
 may adjust names for established Rust style only if it updates this spec and
 preserves all approved semantics before code is written.
 
-The crate-confined constructor is shown to make authority explicit; it is not a
-public consumer API. A future trusted portal/agent factory may return
-`LocalSession` after authenticating and deriving session identity without
-exposing raw construction.
+The M1 implementation intentionally has no production constructor or test-only
+public helper. Its private child test module may construct fixtures directly.
+A future trusted portal/agent factory may add crate-confined construction and
+return `LocalSession` after authenticating and deriving session identity.
 
 `LocalSession`, all five gate capabilities, `CleanupRequest`, and
 `CleanupCompleted` implement neither `Clone` nor `Copy`. Public phase/action/
@@ -461,7 +470,7 @@ Owns:
 - `LocalSession` and its private state;
 - public phase, cleanup, action, and error views;
 - opaque capability and cleanup types;
-- crate-confined session and capability constructors;
+- private fields with no production constructor until trusted adapters exist;
 - exact transition logic; and
 - unit, model, privacy, and compile-fail documentation tests.
 
@@ -474,10 +483,10 @@ the reviewed public contract. No wildcard public re-export is required.
 
 ### Future trusted adapters
 
-Future sibling modules may use crate-visible constructors only after their
-operation succeeds. They remain responsible for validating raw inputs and for
-not minting a completion capability early. The state machine cannot protect
-against a compromised trusted adapter that deliberately violates this
+Future sibling modules may introduce and use crate-visible constructors only
+with their real operation. They remain responsible for validating raw inputs
+and for not minting a completion capability early. The state machine cannot
+protect against a compromised trusted adapter that deliberately violates this
 contract; such a compromise is inside the local trusted computing base.
 
 ### Other crates
@@ -724,7 +733,7 @@ adapter supports retry without permitting lifecycle progress.
 ### New state-machine crate
 
 Rejected. The local lifecycle belongs to `ogir-agent`, needs only the existing
-`SessionId`, and benefits from crate-confined trusted adapter constructors. A
+`SessionId`, and keeps future trusted adapter construction inside that crate. A
 new crate would add a boundary without reducing authority or dependencies.
 
 ## Migration and sequencing
@@ -751,7 +760,7 @@ future adapters with separately reviewed failure semantics.
 
 | Issue requirement | Design provision |
 | --- | --- |
-| Pure deterministic typed transitions | Crate-confined construction, one private discriminated state, ten explicit actions, no I/O or dependency addition. |
+| Pure deterministic typed transitions | No speculative production factory, one private discriminated state, ten explicit actions, no I/O or dependency addition. |
 | Evidence after caller binding/preparation only | Only ordered `CallerBound -> SessionPrepared -> EvidenceCreated`; exhaustive and mutation tests reject skipped gates. |
 | Active only after verifier permit | Session-bound unforgeable `ValidatedPermit`, `PermitReceived`, then separate `activate`; same gate reused for renewal. |
 | Ended/invalidated terminal | Every lifecycle action rejected from both terminal dispositions before and after cleanup. |
