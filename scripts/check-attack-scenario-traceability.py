@@ -7,12 +7,22 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import re
 import sys
 from pathlib import Path
 from typing import NoReturn
 
 TRACE_FIELDS = ("owner", "required_assurance_profile")
+EXPECTED_SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema"
+MAX_DOCUMENT_BYTES = 65_536
+MAX_NESTING_DEPTH = 16
+MAX_OBJECT_FIELDS = 64
+MAX_ARRAY_ITEMS = 256
+MAX_STRING_CHARACTERS = 4_096
+MAX_NUMBER_CHARACTERS = 64
+MAX_TOTAL_NODES = 4_096
+MAX_SCENARIO_FILES = 128
 SUPPORTED_SCHEMA_KEYS = {
     "$id",
     "$schema",
@@ -39,6 +49,10 @@ class DuplicateKeyError(ScenarioValidationError):
 
 
 def reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    if len(pairs) > MAX_OBJECT_FIELDS:
+        raise ScenarioValidationError(
+            f"object exceeds {MAX_OBJECT_FIELDS} fields"
+        )
     value: dict[str, object] = {}
     for key, item in pairs:
         if key in value:
@@ -47,22 +61,101 @@ def reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return value
 
 
+def reject_non_json_constant(constant: str) -> NoReturn:
+    raise ScenarioValidationError(f"non-JSON numeric constant {constant!r}")
+
+
+def parse_bounded_integer(token: str) -> int:
+    if len(token) > MAX_NUMBER_CHARACTERS:
+        fail(f"integer exceeds {MAX_NUMBER_CHARACTERS} characters")
+    return int(token)
+
+
+def parse_bounded_float(token: str) -> float:
+    if len(token) > MAX_NUMBER_CHARACTERS:
+        fail(f"number exceeds {MAX_NUMBER_CHARACTERS} characters")
+    value = float(token)
+    if not math.isfinite(value):
+        fail(f"number is outside the finite parser range: {token!r}")
+    return value
+
+
+def diagnostic_source(source: str) -> str:
+    path = Path(source)
+    return path.name if path.is_absolute() else source
+
+
+def validate_resource_limits(value: object) -> None:
+    total_nodes = 0
+
+    def visit(node: object, depth: int) -> None:
+        nonlocal total_nodes
+        total_nodes += 1
+        if total_nodes > MAX_TOTAL_NODES:
+            fail(f"document exceeds {MAX_TOTAL_NODES} total nodes")
+        if depth > MAX_NESTING_DEPTH:
+            fail(f"document exceeds nesting depth {MAX_NESTING_DEPTH}")
+
+        if isinstance(node, dict):
+            if len(node) > MAX_OBJECT_FIELDS:
+                fail(f"object exceeds {MAX_OBJECT_FIELDS} fields")
+            for key, item in node.items():
+                if len(key) > MAX_STRING_CHARACTERS:
+                    fail(f"object key exceeds {MAX_STRING_CHARACTERS} characters")
+                visit(item, depth + 1)
+        elif isinstance(node, list):
+            if len(node) > MAX_ARRAY_ITEMS:
+                fail(f"array exceeds {MAX_ARRAY_ITEMS} items")
+            for item in node:
+                visit(item, depth + 1)
+        elif isinstance(node, str) and len(node) > MAX_STRING_CHARACTERS:
+            fail(f"string exceeds {MAX_STRING_CHARACTERS} characters")
+
+    visit(value, 0)
+
+
 def parse_json_document(text: str, source: str) -> object:
+    label = diagnostic_source(source)
     try:
-        return json.loads(text, object_pairs_hook=reject_duplicate_keys)
+        encoded = text.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise ScenarioValidationError(f"{label}: invalid Unicode") from error
+    if len(encoded) > MAX_DOCUMENT_BYTES:
+        fail(f"{label}: document exceeds {MAX_DOCUMENT_BYTES} bytes")
+
+    try:
+        value = json.loads(
+            text,
+            object_pairs_hook=reject_duplicate_keys,
+            parse_constant=reject_non_json_constant,
+            parse_float=parse_bounded_float,
+            parse_int=parse_bounded_integer,
+        )
+        validate_resource_limits(value)
+        return value
     except json.JSONDecodeError as error:
         raise ScenarioValidationError(
-            f"{source}:{error.lineno}:{error.colno}: {error.msg}"
+            f"{label}:{error.lineno}:{error.colno}: {error.msg}"
         ) from error
-    except DuplicateKeyError as error:
-        raise ScenarioValidationError(f"{source}: {error}") from error
+    except (RecursionError, ScenarioValidationError) as error:
+        raise ScenarioValidationError(f"{label}: {error}") from error
+    except (OverflowError, ValueError) as error:
+        raise ScenarioValidationError(f"{label}: invalid JSON number") from error
 
 
-def read_json_document(path: Path) -> object:
+def read_json_document(path: Path, source: str) -> object:
     try:
-        return parse_json_document(path.read_text(encoding="utf-8"), str(path))
+        with path.open("rb") as stream:
+            encoded = stream.read(MAX_DOCUMENT_BYTES + 1)
     except OSError as error:
-        raise ScenarioValidationError(f"cannot read {path}: {error}") from error
+        raise ScenarioValidationError(f"cannot read {source}") from error
+    if len(encoded) > MAX_DOCUMENT_BYTES:
+        fail(f"{source}: document exceeds {MAX_DOCUMENT_BYTES} bytes")
+    try:
+        text = encoded.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ScenarioValidationError(f"{source}: invalid UTF-8") from error
+    return parse_json_document(text, source)
 
 
 def fail(message: str) -> NoReturn:
@@ -133,6 +226,8 @@ def validate_schema_contract(schema: object) -> dict[str, object]:
     validate_schema_shape(schema)
     if not isinstance(schema, dict):
         fail("scenario schema root must be an object")
+    if schema.get("$schema") != EXPECTED_SCHEMA_DIALECT:
+        fail(f"scenario schema must declare {EXPECTED_SCHEMA_DIALECT}")
     if schema.get("type") != "object" or schema.get("additionalProperties") is not False:
         fail("scenario schema root must be a closed object")
 
@@ -151,7 +246,11 @@ def validate_schema_contract(schema: object) -> dict[str, object]:
         if not isinstance(pattern, str):
             fail(f"scenario schema does not constrain {field}")
         compiled = re.compile(pattern)
-        if compiled.search("initial-maintainer") is None or compiled.search("Invalid Value"):
+        if (
+            compiled.search("initial-maintainer") is None
+            or compiled.search("Invalid Value") is not None
+            or compiled.search("initial-maintainer\n") is not None
+        ):
             fail(f"scenario schema has ineffective {field} pattern")
 
     return schema
@@ -245,6 +344,19 @@ def valid_scenario() -> dict[str, object]:
 def run_self_tests(schema: dict[str, object]) -> None:
     fixture = valid_scenario()
     validate_instance(fixture, schema, "valid")
+    parse_json_document("{}" + " " * (MAX_DOCUMENT_BYTES - 2), "max-bytes")
+    parse_json_document(
+        "[" * MAX_NESTING_DEPTH + "0" + "]" * MAX_NESTING_DEPTH,
+        "max-depth",
+    )
+    parse_json_document(
+        json.dumps({f"field-{index}": index for index in range(MAX_OBJECT_FIELDS)}),
+        "max-fields",
+    )
+    parse_json_document(json.dumps(list(range(MAX_ARRAY_ITEMS))), "max-items")
+    parse_json_document(json.dumps("x" * MAX_STRING_CHARACTERS), "max-string")
+    parse_json_document("9" * MAX_NUMBER_CHARACTERS, "max-number")
+    print("PASS: parser resource boundaries")
 
     for field in TRACE_FIELDS:
         missing = copy.deepcopy(fixture)
@@ -261,6 +373,15 @@ def run_self_tests(schema: dict[str, object]) -> None:
             lambda malformed=malformed: validate_instance(malformed, schema, "invalid"),
         )
 
+        terminal_newline = copy.deepcopy(fixture)
+        terminal_newline[field] = f"{fixture[field]}\n"
+        expect_failure(
+            f"terminal newline in {field.replace('_', ' ')}",
+            lambda terminal_newline=terminal_newline: validate_instance(
+                terminal_newline, schema, "terminal-newline"
+            ),
+        )
+
         broken_schema = copy.deepcopy(schema)
         required = broken_schema.get("required")
         if not isinstance(required, list):
@@ -271,6 +392,13 @@ def run_self_tests(schema: dict[str, object]) -> None:
             lambda broken_schema=broken_schema: validate_schema_contract(broken_schema),
         )
 
+    attacker_newline = copy.deepcopy(fixture)
+    attacker_newline["attacker"] = "A1\n"
+    expect_failure(
+        "terminal newline in attacker",
+        lambda: validate_instance(attacker_newline, schema, "attacker-newline"),
+    )
+
     duplicate = (
         '{"owner":"initial-maintainer","owner":"verifier-team",'
         '"required_assurance_profile":"all-protected-modes"}'
@@ -278,6 +406,22 @@ def run_self_tests(schema: dict[str, object]) -> None:
     expect_failure(
         "quoted duplicate owner",
         lambda: parse_json_document(duplicate, "quoted-duplicate"),
+    )
+
+    for constant in ("NaN", "Infinity", "-Infinity"):
+        expect_failure(
+            f"non-JSON numeric constant {constant}",
+            lambda constant=constant: parse_json_document(
+                f'{{"nonfinite":{constant}}}', "nonfinite"
+            ),
+        )
+    expect_failure(
+        "non-finite numeric exponent",
+        lambda: parse_json_document("1e9999", "nonfinite-exponent"),
+    )
+    expect_failure(
+        "excessive integer token",
+        lambda: parse_json_document("9" * (MAX_NUMBER_CHARACTERS + 1), "long-integer"),
     )
 
     multiple_documents = json.dumps(fixture) + "\n---\n" + json.dumps(fixture)
@@ -293,6 +437,72 @@ def run_self_tests(schema: dict[str, object]) -> None:
         lambda: validate_instance(unknown, schema, "unknown"),
     )
 
+    nested_unknown = copy.deepcopy(fixture)
+    expected = nested_unknown.get("expected")
+    if not isinstance(expected, dict):
+        raise AssertionError("valid fixture lost expected object")
+    expected["unreviewed"] = True
+    expect_failure(
+        "unknown nested expected field",
+        lambda: validate_instance(nested_unknown, schema, "nested-unknown"),
+    )
+
+    for dialect in ("http://json-schema.org/draft-07/schema#", "not-a-uri", ""):
+        wrong_dialect = copy.deepcopy(schema)
+        wrong_dialect["$schema"] = dialect
+        expect_failure(
+            f"wrong schema dialect {dialect!r}",
+            lambda wrong_dialect=wrong_dialect: validate_schema_contract(wrong_dialect),
+        )
+
+    expect_failure(
+        "oversized document",
+        lambda: parse_json_document(
+            json.dumps("x" * MAX_DOCUMENT_BYTES), "oversized"
+        ),
+    )
+
+    expect_failure(
+        "excessive nesting",
+        lambda: parse_json_document("[" * 17 + "0" + "]" * 17, "deep"),
+    )
+    expect_failure(
+        "excessive object fields",
+        lambda: parse_json_document(
+            json.dumps({f"field-{index}": index for index in range(65)}),
+            "wide-object",
+        ),
+    )
+    expect_failure(
+        "excessive array items",
+        lambda: parse_json_document(json.dumps(list(range(257))), "wide-array"),
+    )
+    expect_failure(
+        "excessive string",
+        lambda: parse_json_document(json.dumps("x" * 4_097), "long-string"),
+    )
+    expect_failure(
+        "excessive total nodes",
+        lambda: parse_json_document(
+            json.dumps(
+                {
+                    f"field-{field}": list(range(MAX_OBJECT_FIELDS))
+                    for field in range(MAX_OBJECT_FIELDS)
+                }
+            ),
+            "many-nodes",
+        ),
+    )
+
+    try:
+        parse_json_document("{", "/home/private-user/private-repository/scenario.json")
+    except ScenarioValidationError as error:
+        if "/home/" in str(error):
+            raise AssertionError("absolute path leaked in parser diagnostic") from error
+        print("PASS: parser diagnostic redacts absolute path")
+    else:
+        raise AssertionError("malformed absolute-path fixture passed")
+
     print("All attack-scenario validation tests passed.")
 
 
@@ -302,14 +512,14 @@ def load_repository_contract() -> tuple[Path, dict[str, object], list[Path]]:
     schema_path = scenario_directory / "schema.json"
     if schema_path.is_symlink() or not schema_path.is_file():
         fail("attack-scenario schema must be a regular file")
-    schema = validate_schema_contract(read_json_document(schema_path))
+    schema = validate_schema_contract(
+        read_json_document(schema_path, "lab/scenarios/schema.json")
+    )
     scenarios: list[Path] = []
     try:
-        entries = sorted(scenario_directory.iterdir())
+        entries = scenario_directory.iterdir()
     except OSError as error:
-        raise ScenarioValidationError(
-            f"cannot list attack-scenario directory: {error}"
-        ) from error
+        raise ScenarioValidationError("cannot list attack-scenario directory") from error
     for entry in entries:
         if entry == schema_path:
             continue
@@ -318,8 +528,11 @@ def load_repository_contract() -> tuple[Path, dict[str, object], list[Path]]:
         ):
             fail(f"unexpected attack-scenario path: {entry.relative_to(repository)}")
         scenarios.append(entry)
+        if len(scenarios) > MAX_SCENARIO_FILES:
+            fail(f"more than {MAX_SCENARIO_FILES} attack scenarios")
     if not scenarios:
         fail("no attack scenarios found")
+    scenarios.sort()
     return repository, schema, scenarios
 
 
@@ -334,9 +547,10 @@ def main() -> int:
             run_self_tests(schema)
             return 0
         for scenario in scenarios:
-            instance = read_json_document(scenario)
-            validate_instance(instance, schema, str(scenario.relative_to(repository)))
-    except ScenarioValidationError as error:
+            source = str(scenario.relative_to(repository))
+            instance = read_json_document(scenario, source)
+            validate_instance(instance, schema, source)
+    except (AssertionError, ScenarioValidationError) as error:
         print(f"attack-scenario validation failed: {error}", file=sys.stderr)
         return 1
 

@@ -18,6 +18,14 @@ subset used here, and rejects missing/malformed mappings, duplicate keys,
 multiple documents, unknown fields, and all other schema violations. Its
 self-tests and real repository check run in the aggregate gate.
 
+The parser accepts only RFC 8259 numeric constants and exactly the declared
+Draft 2020-12 schema dialect. It processes at most 128 scenario files; each
+schema/scenario document is at most 65,536 UTF-8 bytes, 16 levels deep, 64
+fields per object, 256 items per array, 4,096 characters per string/key, and
+64 characters per number token and 4,096 total nodes. These fixed limits bound
+pull-request-controlled parsing.
+Diagnostics use repository-relative labels and never print checkout/home paths.
+
 Initial responsibilities:
 
 - validate machine-readable scenario files;

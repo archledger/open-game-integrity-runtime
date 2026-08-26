@@ -75,7 +75,8 @@ Nonce uniqueness alone does not define challenge freshness. The protocol needs e
   guard, and durable-handle debug surfaces expose only redaction markers.
 - Attack-scenario validation rejects a freshness threat without an accountable
   owner or required assurance profile, duplicate key, extra document, unknown
-  field, or other shared-schema violation.
+  field, non-JSON constant, exact schema dialect, bounded resource profile, or
+  other shared-schema violation; diagnostics redact checkout/home paths.
 - Extreme-future and overflow-prone timestamps cannot authorize.
 - Raw claim cannot return or construct `FreshnessChecked`.
 
@@ -87,8 +88,10 @@ Nonce uniqueness alone does not define challenge freshness. The protocol needs e
   observation, capability bypass, arithmetic, bounded retention, shared
   durable-state deletion after reopen, and complete leaf/aggregate privacy
   redaction.
-- M1-008 adds no parser or wire format, so it adds no fuzz target; parser fuzzing
-  remains required when challenge serialization is selected.
+- M1-008 adds no untrusted protocol/wire parser, so it adds no protocol fuzz
+  target. It does add a fixed-limit repository-scenario JSON/schema validator
+  with deterministic negative parser tests; challenge parser fuzzing remains
+  required when challenge serialization is selected.
 
 ## Privacy impact
 

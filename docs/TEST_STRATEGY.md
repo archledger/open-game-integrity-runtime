@@ -117,7 +117,9 @@ invariants without turning failure into disciplinary evidence.
 Scenarios use one duplicate-free JSON document per `*.scenario.json` file. The
 aggregate dependency-free validator rejects duplicate keys, extra documents,
 unknown fields, unsupported schema keywords, and every schema violation. Its
-self-tests pin the owner/assurance omissions and parser-bypass regressions.
+self-tests pin owner/assurance omissions, parser-bypass regressions, non-JSON
+constants, terminal-newline mappings, schema-dialect drift, nested unknown
+fields, resource limits, and checkout-path redaction.
 
 ## Release gates by maturity
 

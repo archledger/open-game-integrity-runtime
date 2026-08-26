@@ -257,3 +257,29 @@ Do not use this document to expose embargoed vulnerability details before coordi
   duplicate-key hook, validates every supported shared-schema keyword, rejects
   unsupported future keywords, and remains cross-checked with Draft 2020-12
   validation during final verification.
+
+## 2026-08-25 — “Parsed JSON” still needs strictness, budgets, and safe diagnostics
+
+- **Context:** M1-008 exact-head TCB/privacy certification of the parsed
+  scenario validator.
+- **Mistaken assumption:** Python's default JSON decoder plus recursive schema
+  checks were strict and bounded enough once duplicate keys/documents failed.
+- **Observed failure:** Default decoding accepted `NaN`/`Infinity`; `$`-anchored
+  mapping patterns accepted a terminal newline; schema dialect drift and nested
+  expected fields passed; parser budgets were undeclared; malformed-input
+  diagnostics printed the absolute checkout/home path.
+- **Security or quality impact:** Repository-controlled input could disagree
+  with RFC 8259/downstream parsers, weaken exact role/profile lookup, consume
+  unbounded resources, or disclose a contributor/runner home path.
+- **Permanent regression test:** The aggregate self-test rejects non-JSON
+  constants, terminal-newline mappings, wrong/empty dialects, nested unknown
+  fields, oversized/deep/wide/long inputs, and proves malformed absolute-source
+  diagnostics omit `/home/`; external Draft 2020-12 validation independently
+  rejects newline mappings and nested unknown fields.
+- **New prevention rule:** A security parser contract includes its exact
+  dialect, nonstandard decoder options, closed-object policy, resource budgets,
+  and diagnostic data boundary—not only syntax parsing.
+- **Documentation or agent-policy updates:** The parser, schema, attack-lab
+  README, issue, threat/test docs, ADR, approved spec, and implementation plan
+  now state and enforce strict constants, exact dialect, closed expected fields,
+  fixed limits, and repository-relative diagnostics.

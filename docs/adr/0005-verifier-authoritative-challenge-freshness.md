@@ -178,7 +178,8 @@ All affected Rust, documentation, and attack-lab paths remain Apache-2.0.
   objects, stores, guards, snapshots, and errors.
 - Schema validation of accountable owner and required assurance profile on
   every single-document, duplicate-free freshness attack scenario, including
-  negative duplicate-key and extra-document parser probes.
+  negative duplicate-key, extra-document, non-JSON constant, mapping-newline,
+  dialect, unknown-field, resource-limit, and path-redaction probes.
 - Isolated mutations for both window edges, key scope, claim atomicity, restart,
   rollback, capacity eviction, claim release, arithmetic, and privacy.
 

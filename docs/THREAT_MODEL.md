@@ -214,6 +214,9 @@ any narrower value requires a separately documented assurance-profile
 definition. The attack-scenario schema requires both fields.
 Attack scenarios are single, duplicate-free JSON documents validated against
 the supported shared-schema contract in the aggregate gate; text scanning is
-not considered parsed enforcement.
+not considered parsed enforcement. Repository-controlled scenario parsing has
+explicit byte, file-count, nesting, object-field, array-item, string, and total-
+node bounds plus a numeric-token/finite-value bound; rejects non-JSON constants
+and schema-dialect drift; and emits only repository-relative diagnostics.
 
 The threat model is updated in the same pull request as any changed trust boundary, privilege, protocol field, evidence claim, policy control, or signing/update path.

@@ -2385,6 +2385,17 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
     supersedes every earlier YAML filename, snippet, and PyYAML-only gate in
     Task 6. Record the confirmed defect publicly, rerun the complete matrix,
     and obtain new exact-head specialist Yes verdicts before live issue sync.
+17. Parsed certification review requires strict RFC 8259 and bounded-input
+    behavior. Reject Python `NaN`/`Infinity` constants, require the exact Draft
+    2020-12 dialect, harden owner/profile patterns against terminal newlines,
+    close nested `expected` fields, and enforce explicit file-count/byte/depth/
+    object-field/array-item/string/number-token/total-node limits. Parser
+    diagnostics must use repository-relative labels even for absolute internal
+    paths. Add exact
+    negative self-tests for every defect/limit plus external Draft 2020-12
+    newline/nested-unknown cross-checks; correct the issue's stale “no parser”
+    statement; append public lessons; rerun all gates; and obtain new exact-head
+    TCB/privacy Yes verdicts before live issue sync.
 
 ---
 

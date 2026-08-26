@@ -474,7 +474,10 @@ apply independently of the attestation backend or hardware assurance class.
 Each scenario is one duplicate-free JSON document; the aggregate standard-
 library validator interprets every schema keyword used by the repository and
 rejects unsupported keywords, unknown fields, duplicate keys, trailing/extra
-documents, and all declared type/required/bound/pattern violations.
+documents, non-JSON constants, any non-Draft-2020-12 dialect, and all declared
+type/required/bound/pattern violations. Fixed file-count/byte/nesting/field/
+array/string/number-token/node limits bound repository-controlled parser work;
+diagnostics use only repository-relative source labels.
 
 ## Alternatives considered
 
