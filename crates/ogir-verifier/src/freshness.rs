@@ -9,6 +9,8 @@ use ogir_model::{
     Nonce, PolicyId, PolicyVersion, PublisherChallenge, PublisherId, UnixTime,
 };
 
+use crate::verification::VerificationBinding;
+
 /// Publisher-scoped replay identity for one challenge nonce.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ReplayKey {
@@ -203,7 +205,9 @@ pub trait ReplayStore: Send + Sync {
 /// ```compile_fail
 /// use ogir_verifier::FreshnessChecked;
 ///
-/// let forged = FreshnessChecked { _private: () };
+/// let forged = FreshnessChecked {
+///     binding: panic!("cannot forge verifier binding"),
+/// };
 /// ```
 ///
 /// A raw store claim cannot be used as a capability-producing shortcut:
@@ -221,9 +225,25 @@ pub trait ReplayStore: Send + Sync {
 /// }
 /// ```
 #[must_use]
-#[derive(Debug, PartialEq, Eq)]
 pub struct FreshnessChecked {
-    _private: (),
+    binding: VerificationBinding,
+}
+
+impl FreshnessChecked {
+    pub(crate) fn binding(&self) -> &VerificationBinding {
+        &self.binding
+    }
+}
+
+impl fmt::Debug for FreshnessChecked {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("FreshnessChecked([REDACTED])")
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_freshness_checked(binding: VerificationBinding) -> FreshnessChecked {
+    FreshnessChecked { binding }
 }
 
 /// Deep freshness boundary over one trusted replay-store implementation.

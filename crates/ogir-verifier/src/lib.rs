@@ -10,5 +10,8 @@ pub use freshness::{
     ChallengeBinding, FreshnessChecked, FreshnessGuard, ReplayKey, ReplayRegistration, ReplayStore,
 };
 pub use verification::{
-    ExpectedContext, VerificationOutcome, VerificationRequest, verify_research_structure,
+    ChallengeAuthenticated, DenialReason, EvidenceAppraised, ExpectedContext, IdentityChecked,
+    PolicySatisfied, RevocationChecked, SessionBound, TransitionError, VerificationAction,
+    VerificationOutcome, VerificationPhase, VerificationRequest, VerifiedAttestation, VerifierFlow,
+    verify_research_structure,
 };

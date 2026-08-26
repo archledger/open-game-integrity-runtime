@@ -2,7 +2,9 @@
 
 //! Checked verifier-flow and report-only outcome contracts.
 
+use std::error::Error;
 use std::fmt;
+use std::sync::Arc;
 
 use ogir_model::{
     AccountScope, BuildId, Decision, FreshnessError, GameId, MatchId, PolicyId, PolicyVersion,
@@ -10,7 +12,7 @@ use ogir_model::{
 };
 use ogir_protocol::EvidenceBundle;
 
-use crate::freshness::{FreshnessGuard, ReplayStore};
+use crate::freshness::{FreshnessChecked, FreshnessGuard, ReplayRegistration, ReplayStore};
 
 /// Expected relying-party context supplied independently of client evidence.
 #[derive(Clone, PartialEq, Eq)]
@@ -85,6 +87,495 @@ impl VerificationOutcome {
     pub const fn reason(self) -> ReasonCode {
         self.reason
     }
+
+    const fn allowed_full() -> Self {
+        Self {
+            decision: Decision::Allow,
+            reason: ReasonCode::None,
+        }
+    }
+
+    const fn allowed_restricted() -> Self {
+        Self {
+            decision: Decision::AllowRestricted,
+            reason: ReasonCode::None,
+        }
+    }
+}
+
+/// Redacted public view of the verifier's current state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum VerificationPhase {
+    /// Evidence has been received and no gate has completed.
+    EvidenceReceived,
+    /// The publisher challenge has been authenticated.
+    ChallengeAuthenticated,
+    /// Freshness and single-use claim checks have completed.
+    FreshnessChecked,
+    /// Trusted identity checks have completed.
+    IdentityChecked,
+    /// Evidence appraisal has completed.
+    EvidenceAppraised,
+    /// The live session has been bound to the verification attempt.
+    SessionBound,
+    /// Revocation checks have completed.
+    RevocationChecked,
+    /// Policy has selected an allowed class.
+    PolicySatisfied,
+    /// Every success gate has completed.
+    Verified,
+    /// Input was malformed.
+    Malformed,
+    /// A mandatory feature or profile was unsupported.
+    Unsupported,
+    /// Verification ended in a retryable failure.
+    Retryable,
+    /// Verification was denied.
+    Denied,
+    /// Verification encountered a revoked input or policy.
+    Revoked,
+}
+
+/// Public action names used by redacted transition errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum VerificationAction {
+    /// Record publisher challenge authentication.
+    RecordChallengeAuthenticated,
+    /// Record freshness and replay checks.
+    RecordFreshnessChecked,
+    /// Record trusted identity checks.
+    RecordIdentityChecked,
+    /// Record evidence appraisal.
+    RecordEvidenceAppraised,
+    /// Record live-session binding.
+    RecordSessionBound,
+    /// Record revocation checks.
+    RecordRevocationChecked,
+    /// Record policy satisfaction.
+    RecordPolicySatisfied,
+    /// Complete the successful verification path.
+    Complete,
+    /// Enter the malformed terminal.
+    MarkMalformed,
+    /// Enter the unsupported terminal.
+    MarkUnsupported,
+    /// Enter the retryable terminal.
+    MarkRetryable,
+    /// Enter the denied terminal.
+    Deny,
+    /// Enter the revoked terminal.
+    MarkRevoked,
+}
+
+/// Fixed non-disciplinary reasons accepted by the denied terminal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DenialReason {
+    /// The request predates its validity window.
+    NotYetValid,
+    /// The request has expired.
+    Expired,
+    /// The challenge has already been used.
+    ReplayDetected,
+    /// The relying-party or session binding did not match.
+    SessionBindingMismatch,
+    /// Evidence appraisal failed.
+    EvidenceInvalid,
+    /// The selected policy denied the request.
+    PolicyDenied,
+    /// Required protected-session properties were lost.
+    ProtectedSessionLost,
+}
+
+struct AttemptRecord {
+    _registration: ReplayRegistration,
+}
+
+#[derive(Clone)]
+pub(crate) struct VerificationBinding(Arc<AttemptRecord>);
+
+impl VerificationBinding {
+    fn new(challenge: &PublisherChallenge) -> Self {
+        Self(Arc::new(AttemptRecord {
+            _registration: ReplayRegistration::from_challenge(challenge),
+        }))
+    }
+
+    fn matches(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl fmt::Debug for VerificationBinding {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("VerificationBinding([REDACTED])")
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AllowedClass {
+    Full,
+    Restricted,
+}
+
+impl AllowedClass {
+    const FULL: Self = Self::Full;
+    const RESTRICTED: Self = Self::Restricted;
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum VerificationState {
+    EvidenceReceived,
+    ChallengeAuthenticated,
+    FreshnessChecked,
+    IdentityChecked,
+    EvidenceAppraised,
+    SessionBound,
+    RevocationChecked,
+    PolicySatisfied(AllowedClass),
+    Verified(AllowedClass),
+}
+
+/// Opaque proof that the publisher challenge was authenticated for one attempt.
+#[must_use]
+pub struct ChallengeAuthenticated {
+    binding: VerificationBinding,
+}
+
+/// Opaque proof that trusted identity checks passed for one attempt.
+#[must_use]
+pub struct IdentityChecked {
+    binding: VerificationBinding,
+}
+
+/// Opaque proof that evidence appraisal passed for one attempt.
+#[must_use]
+pub struct EvidenceAppraised {
+    binding: VerificationBinding,
+}
+
+/// Opaque proof that the live session was bound to one attempt.
+#[must_use]
+pub struct SessionBound {
+    binding: VerificationBinding,
+}
+
+/// Opaque proof that revocation checks passed for one attempt.
+#[must_use]
+pub struct RevocationChecked {
+    binding: VerificationBinding,
+}
+
+/// Opaque proof that policy selected an allowed class for one attempt.
+#[must_use]
+pub struct PolicySatisfied {
+    binding: VerificationBinding,
+    allowed: AllowedClass,
+}
+
+/// Opaque non-cloneable proof that every verifier success gate completed.
+#[must_use]
+pub struct VerifiedAttestation {
+    binding: VerificationBinding,
+    allowed: AllowedClass,
+}
+
+macro_rules! impl_redacted_debug {
+    ($type_name:ty, $text:literal) => {
+        impl fmt::Debug for $type_name {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str($text)
+            }
+        }
+    };
+}
+
+impl_redacted_debug!(ChallengeAuthenticated, "ChallengeAuthenticated([REDACTED])");
+impl_redacted_debug!(IdentityChecked, "IdentityChecked([REDACTED])");
+impl_redacted_debug!(EvidenceAppraised, "EvidenceAppraised([REDACTED])");
+impl_redacted_debug!(SessionBound, "SessionBound([REDACTED])");
+impl_redacted_debug!(RevocationChecked, "RevocationChecked([REDACTED])");
+impl_redacted_debug!(PolicySatisfied, "PolicySatisfied([REDACTED])");
+
+impl fmt::Debug for VerifiedAttestation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let _redacted_binding = &self.binding;
+        let _redacted_allowed = self.allowed;
+        formatter.write_str("VerifiedAttestation([REDACTED])")
+    }
+}
+
+/// A deterministic, non-secret verifier transition failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransitionError {
+    /// The action is not valid from the current phase.
+    InvalidTransition {
+        /// Redacted public phase view.
+        phase: VerificationPhase,
+        /// Rejected public action.
+        action: VerificationAction,
+    },
+    /// The submitted capability belongs to another verification attempt.
+    CapabilityRejected {
+        /// Rejected public action.
+        action: VerificationAction,
+    },
+}
+
+impl fmt::Display for TransitionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidTransition { .. } => {
+                formatter.write_str("verifier transition is not allowed")
+            }
+            Self::CapabilityRejected { .. } => {
+                formatter.write_str("verifier capability was rejected")
+            }
+        }
+    }
+}
+
+impl Error for TransitionError {}
+
+/// One checked verifier attempt over an owned request.
+#[must_use]
+pub struct VerifierFlow {
+    binding: VerificationBinding,
+    request: Option<VerificationRequest>,
+    state: VerificationState,
+}
+
+impl VerifierFlow {
+    /// Begins one verification attempt and owns its exact request.
+    pub fn begin(request: VerificationRequest) -> Self {
+        let binding = VerificationBinding::new(&request.challenge);
+        Self {
+            binding,
+            request: Some(request),
+            state: VerificationState::EvidenceReceived,
+        }
+    }
+
+    /// Returns the redacted current phase.
+    #[must_use]
+    pub const fn phase(&self) -> VerificationPhase {
+        match self.state {
+            VerificationState::EvidenceReceived => VerificationPhase::EvidenceReceived,
+            VerificationState::ChallengeAuthenticated => VerificationPhase::ChallengeAuthenticated,
+            VerificationState::FreshnessChecked => VerificationPhase::FreshnessChecked,
+            VerificationState::IdentityChecked => VerificationPhase::IdentityChecked,
+            VerificationState::EvidenceAppraised => VerificationPhase::EvidenceAppraised,
+            VerificationState::SessionBound => VerificationPhase::SessionBound,
+            VerificationState::RevocationChecked => VerificationPhase::RevocationChecked,
+            VerificationState::PolicySatisfied(_) => VerificationPhase::PolicySatisfied,
+            VerificationState::Verified(_) => VerificationPhase::Verified,
+        }
+    }
+
+    /// Returns a report only after the flow reaches a terminal.
+    #[must_use]
+    pub const fn outcome(&self) -> Option<VerificationOutcome> {
+        match self.state {
+            VerificationState::Verified(AllowedClass::FULL) => {
+                Some(VerificationOutcome::allowed_full())
+            }
+            VerificationState::Verified(AllowedClass::RESTRICTED) => {
+                Some(VerificationOutcome::allowed_restricted())
+            }
+            _ => None,
+        }
+    }
+
+    /// Records authenticated challenge handling for this attempt.
+    ///
+    /// # Errors
+    ///
+    /// Returns a redacted error when the phase is wrong or the capability is
+    /// bound to another attempt.
+    pub fn record_challenge_authenticated(
+        &mut self,
+        capability: ChallengeAuthenticated,
+    ) -> Result<(), TransitionError> {
+        if self.state != VerificationState::EvidenceReceived {
+            return Err(self.invalid_transition(VerificationAction::RecordChallengeAuthenticated));
+        }
+        self.ensure_binding(
+            VerificationAction::RecordChallengeAuthenticated,
+            &capability.binding,
+        )?;
+        self.state = VerificationState::ChallengeAuthenticated;
+        Ok(())
+    }
+
+    /// Records freshness and replay checks for this attempt.
+    ///
+    /// # Errors
+    ///
+    /// Returns a redacted error when the phase is wrong or the capability is
+    /// bound to another attempt.
+    pub fn record_freshness_checked(
+        &mut self,
+        capability: FreshnessChecked,
+    ) -> Result<(), TransitionError> {
+        if self.state != VerificationState::ChallengeAuthenticated {
+            return Err(self.invalid_transition(VerificationAction::RecordFreshnessChecked));
+        }
+        self.ensure_binding(
+            VerificationAction::RecordFreshnessChecked,
+            capability.binding(),
+        )?;
+        self.state = VerificationState::FreshnessChecked;
+        Ok(())
+    }
+
+    /// Records trusted identity checks for this attempt.
+    ///
+    /// # Errors
+    ///
+    /// Returns a redacted error when the phase is wrong or the capability is
+    /// bound to another attempt.
+    pub fn record_identity_checked(
+        &mut self,
+        capability: IdentityChecked,
+    ) -> Result<(), TransitionError> {
+        if self.state != VerificationState::FreshnessChecked {
+            return Err(self.invalid_transition(VerificationAction::RecordIdentityChecked));
+        }
+        self.ensure_binding(
+            VerificationAction::RecordIdentityChecked,
+            &capability.binding,
+        )?;
+        self.state = VerificationState::IdentityChecked;
+        Ok(())
+    }
+
+    /// Records evidence appraisal for this attempt.
+    ///
+    /// # Errors
+    ///
+    /// Returns a redacted error when the phase is wrong or the capability is
+    /// bound to another attempt.
+    pub fn record_evidence_appraised(
+        &mut self,
+        capability: EvidenceAppraised,
+    ) -> Result<(), TransitionError> {
+        if self.state != VerificationState::IdentityChecked {
+            return Err(self.invalid_transition(VerificationAction::RecordEvidenceAppraised));
+        }
+        self.ensure_binding(
+            VerificationAction::RecordEvidenceAppraised,
+            &capability.binding,
+        )?;
+        self.state = VerificationState::EvidenceAppraised;
+        Ok(())
+    }
+
+    /// Records live-session binding for this attempt.
+    ///
+    /// # Errors
+    ///
+    /// Returns a redacted error when the phase is wrong or the capability is
+    /// bound to another attempt.
+    pub fn record_session_bound(
+        &mut self,
+        capability: SessionBound,
+    ) -> Result<(), TransitionError> {
+        if self.state != VerificationState::EvidenceAppraised {
+            return Err(self.invalid_transition(VerificationAction::RecordSessionBound));
+        }
+        self.ensure_binding(VerificationAction::RecordSessionBound, &capability.binding)?;
+        self.state = VerificationState::SessionBound;
+        Ok(())
+    }
+
+    /// Records revocation checks for this attempt.
+    ///
+    /// # Errors
+    ///
+    /// Returns a redacted error when the phase is wrong or the capability is
+    /// bound to another attempt.
+    pub fn record_revocation_checked(
+        &mut self,
+        capability: RevocationChecked,
+    ) -> Result<(), TransitionError> {
+        if self.state != VerificationState::SessionBound {
+            return Err(self.invalid_transition(VerificationAction::RecordRevocationChecked));
+        }
+        self.ensure_binding(
+            VerificationAction::RecordRevocationChecked,
+            &capability.binding,
+        )?;
+        self.state = VerificationState::RevocationChecked;
+        Ok(())
+    }
+
+    /// Records policy satisfaction and the selected allowed class.
+    ///
+    /// # Errors
+    ///
+    /// Returns a redacted error when the phase is wrong or the capability is
+    /// bound to another attempt.
+    pub fn record_policy_satisfied(
+        &mut self,
+        capability: PolicySatisfied,
+    ) -> Result<(), TransitionError> {
+        if self.state != VerificationState::RevocationChecked {
+            return Err(self.invalid_transition(VerificationAction::RecordPolicySatisfied));
+        }
+        self.ensure_binding(
+            VerificationAction::RecordPolicySatisfied,
+            &capability.binding,
+        )?;
+        self.state = VerificationState::PolicySatisfied(capability.allowed);
+        Ok(())
+    }
+
+    /// Completes the fully gated path and releases the owned raw request.
+    ///
+    /// # Errors
+    ///
+    /// Returns a redacted invalid-transition error unless policy satisfaction
+    /// is the current phase.
+    pub fn complete(&mut self) -> Result<VerifiedAttestation, TransitionError> {
+        let allowed = match self.state {
+            VerificationState::PolicySatisfied(allowed) => allowed,
+            _ => return Err(self.invalid_transition(VerificationAction::Complete)),
+        };
+        self.state = VerificationState::Verified(allowed);
+        self.request = None;
+        Ok(VerifiedAttestation {
+            binding: self.binding.clone(),
+            allowed,
+        })
+    }
+
+    fn invalid_transition(&self, action: VerificationAction) -> TransitionError {
+        TransitionError::InvalidTransition {
+            phase: self.phase(),
+            action,
+        }
+    }
+
+    fn ensure_binding(
+        &self,
+        action: VerificationAction,
+        candidate: &VerificationBinding,
+    ) -> Result<(), TransitionError> {
+        if self.binding.matches(candidate) {
+            Ok(())
+        } else {
+            Err(TransitionError::CapabilityRejected { action })
+        }
+    }
+}
+
+impl fmt::Debug for VerifierFlow {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("VerifierFlow")
+            .field("phase", &self.phase())
+            .field("outcome", &self.outcome())
+            .finish()
+    }
 }
 
 /// Performs the implemented freshness and relying-party context checks.
@@ -151,3 +642,6 @@ fn freshness_failure(error: FreshnessError) -> VerificationOutcome {
         | FreshnessError::CapacityExceeded => retry_unavailable(),
     }
 }
+
+#[cfg(test)]
+mod tests;
