@@ -1,6 +1,6 @@
 # M1-009 local protected-session state-machine design
 
-- Status: Approved design; written-spec review pending
+- Status: Approved for implementation planning
 - Date: 2026-08-26
 - Related issue: [M1-009](../../../planning/issues/009-local-session-state-machine.md)
 - Decision owner: Initial maintainer
@@ -55,6 +55,10 @@ On 2026-08-26, the decision owner approved, in sequence:
 - explicit terminal cleanup status and structured redacted errors; and
 - exhaustive finite-state, arbitrary-sequence, compile-fail, mutation,
   privacy, and attack-scenario validation.
+
+The decision owner then approved the written specification captured in commit
+`fc9acbbe01714a8c8337555efb101f1d592e7428`; this status-only follow-up records
+that review.
 
 Evidence-backed refinements may proceed inside this approved task and trust
 scope when their source, rationale, and falsifying test are recorded. Any
