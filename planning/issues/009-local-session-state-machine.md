@@ -145,5 +145,7 @@ and existing `ogir_model::SessionId`; all affected source remains Apache-2.0.
 - Task-scoped reviews are clean. The final whole-branch scoped re-review found
   all five findings addressed with no new breakage.
 - Trusted factories and operation adapters, real cleanup I/O, and persistence/
-  process-restart durability remain future work. DCO certification,
-  publication, and human review are not complete.
+  process-restart durability remain future work. The original 19-commit range
+  certified as 34ce07e..024eccd was metadata-only rewritten DCO-clean as
+  34ce07e..305546f; any later content commit requires its own DCO
+  certification. Publication and line-by-line human review remain pending.
