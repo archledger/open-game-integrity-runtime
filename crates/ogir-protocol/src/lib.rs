@@ -15,12 +15,18 @@ pub const MAX_FRAME_LENGTH: usize = 1024 * 1024;
 ///
 /// Both the local agent and remote verifier depend on this protocol-owned type;
 /// the verifier must not depend on implementation details of the local agent.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct EvidenceBundle {
     /// Evidence profile identifier.
     pub profile_id: EvidenceProfile,
     /// Encoded payload owned by the selected attestation profile.
     pub payload: Vec<u8>,
+}
+
+impl fmt::Debug for EvidenceBundle {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("EvidenceBundle([REDACTED])")
+    }
 }
 
 /// Research protocol message kinds.
