@@ -1,0 +1,25 @@
+{
+  "id": "OGIR-SESSION-TERMINAL-CLEANUP-001",
+  "title": "Reactivate a terminal session or abandon required cleanup",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["protected_session_authorization", "host_policy_noninterference"],
+  "preconditions": ["a local session entered Ended or Invalidated"],
+  "steps": [
+    "request renewal, permit receipt, or activation after terminal entry",
+    "drop one cleanup request and request a retry while cleanup remains required",
+    "acknowledge cleanup with a capability from another session"
+  ],
+  "expected": {
+    "decision": "deny",
+    "reason": "terminal-session-cleanup-required",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "terminal lifecycle disposition never changes",
+    "cleanup remains Required until matching trusted completion",
+    "cleanup request retry never permits reactivation"
+  ],
+  "residual_risk": ["actual idempotent cleanup and crash recovery require a later trusted adapter"]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "OGIR-SESSION-GATE-SKIP-001",
+  "title": "Skip permit receipt before local session activation",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["protected_session_authorization"],
+  "preconditions": ["a local session has not consumed a matching validated permit capability"],
+  "steps": ["skip one or more admission gates", "request transition to Active"],
+  "expected": {
+    "decision": "deny",
+    "reason": "invalid-transition",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "Active is reachable only after challenge, caller, preparation, evidence, and permit gates",
+    "transition rejection does not mutate the local session"
+  ],
+  "residual_risk": ["a compromised trusted local adapter can violate its capability-minting contract"]
+}

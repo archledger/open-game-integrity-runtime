@@ -1,0 +1,20 @@
+{
+  "id": "OGIR-SESSION-CAPABILITY-SUBSTITUTION-001",
+  "title": "Use one local session capability on another session",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["protected_session_authorization", "local_session_identity"],
+  "preconditions": ["a valid completion capability exists for local session-A"],
+  "steps": ["present the session-A capability to the state machine for session-B"],
+  "expected": {
+    "decision": "deny",
+    "reason": "capability-rejected",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "every authority-bearing capability is bound to exactly one local SessionId",
+    "capability rejection preserves phase and cleanup status"
+  ],
+  "residual_risk": ["the trusted local owner must avoid creating multiple authoritative machines for one SessionId"]
+}
