@@ -275,6 +275,18 @@ impl GateKind {
             Self::Policy => TestAction::Policy(allowed, BindingMode::Matching),
         }
     }
+
+    fn required_phase(self) -> VerificationPhase {
+        match self {
+            Self::Challenge => VerificationPhase::EvidenceReceived,
+            Self::Freshness => VerificationPhase::ChallengeAuthenticated,
+            Self::Identity => VerificationPhase::FreshnessChecked,
+            Self::Evidence => VerificationPhase::IdentityChecked,
+            Self::Session => VerificationPhase::EvidenceAppraised,
+            Self::Revocation => VerificationPhase::SessionBound,
+            Self::Policy => VerificationPhase::RevocationChecked,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -582,6 +594,236 @@ fn assert_flow_matches_model(flow: &VerifierFlow, state: ModelState) {
     assert_eq!(flow.request.is_some(), model_is_nonterminal(state));
 }
 
+fn equal_flows_at_gate(gate: GateKind, seed: u8) -> (VerifierFlow, VerifierFlow) {
+    let request = request_fixture(seed);
+    let equal_request = request.clone();
+    assert_eq!(request, equal_request);
+    let mut source = VerifierFlow::begin(request);
+    let mut target = VerifierFlow::begin(equal_request);
+    assert_eq!(source.request.as_ref(), target.request.as_ref());
+    assert!(!source.binding.matches(&target.binding));
+
+    let prefix_length = match gate {
+        GateKind::Challenge => 0,
+        GateKind::Freshness => 1,
+        GateKind::Identity => 2,
+        GateKind::Evidence => 3,
+        GateKind::Session => 4,
+        GateKind::Revocation => 5,
+        GateKind::Policy => 6,
+    };
+    for prefix_gate in ALL_7_GATE_KINDS.into_iter().take(prefix_length) {
+        let action = prefix_gate.matching_action(AllowedClass::Full);
+        assert_eq!(
+            apply_action(&mut source, &target.binding.clone(), action),
+            Ok(ActionResult::NoCapability)
+        );
+        assert_eq!(
+            apply_action(&mut target, &source.binding.clone(), action),
+            Ok(ActionResult::NoCapability)
+        );
+    }
+    assert_eq!(source.phase(), gate.required_phase());
+    assert_eq!(target.phase(), gate.required_phase());
+    (source, target)
+}
+
+fn apply_capability_from_other_flow(
+    gate: GateKind,
+    source: &VerifierFlow,
+    target: &mut VerifierFlow,
+) -> Result<(), TransitionError> {
+    let binding = source.binding.clone();
+    match gate {
+        GateKind::Challenge => {
+            target.record_challenge_authenticated(ChallengeAuthenticated { binding })
+        }
+        GateKind::Freshness => {
+            target.record_freshness_checked(crate::freshness::test_freshness_checked(binding))
+        }
+        GateKind::Identity => target.record_identity_checked(IdentityChecked { binding }),
+        GateKind::Evidence => target.record_evidence_appraised(EvidenceAppraised { binding }),
+        GateKind::Session => target.record_session_bound(SessionBound { binding }),
+        GateKind::Revocation => target.record_revocation_checked(RevocationChecked { binding }),
+        GateKind::Policy => target.record_policy_satisfied(PolicySatisfied {
+            binding,
+            allowed: AllowedClass::Full,
+        }),
+    }
+}
+
+fn flow_with_private_sentinels() -> VerifierFlow {
+    let maximum = match NonZeroU64::new(100) {
+        Some(value) => ChallengeLifetime::new(value),
+        None => panic!("fixture maximum must be nonzero"),
+    };
+    let window = match ChallengeWindow::new(UnixTime::new(4_242), UnixTime::new(4_342), maximum) {
+        Ok(value) => value,
+        Err(error) => panic!("valid private window rejected: {error:?}"),
+    };
+    VerifierFlow::begin(VerificationRequest {
+        challenge: PublisherChallenge {
+            version: ProtocolVersion { major: 0, minor: 1 },
+            publisher_id: identifier::<PublisherId>("private.publisher"),
+            game_id: identifier::<GameId>("private.game"),
+            build_id: identifier::<BuildId>("private-build"),
+            account_scope: identifier::<AccountScope>("private-account"),
+            match_id: identifier::<MatchId>("private-match"),
+            policy_id: identifier::<PolicyId>("private-policy"),
+            policy_version: PolicyVersion::new(1),
+            nonce: Nonce::from_bytes([0xA5; 32]),
+            window,
+        },
+        evidence: EvidenceBundle {
+            profile_id: identifier::<EvidenceProfile>("private-profile"),
+            payload: b"private-evidence-payload".to_vec(),
+        },
+        expected: ExpectedContext {
+            publisher_id: identifier::<PublisherId>("private.publisher"),
+            game_id: identifier::<GameId>("private.game"),
+            build_id: identifier::<BuildId>("private-build"),
+            account_scope: identifier::<AccountScope>("private-account"),
+            match_id: identifier::<MatchId>("private-match"),
+            policy_id: identifier::<PolicyId>("private-policy"),
+            policy_version: PolicyVersion::new(1),
+        },
+        now: UnixTime::new(4_242),
+    })
+}
+
+fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
+    let mut diagnostics = Vec::new();
+    let binding = flow.binding.clone();
+
+    let binding_diagnostic = format!("{binding:?}");
+    assert_eq!(binding_diagnostic, "VerificationBinding([REDACTED])");
+    diagnostics.push(binding_diagnostic);
+
+    let challenge = ChallengeAuthenticated {
+        binding: binding.clone(),
+    };
+    let diagnostic = format!("{challenge:?}");
+    assert_eq!(diagnostic, "ChallengeAuthenticated([REDACTED])");
+    diagnostics.push(diagnostic);
+
+    let freshness = crate::freshness::test_freshness_checked(binding.clone());
+    let diagnostic = format!("{freshness:?}");
+    assert_eq!(diagnostic, "FreshnessChecked([REDACTED])");
+    diagnostics.push(diagnostic);
+
+    let identity = IdentityChecked {
+        binding: binding.clone(),
+    };
+    let diagnostic = format!("{identity:?}");
+    assert_eq!(diagnostic, "IdentityChecked([REDACTED])");
+    diagnostics.push(diagnostic);
+
+    let evidence = EvidenceAppraised {
+        binding: binding.clone(),
+    };
+    let diagnostic = format!("{evidence:?}");
+    assert_eq!(diagnostic, "EvidenceAppraised([REDACTED])");
+    diagnostics.push(diagnostic);
+
+    let session = SessionBound {
+        binding: binding.clone(),
+    };
+    let diagnostic = format!("{session:?}");
+    assert_eq!(diagnostic, "SessionBound([REDACTED])");
+    diagnostics.push(diagnostic);
+
+    let revocation = RevocationChecked {
+        binding: binding.clone(),
+    };
+    let diagnostic = format!("{revocation:?}");
+    assert_eq!(diagnostic, "RevocationChecked([REDACTED])");
+    diagnostics.push(diagnostic);
+
+    let policy = PolicySatisfied {
+        binding: binding.clone(),
+        allowed: AllowedClass::Full,
+    };
+    let diagnostic = format!("{policy:?}");
+    assert_eq!(diagnostic, "PolicySatisfied([REDACTED])");
+    diagnostics.push(diagnostic);
+
+    let verified = VerifiedAttestation {
+        binding,
+        allowed: AllowedClass::Full,
+    };
+    let diagnostic = format!("{verified:?}");
+    assert_eq!(diagnostic, "VerifiedAttestation([REDACTED])");
+    diagnostics.push(diagnostic);
+
+    let request = match flow.request.as_ref() {
+        Some(value) => value,
+        None => panic!("active sentinel flow unexpectedly released its request"),
+    };
+    let diagnostic = format!("{request:?}");
+    assert_eq!(diagnostic, "VerificationRequest([REDACTED])");
+    diagnostics.push(diagnostic);
+    let diagnostic = format!("{:?}", request.evidence);
+    assert_eq!(diagnostic, "EvidenceBundle([REDACTED])");
+    diagnostics.push(diagnostic);
+
+    let invalid = TransitionError::InvalidTransition {
+        phase: VerificationPhase::EvidenceReceived,
+        action: VerificationAction::Complete,
+    };
+    let diagnostic = invalid.to_string();
+    assert_eq!(diagnostic, "verifier transition is not allowed");
+    diagnostics.push(diagnostic);
+    let rejected = TransitionError::CapabilityRejected {
+        action: VerificationAction::RecordChallengeAuthenticated,
+    };
+    let diagnostic = rejected.to_string();
+    assert_eq!(diagnostic, "verifier capability was rejected");
+    diagnostics.push(diagnostic);
+
+    let diagnostic = format!("{flow:?}");
+    assert_eq!(
+        diagnostic,
+        "VerifierFlow { phase: EvidenceReceived, outcome: None }"
+    );
+    diagnostics.push(diagnostic);
+
+    for state in ALL_14_MODEL_STATES {
+        let state_flow = flow_for_model_state(state, 84);
+        let diagnostic = format!("{state_flow:?}");
+        assert!(diagnostic.starts_with("VerifierFlow { phase: "));
+        assert!(diagnostic.ends_with(" }"));
+        diagnostics.push(diagnostic);
+    }
+
+    for state in [
+        ModelState::Verified(AllowedClass::Full),
+        ModelState::Verified(AllowedClass::Restricted),
+        ModelState::Malformed,
+        ModelState::Unsupported,
+        ModelState::Retryable,
+        ModelState::Denied(DenialReason::NotYetValid),
+        ModelState::Denied(DenialReason::Expired),
+        ModelState::Denied(DenialReason::ReplayDetected),
+        ModelState::Denied(DenialReason::SessionBindingMismatch),
+        ModelState::Denied(DenialReason::EvidenceInvalid),
+        ModelState::Denied(DenialReason::PolicyDenied),
+        ModelState::Denied(DenialReason::ProtectedSessionLost),
+        ModelState::Revoked,
+    ] {
+        let outcome_flow = flow_for_model_state(state, 85);
+        let outcome = match outcome_flow.outcome() {
+            Some(value) => value,
+            None => panic!("terminal model state produced no report: {state:?}"),
+        };
+        let diagnostic = format!("{outcome:?}");
+        assert!(diagnostic.starts_with("VerificationOutcome { decision: "));
+        assert!(diagnostic.ends_with(" }"));
+        diagnostics.push(diagnostic);
+    }
+
+    diagnostics
+}
+
 fn assert_every_action_rejected(flow: &mut VerifierFlow) {
     let other_binding = flow_fixture(250).binding;
     let current_phase = flow.phase();
@@ -607,6 +849,517 @@ fn permute_gates(gates: &mut [GateKind], start: usize, visit: &mut impl FnMut(&[
         gates.swap(start, index);
         permute_gates(gates, start + 1, visit);
         gates.swap(start, index);
+    }
+}
+
+const TOTAL_ACTIONS: usize = 1_048_576;
+const SCHEDULED_ACTIONS: usize = 2_048;
+const ARBITRARY_ACTIONS: usize = TOTAL_ACTIONS - SCHEDULED_ACTIONS;
+
+struct Lcg(u64);
+
+impl Lcg {
+    fn next(&mut self) -> u64 {
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1);
+        self.0
+    }
+
+    fn action(&mut self) -> TestAction {
+        let action_index = (self.next() % 13) as usize;
+        let selector = self.next();
+        arbitrary_action_from_index(action_index, selector)
+    }
+}
+
+fn seed_for_index(index: usize) -> u8 {
+    (index % 200) as u8 + 1
+}
+
+const ALL_7_DENIAL_REASONS: [DenialReason; 7] = [
+    DenialReason::NotYetValid,
+    DenialReason::Expired,
+    DenialReason::ReplayDetected,
+    DenialReason::SessionBindingMismatch,
+    DenialReason::EvidenceInvalid,
+    DenialReason::PolicyDenied,
+    DenialReason::ProtectedSessionLost,
+];
+
+fn arbitrary_action_from_index(index: usize, selector: u64) -> TestAction {
+    let mode = if selector & 1 == 0 {
+        BindingMode::Matching
+    } else {
+        BindingMode::OtherFlow
+    };
+    match index {
+        0 => TestAction::Challenge(mode),
+        1 => TestAction::Freshness(mode),
+        2 => TestAction::Identity(mode),
+        3 => TestAction::Evidence(mode),
+        4 => TestAction::Session(mode),
+        5 => TestAction::Revocation(mode),
+        6 => TestAction::Policy(
+            if selector & 2 == 0 {
+                AllowedClass::Full
+            } else {
+                AllowedClass::Restricted
+            },
+            mode,
+        ),
+        7 => TestAction::Complete,
+        8 => TestAction::MarkMalformed,
+        9 => TestAction::MarkUnsupported,
+        10 => TestAction::MarkRetryable,
+        11 => TestAction::Deny(
+            ALL_7_DENIAL_REASONS[(selector % ALL_7_DENIAL_REASONS.len() as u64) as usize],
+        ),
+        12 => TestAction::MarkRevoked,
+        _ => panic!("arbitrary action index outside fixed domain: {index}"),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ScheduledStep {
+    reset_before: bool,
+    action: TestAction,
+}
+
+fn push_sequence(schedule: &mut Vec<ScheduledStep>, actions: &[TestAction]) {
+    for (index, action) in actions.iter().copied().enumerate() {
+        schedule.push(ScheduledStep {
+            reset_before: index == 0,
+            action,
+        });
+    }
+}
+
+const MATCHING_GATE_PREFIX: [TestAction; 7] = [
+    TestAction::Challenge(BindingMode::Matching),
+    TestAction::Freshness(BindingMode::Matching),
+    TestAction::Identity(BindingMode::Matching),
+    TestAction::Evidence(BindingMode::Matching),
+    TestAction::Session(BindingMode::Matching),
+    TestAction::Revocation(BindingMode::Matching),
+    TestAction::Policy(AllowedClass::Full, BindingMode::Matching),
+];
+
+fn canonical_completion(allowed: AllowedClass) -> [TestAction; 8] {
+    let mut actions = [TestAction::Complete; 8];
+    actions[..6].copy_from_slice(&MATCHING_GATE_PREFIX[..6]);
+    actions[6] = TestAction::Policy(allowed, BindingMode::Matching);
+    actions[7] = TestAction::Complete;
+    actions
+}
+
+const ALL_5_FAILURE_ACTIONS: [TestAction; 5] = [
+    TestAction::MarkMalformed,
+    TestAction::MarkUnsupported,
+    TestAction::MarkRetryable,
+    TestAction::Deny(DenialReason::PolicyDenied),
+    TestAction::MarkRevoked,
+];
+
+const ALL_6_TERMINAL_CONSTRUCTORS: [TestAction; 6] = [
+    TestAction::Complete,
+    TestAction::MarkMalformed,
+    TestAction::MarkUnsupported,
+    TestAction::MarkRetryable,
+    TestAction::Deny(DenialReason::PolicyDenied),
+    TestAction::MarkRevoked,
+];
+
+fn scheduled_actions() -> Vec<ScheduledStep> {
+    let mut schedule = Vec::with_capacity(SCHEDULED_ACTIONS);
+    let mut named_full = 0usize;
+    let mut named_restricted = 0usize;
+    for _ in 0..16 {
+        push_sequence(&mut schedule, &canonical_completion(AllowedClass::Full));
+        named_full += 1;
+        push_sequence(
+            &mut schedule,
+            &canonical_completion(AllowedClass::Restricted),
+        );
+        named_restricted += 1;
+    }
+    assert_eq!(named_full, 16);
+    assert_eq!(named_restricted, 16);
+    assert_eq!(schedule.len(), 256);
+
+    let mut failure_sequences = 0usize;
+    for phase_index in 0..8 {
+        for failure in ALL_5_FAILURE_ACTIONS {
+            let mut sequence = MATCHING_GATE_PREFIX[..phase_index].to_vec();
+            sequence.push(failure);
+            push_sequence(&mut schedule, &sequence);
+            failure_sequences += 1;
+        }
+    }
+    assert_eq!(failure_sequences, 40);
+    assert_eq!(schedule.len(), 436);
+
+    let mut denial_sequences = 0usize;
+    for phase_index in 0..8 {
+        for reason in ALL_7_DENIAL_REASONS {
+            let mut sequence = MATCHING_GATE_PREFIX[..phase_index].to_vec();
+            sequence.push(TestAction::Deny(reason));
+            push_sequence(&mut schedule, &sequence);
+            denial_sequences += 1;
+        }
+    }
+    assert_eq!(denial_sequences, 56);
+    assert_eq!(schedule.len(), 688);
+
+    let mut cross_flow_sequences = 0usize;
+    for (gate_index, gate) in ALL_7_GATE_KINDS.into_iter().enumerate() {
+        let mut sequence = MATCHING_GATE_PREFIX[..gate_index].to_vec();
+        let mismatched = match gate {
+            GateKind::Challenge => TestAction::Challenge(BindingMode::OtherFlow),
+            GateKind::Freshness => TestAction::Freshness(BindingMode::OtherFlow),
+            GateKind::Identity => TestAction::Identity(BindingMode::OtherFlow),
+            GateKind::Evidence => TestAction::Evidence(BindingMode::OtherFlow),
+            GateKind::Session => TestAction::Session(BindingMode::OtherFlow),
+            GateKind::Revocation => TestAction::Revocation(BindingMode::OtherFlow),
+            GateKind::Policy => TestAction::Policy(AllowedClass::Full, BindingMode::OtherFlow),
+        };
+        sequence.push(mismatched);
+        sequence.push(TestAction::MarkMalformed);
+        push_sequence(&mut schedule, &sequence);
+        cross_flow_sequences += 1;
+    }
+    assert_eq!(cross_flow_sequences, 7);
+    assert_eq!(schedule.len(), 723);
+
+    let mut terminal_sequences = 0usize;
+    for constructor in ALL_6_TERMINAL_CONSTRUCTORS {
+        for attempted in ALL_13_MATRIX_ACTIONS {
+            let mut sequence = if constructor == TestAction::Complete {
+                canonical_completion(AllowedClass::Full).to_vec()
+            } else {
+                vec![constructor]
+            };
+            sequence.push(attempted);
+            push_sequence(&mut schedule, &sequence);
+            terminal_sequences += 1;
+        }
+    }
+    assert_eq!(terminal_sequences, 78);
+    assert_eq!(schedule.len(), 970);
+
+    push_sequence(&mut schedule, &[TestAction::MarkUnsupported]);
+    let unknown_gate_sequences = 1usize;
+    assert_eq!(unknown_gate_sequences, 1);
+    assert_eq!(schedule.len(), 971);
+
+    let mut extra_completions = 0usize;
+    while schedule.len() + 8 <= SCHEDULED_ACTIONS {
+        let allowed = if extra_completions.is_multiple_of(2) {
+            AllowedClass::Full
+        } else {
+            AllowedClass::Restricted
+        };
+        push_sequence(&mut schedule, &canonical_completion(allowed));
+        extra_completions += 1;
+    }
+    assert_eq!(extra_completions, 134);
+    assert_eq!(schedule.len(), 2_043);
+
+    let mut filler_sequences = 0usize;
+    while schedule.len() < SCHEDULED_ACTIONS {
+        push_sequence(&mut schedule, &[TestAction::MarkMalformed]);
+        filler_sequences += 1;
+    }
+    assert_eq!(filler_sequences, 5);
+    assert_eq!(schedule.len(), SCHEDULED_ACTIONS);
+    schedule
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExpectedAction {
+    Allowed(ModelState),
+    InvalidTransition,
+    CapabilityRejected,
+}
+
+fn model_is_terminal(state: ModelState) -> bool {
+    !model_is_nonterminal(state)
+}
+
+fn expected_history_action(state: ModelState, action: TestAction) -> ExpectedAction {
+    if let Some(next) = model_transition(state, action) {
+        return ExpectedAction::Allowed(next);
+    }
+    if action.binding_mode() == Some(BindingMode::OtherFlow)
+        && action.required_phase() == Some(model_phase(state))
+    {
+        return ExpectedAction::CapabilityRejected;
+    }
+    ExpectedAction::InvalidTransition
+}
+
+fn nonterminal_index(state: ModelState) -> Option<usize> {
+    match state {
+        ModelState::EvidenceReceived => Some(0),
+        ModelState::ChallengeAuthenticated => Some(1),
+        ModelState::FreshnessChecked => Some(2),
+        ModelState::IdentityChecked => Some(3),
+        ModelState::EvidenceAppraised => Some(4),
+        ModelState::SessionBound => Some(5),
+        ModelState::RevocationChecked => Some(6),
+        ModelState::PolicySatisfied(_) => Some(7),
+        ModelState::Verified(_)
+        | ModelState::Malformed
+        | ModelState::Unsupported
+        | ModelState::Retryable
+        | ModelState::Denied(_)
+        | ModelState::Revoked => None,
+    }
+}
+
+fn terminal_index(state: ModelState) -> Option<usize> {
+    match state {
+        ModelState::Verified(_) => Some(0),
+        ModelState::Malformed => Some(1),
+        ModelState::Unsupported => Some(2),
+        ModelState::Retryable => Some(3),
+        ModelState::Denied(_) => Some(4),
+        ModelState::Revoked => Some(5),
+        ModelState::EvidenceReceived
+        | ModelState::ChallengeAuthenticated
+        | ModelState::FreshnessChecked
+        | ModelState::IdentityChecked
+        | ModelState::EvidenceAppraised
+        | ModelState::SessionBound
+        | ModelState::RevocationChecked
+        | ModelState::PolicySatisfied(_) => None,
+    }
+}
+
+fn failure_index(action: TestAction) -> Option<usize> {
+    match action {
+        TestAction::MarkMalformed => Some(0),
+        TestAction::MarkUnsupported => Some(1),
+        TestAction::MarkRetryable => Some(2),
+        TestAction::Deny(_) => Some(3),
+        TestAction::MarkRevoked => Some(4),
+        TestAction::Challenge(_)
+        | TestAction::Freshness(_)
+        | TestAction::Identity(_)
+        | TestAction::Evidence(_)
+        | TestAction::Session(_)
+        | TestAction::Revocation(_)
+        | TestAction::Policy(_, _)
+        | TestAction::Complete => None,
+    }
+}
+
+fn denial_index(reason: DenialReason) -> usize {
+    match reason {
+        DenialReason::NotYetValid => 0,
+        DenialReason::Expired => 1,
+        DenialReason::ReplayDetected => 2,
+        DenialReason::SessionBindingMismatch => 3,
+        DenialReason::EvidenceInvalid => 4,
+        DenialReason::PolicyDenied => 5,
+        DenialReason::ProtectedSessionLost => 6,
+    }
+}
+
+fn gate_index(action: TestAction) -> Option<usize> {
+    match action {
+        TestAction::Challenge(_) => Some(0),
+        TestAction::Freshness(_) => Some(1),
+        TestAction::Identity(_) => Some(2),
+        TestAction::Evidence(_) => Some(3),
+        TestAction::Session(_) => Some(4),
+        TestAction::Revocation(_) => Some(5),
+        TestAction::Policy(_, _) => Some(6),
+        TestAction::Complete
+        | TestAction::MarkMalformed
+        | TestAction::MarkUnsupported
+        | TestAction::MarkRetryable
+        | TestAction::Deny(_)
+        | TestAction::MarkRevoked => None,
+    }
+}
+
+fn action_index(action: TestAction) -> usize {
+    match action {
+        TestAction::Challenge(_) => 0,
+        TestAction::Freshness(_) => 1,
+        TestAction::Identity(_) => 2,
+        TestAction::Evidence(_) => 3,
+        TestAction::Session(_) => 4,
+        TestAction::Revocation(_) => 5,
+        TestAction::Policy(_, _) => 6,
+        TestAction::Complete => 7,
+        TestAction::MarkMalformed => 8,
+        TestAction::MarkUnsupported => 9,
+        TestAction::MarkRetryable => 10,
+        TestAction::Deny(_) => 11,
+        TestAction::MarkRevoked => 12,
+    }
+}
+
+#[derive(Default)]
+struct Coverage {
+    full_completions: usize,
+    restricted_completions: usize,
+    failure_edges: [[usize; 5]; 8],
+    denial_reasons: [usize; 7],
+    matching_gates: [usize; 7],
+    mismatched_gates: [usize; 7],
+    terminal_rejections: [[usize; 13]; 6],
+    unknown_gate: usize,
+}
+
+impl Coverage {
+    fn observe(
+        &mut self,
+        before: ModelState,
+        action: TestAction,
+        expected: ExpectedAction,
+        actual: &Result<ActionResult, TransitionError>,
+    ) {
+        let result_matches = match expected {
+            ExpectedAction::Allowed(next) => {
+                let expected_result = if matches!(next, ModelState::Verified(_)) {
+                    ActionResult::Verified
+                } else {
+                    ActionResult::NoCapability
+                };
+                actual == &Ok(expected_result)
+            }
+            ExpectedAction::InvalidTransition => {
+                actual
+                    == &Err(TransitionError::InvalidTransition {
+                        phase: model_phase(before),
+                        action: action.public(),
+                    })
+            }
+            ExpectedAction::CapabilityRejected => {
+                actual
+                    == &Err(TransitionError::CapabilityRejected {
+                        action: action.public(),
+                    })
+            }
+        };
+        assert!(
+            result_matches,
+            "coverage observed a mismatched result for {before:?} {action:?}"
+        );
+
+        if let ExpectedAction::Allowed(next) = expected {
+            match (before, action, next) {
+                (
+                    ModelState::PolicySatisfied(AllowedClass::Full),
+                    TestAction::Complete,
+                    ModelState::Verified(AllowedClass::Full),
+                ) => self.full_completions += 1,
+                (
+                    ModelState::PolicySatisfied(AllowedClass::Restricted),
+                    TestAction::Complete,
+                    ModelState::Verified(AllowedClass::Restricted),
+                ) => self.restricted_completions += 1,
+                _ => {}
+            }
+            if let (Some(phase), Some(failure)) = (nonterminal_index(before), failure_index(action))
+            {
+                self.failure_edges[phase][failure] += 1;
+            }
+            if let TestAction::Deny(reason) = action {
+                self.denial_reasons[denial_index(reason)] += 1;
+            }
+            if action.binding_mode() == Some(BindingMode::Matching)
+                && let Some(gate) = gate_index(action)
+            {
+                self.matching_gates[gate] += 1;
+            }
+            if before == ModelState::EvidenceReceived
+                && action == TestAction::MarkUnsupported
+                && next == ModelState::Unsupported
+            {
+                self.unknown_gate += 1;
+            }
+        }
+
+        if expected == ExpectedAction::CapabilityRejected {
+            let gate = match gate_index(action) {
+                Some(value) => value,
+                None => panic!("capability rejection lacked a gate action: {action:?}"),
+            };
+            self.mismatched_gates[gate] += 1;
+        }
+
+        if expected == ExpectedAction::InvalidTransition
+            && let Some(terminal) = terminal_index(before)
+        {
+            self.terminal_rejections[terminal][action_index(action)] += 1;
+        }
+    }
+
+    fn assert_non_vacuous(&self) {
+        assert!(self.full_completions >= 16);
+        assert!(self.restricted_completions >= 16);
+        assert!(self.failure_edges.iter().flatten().all(|count| *count > 0));
+        assert!(self.denial_reasons.iter().all(|count| *count > 0));
+        assert!(self.matching_gates.iter().all(|count| *count > 0));
+        assert!(self.mismatched_gates.iter().all(|count| *count > 0));
+        assert!(
+            self.terminal_rejections
+                .iter()
+                .flatten()
+                .all(|count| *count > 0)
+        );
+        assert!(self.unknown_gate > 0);
+    }
+}
+
+fn assert_action_matches_model(
+    index: usize,
+    action: TestAction,
+    expected: ExpectedAction,
+    before: FlowSnapshot,
+    flow: &VerifierFlow,
+    actual: &Result<ActionResult, TransitionError>,
+) {
+    match expected {
+        ExpectedAction::Allowed(next) => {
+            let expected_result = if matches!(next, ModelState::Verified(_)) {
+                ActionResult::Verified
+            } else {
+                ActionResult::NoCapability
+            };
+            assert_eq!(
+                actual,
+                &Ok(expected_result),
+                "allowed history action failed at index {index}: {action:?}"
+            );
+            assert_flow_matches_model(flow, next);
+        }
+        ExpectedAction::InvalidTransition => {
+            assert_eq!(
+                actual,
+                &Err(TransitionError::InvalidTransition {
+                    phase: before.phase,
+                    action: action.public(),
+                }),
+                "invalid-transition mismatch at index {index}: {action:?}"
+            );
+            assert_eq!(flow_snapshot(flow), before);
+        }
+        ExpectedAction::CapabilityRejected => {
+            assert_eq!(
+                actual,
+                &Err(TransitionError::CapabilityRejected {
+                    action: action.public(),
+                }),
+                "capability-rejection mismatch at index {index}: {action:?}"
+            );
+            assert_eq!(flow_snapshot(flow), before);
+        }
     }
 }
 
@@ -966,4 +1719,200 @@ fn gate_permutations_require_the_one_canonical_order() {
     assert_eq!(permutations, 5_040);
     assert_eq!(canonical, 1);
     assert_eq!(noncanonical, 5_039);
+}
+
+#[test]
+fn every_capability_rejects_an_equal_request_from_another_flow() {
+    for gate in ALL_7_GATE_KINDS {
+        let (source, mut target) = equal_flows_at_gate(gate, 71);
+        let before = flow_snapshot(&target);
+        let result = apply_capability_from_other_flow(gate, &source, &mut target);
+        assert_eq!(
+            result,
+            Err(TransitionError::CapabilityRejected {
+                action: gate.action(),
+            })
+        );
+        assert_eq!(flow_snapshot(&target), before);
+    }
+}
+
+#[test]
+fn mismatched_capabilities_preserve_phase_before_binding_error_precedence() {
+    for state in ALL_14_MODEL_STATES {
+        for gate in ALL_7_GATE_KINDS {
+            let source = flow_fixture(72);
+            let mut target = flow_for_model_state(state, 72);
+            let before = flow_snapshot(&target);
+            let actual = apply_capability_from_other_flow(gate, &source, &mut target);
+            let expected = if gate.required_phase() == model_phase(state) {
+                TransitionError::CapabilityRejected {
+                    action: gate.action(),
+                }
+            } else {
+                TransitionError::InvalidTransition {
+                    phase: model_phase(state),
+                    action: gate.action(),
+                }
+            };
+            assert_eq!(actual, Err(expected));
+            assert_eq!(flow_snapshot(&target), before);
+        }
+    }
+}
+
+#[test]
+fn every_flow_capability_outcome_and_error_diagnostic_is_redacted() {
+    let mut flow = flow_with_private_sentinels();
+    let diagnostics = diagnostics_for_every_surface(&mut flow);
+    let forbidden = [
+        "private.publisher",
+        "private.game",
+        "private-build",
+        "private-account",
+        "private-match",
+        "private-policy",
+        "private-profile",
+        "private-evidence-payload",
+        "/home/",
+        "::error::",
+        "\n",
+        "0x",
+    ];
+
+    for diagnostic in diagnostics {
+        for sentinel in forbidden {
+            assert!(
+                !diagnostic.contains(sentinel),
+                "diagnostic leaked {sentinel:?}: {diagnostic:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn request_exists_only_while_flow_is_nonterminal() {
+    for state in ALL_14_MODEL_STATES {
+        let flow = flow_for_model_state(state, 83);
+        assert_eq!(flow.request.is_some(), model_is_nonterminal(state));
+    }
+}
+
+#[test]
+fn authority_fields_remain_private_by_structure() {
+    let verification = include_str!("../verification.rs").replace("\r\n", "\n");
+    let freshness = include_str!("../freshness.rs").replace("\r\n", "\n");
+
+    for declaration in [
+        "struct AttemptRecord {\n    _registration: ReplayRegistration,\n}",
+        "pub struct VerificationOutcome {\n    decision: Decision,\n    reason: ReasonCode,\n}",
+        "pub struct ChallengeAuthenticated {\n    binding: VerificationBinding,\n}",
+        "pub struct IdentityChecked {\n    binding: VerificationBinding,\n}",
+        "pub struct EvidenceAppraised {\n    binding: VerificationBinding,\n}",
+        "pub struct SessionBound {\n    binding: VerificationBinding,\n}",
+        "pub struct RevocationChecked {\n    binding: VerificationBinding,\n}",
+        "pub struct PolicySatisfied {\n    binding: VerificationBinding,\n    allowed: AllowedClass,\n}",
+        "pub struct VerifiedAttestation {\n    binding: VerificationBinding,\n    allowed: AllowedClass,\n}",
+        "pub struct VerifierFlow {\n    binding: VerificationBinding,\n    request: Option<VerificationRequest>,\n    state: VerificationState,\n}",
+    ] {
+        assert!(
+            verification.contains(declaration),
+            "verification authority declaration drifted: {declaration:?}"
+        );
+    }
+    assert!(
+        verification.contains(
+            "#[derive(Clone)]\npub(crate) struct VerificationBinding(Arc<AttemptRecord>);"
+        )
+    );
+    assert!(
+        freshness.contains("pub struct FreshnessChecked {\n    binding: VerificationBinding,\n}")
+    );
+
+    let verification_lines: Vec<&str> = verification.lines().collect();
+    for private_line in [
+        "    _registration: ReplayRegistration,",
+        "    binding: VerificationBinding,",
+        "    request: Option<VerificationRequest>,",
+        "    state: VerificationState,",
+        "    allowed: AllowedClass,",
+        "    decision: Decision,",
+        "    reason: ReasonCode,",
+    ] {
+        assert!(verification_lines.contains(&private_line));
+        let field = match private_line.strip_prefix("    ") {
+            Some(value) => value,
+            None => panic!("private field fixture lost exact indentation"),
+        };
+        for visibility in ["pub ", "pub(crate) ", "pub(super) "] {
+            let forbidden = format!("    {visibility}{field}");
+            assert!(
+                !verification_lines.contains(&forbidden.as_str()),
+                "verification authority field became visible: {forbidden:?}"
+            );
+        }
+    }
+
+    let freshness_lines: Vec<&str> = freshness.lines().collect();
+    let freshness_field = "    binding: VerificationBinding,";
+    assert!(freshness_lines.contains(&freshness_field));
+    for visibility in ["pub ", "pub(crate) ", "pub(super) "] {
+        let forbidden = format!("    {visibility}binding: VerificationBinding,");
+        assert!(
+            !freshness_lines.contains(&forbidden.as_str()),
+            "freshness authority field became visible: {forbidden:?}"
+        );
+    }
+
+    for forbidden in [
+        "pub(crate) struct VerificationBinding(pub Arc<AttemptRecord>);",
+        "pub(crate) struct VerificationBinding(pub(crate) Arc<AttemptRecord>);",
+        "pub(crate) struct VerificationBinding(pub(super) Arc<AttemptRecord>);",
+    ] {
+        assert!(!verification.contains(forbidden));
+    }
+}
+
+#[test]
+fn one_million_actions_match_the_independent_verifier_model() {
+    let schedule = scheduled_actions();
+    assert_eq!(schedule.len(), SCHEDULED_ACTIONS);
+    let mut rng = Lcg(0x4f47_4952_4d31_3031);
+    let mut coverage = Coverage::default();
+    let mut flow = flow_fixture(101);
+    let mut other_binding = flow_fixture(101).binding;
+    let mut model = ModelState::EvidenceReceived;
+
+    let action_stream = schedule
+        .iter()
+        .copied()
+        .map(Some)
+        .chain(std::iter::repeat_n(None, ARBITRARY_ACTIONS));
+    let mut executed = 0usize;
+    for (index, scheduled) in action_stream.enumerate() {
+        let (reset_before, action) = match scheduled {
+            Some(step) => (step.reset_before, step.action),
+            None => (model_is_terminal(model), rng.action()),
+        };
+        if reset_before {
+            let seed = seed_for_index(index);
+            flow = flow_fixture(seed);
+            other_binding = flow_fixture(seed).binding;
+            model = ModelState::EvidenceReceived;
+        }
+        let model_before = model;
+        let expected = expected_history_action(model, action);
+        let before = flow_snapshot(&flow);
+        let actual = apply_action(&mut flow, &other_binding, action);
+        assert_action_matches_model(index, action, expected, before, &flow, &actual);
+        if let ExpectedAction::Allowed(next) = expected {
+            model = next;
+        }
+        coverage.observe(model_before, action, expected, &actual);
+        executed += 1;
+    }
+
+    assert_eq!(executed, TOTAL_ACTIONS);
+    assert_eq!(TOTAL_ACTIONS - SCHEDULED_ACTIONS, ARBITRARY_ACTIONS);
+    coverage.assert_non_vacuous();
 }

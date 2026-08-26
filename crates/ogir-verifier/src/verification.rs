@@ -391,6 +391,242 @@ impl fmt::Display for TransitionError {
 impl Error for TransitionError {}
 
 /// One checked verifier attempt over an owned request.
+///
+/// The reviewed public authority surface is available to downstream code:
+///
+/// ```
+/// use ogir_verifier::{
+///     ChallengeAuthenticated, DenialReason, EvidenceAppraised,
+///     FreshnessChecked, IdentityChecked, PolicySatisfied,
+///     RevocationChecked, SessionBound, TransitionError,
+///     VerificationAction, VerificationOutcome, VerificationPhase,
+///     VerificationRequest, VerifiedAttestation, VerifierFlow,
+/// };
+///
+/// fn assert_public<T>() {}
+/// assert_public::<ChallengeAuthenticated>();
+/// assert_public::<FreshnessChecked>();
+/// assert_public::<IdentityChecked>();
+/// assert_public::<EvidenceAppraised>();
+/// assert_public::<SessionBound>();
+/// assert_public::<RevocationChecked>();
+/// assert_public::<PolicySatisfied>();
+/// assert_public::<VerifiedAttestation>();
+/// assert_public::<VerifierFlow>();
+/// assert_public::<VerificationRequest>();
+/// assert_public::<VerificationOutcome>();
+/// assert_public::<VerificationPhase>();
+/// assert_public::<VerificationAction>();
+/// assert_public::<DenialReason>();
+/// assert_public::<TransitionError>();
+///
+/// fn inspect(flow: &VerifierFlow) {
+///     let _phase = flow.phase();
+///     let _outcome = flow.outcome();
+/// }
+/// ```
+///
+/// Gate capabilities cannot be constructed outside the crate:
+///
+/// ```compile_fail
+/// use ogir_verifier::ChallengeAuthenticated;
+/// let _ = ChallengeAuthenticated::new();
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::FreshnessChecked;
+/// let _ = FreshnessChecked::new();
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::IdentityChecked;
+/// let _ = IdentityChecked::new();
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::EvidenceAppraised;
+/// let _ = EvidenceAppraised::new();
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::SessionBound;
+/// let _ = SessionBound::new();
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::RevocationChecked;
+/// let _ = RevocationChecked::new();
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::PolicySatisfied;
+/// let _ = PolicySatisfied::new();
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::VerifiedAttestation;
+/// let _ = VerifiedAttestation::new();
+/// ```
+///
+/// The flow and every authority capability are non-cloneable:
+///
+/// ```compile_fail
+/// use ogir_verifier::VerifierFlow;
+/// fn clone_flow(value: VerifierFlow) { let _copy = value.clone(); }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::ChallengeAuthenticated;
+/// fn clone_capability(value: ChallengeAuthenticated) { let _copy = value.clone(); }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::FreshnessChecked;
+/// fn clone_capability(value: FreshnessChecked) { let _copy = value.clone(); }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::IdentityChecked;
+/// fn clone_capability(value: IdentityChecked) { let _copy = value.clone(); }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::EvidenceAppraised;
+/// fn clone_capability(value: EvidenceAppraised) { let _copy = value.clone(); }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::SessionBound;
+/// fn clone_capability(value: SessionBound) { let _copy = value.clone(); }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::RevocationChecked;
+/// fn clone_capability(value: RevocationChecked) { let _copy = value.clone(); }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::PolicySatisfied;
+/// fn clone_capability(value: PolicySatisfied) { let _copy = value.clone(); }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::VerifiedAttestation;
+/// fn clone_capability(value: VerifiedAttestation) { let _copy = value.clone(); }
+/// ```
+///
+/// Flow authority and retained request fields are private:
+///
+/// ```compile_fail
+/// use ogir_verifier::VerifierFlow;
+/// fn read_binding(value: VerifierFlow) { let _ = value.binding; }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::VerifierFlow;
+/// fn read_request(value: VerifierFlow) { let _ = value.request; }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::VerifierFlow;
+/// fn read_state(value: VerifierFlow) { let _ = value.state; }
+/// ```
+///
+/// Every capability binding is private:
+///
+/// ```compile_fail
+/// use ogir_verifier::ChallengeAuthenticated;
+/// fn read_binding(value: ChallengeAuthenticated) { let _ = value.binding; }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::FreshnessChecked;
+/// fn read_binding(value: FreshnessChecked) { let _ = value.binding; }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::IdentityChecked;
+/// fn read_binding(value: IdentityChecked) { let _ = value.binding; }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::EvidenceAppraised;
+/// fn read_binding(value: EvidenceAppraised) { let _ = value.binding; }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::SessionBound;
+/// fn read_binding(value: SessionBound) { let _ = value.binding; }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::RevocationChecked;
+/// fn read_binding(value: RevocationChecked) { let _ = value.binding; }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::PolicySatisfied;
+/// fn read_binding(value: PolicySatisfied) { let _ = value.binding; }
+/// ```
+///
+/// Policy and verified-result authority fields are private:
+///
+/// ```compile_fail
+/// use ogir_verifier::PolicySatisfied;
+/// fn read_allowed(value: PolicySatisfied) { let _ = value.allowed; }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::VerifiedAttestation;
+/// fn read_binding(value: VerifiedAttestation) { let _ = value.binding; }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::VerifiedAttestation;
+/// fn read_allowed(value: VerifiedAttestation) { let _ = value.allowed; }
+/// ```
+///
+/// Report fields remain read-only:
+///
+/// ```compile_fail
+/// use ogir_verifier::VerificationOutcome;
+/// fn read_decision(value: VerificationOutcome) { let _ = value.decision; }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::VerificationOutcome;
+/// fn read_reason(value: VerificationOutcome) { let _ = value.reason; }
+/// ```
+///
+/// A decision or report cannot substitute for verified authority:
+///
+/// ```compile_fail
+/// use ogir_model::Decision;
+/// use ogir_verifier::VerifiedAttestation;
+/// fn consume(_: VerifiedAttestation) {}
+/// consume(Decision::Allow);
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::{VerificationOutcome, VerifiedAttestation};
+/// fn consume(_: VerifiedAttestation) {}
+/// fn substitute(value: VerificationOutcome) { consume(value); }
+/// ```
+///
+/// No report-to-authority shortcut exists:
+///
+/// ```compile_fail
+/// use ogir_model::Decision;
+/// use ogir_verifier::VerifiedAttestation;
+/// let _ = VerifiedAttestation::from_decision(Decision::Allow);
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::{VerificationOutcome, VerifiedAttestation};
+/// fn substitute(value: VerificationOutcome) {
+///     let _ = VerifiedAttestation::from_outcome(value);
+/// }
+/// ```
 #[must_use]
 pub struct VerifierFlow {
     binding: VerificationBinding,
