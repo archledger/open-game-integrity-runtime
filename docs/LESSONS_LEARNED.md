@@ -444,3 +444,30 @@ Do not use this document to expose embargoed vulnerability details before coordi
 - **Documentation or agent-policy updates:** The approved spec, implementation
   plan, test strategy, ADR-0006, 27-probe table, and Task 6 report record the
   layered proof and supersede the earlier lint-only closure.
+
+## 2026-08-26 — A focused Cargo success must execute the named test
+
+- **Context:** M1-010 immutable verifier-terminal verification.
+- **Mistaken assumption:** `cargo test --lib <bare-test-name> -- --exact` would
+  match a nested unit test whose real name begins with
+  `verification::tests::`.
+- **Observed failure:** The command exited zero while reporting `running 0
+  tests` and filtering every verifier test. Exit status alone looked green even
+  though the named terminal regression never executed.
+- **Security or quality impact:** Terminal immutability or a later mutation
+  probe could be reported as covered without exercising its detector.
+- **Permanent regression test:** Focused verifier commands use the fully
+  qualified name, including
+  `verification::tests::every_failure_class_is_terminal_and_releases_the_request`,
+  `verification::tests::all_182_phase_action_pairs_match_the_independent_model`,
+  and
+  `verification::tests::one_million_actions_match_the_independent_verifier_model`,
+  and their evidence records the expected `running 1 test`/`1 passed` count.
+  Each M1-010 mutation report row must likewise name the intended assertion or
+  compiler cause rather than accepting any nonzero result.
+- **New prevention rule:** A focused command is evidence only when its output
+  confirms the expected test count and intended assertion/compiler boundary;
+  zero-test success and wrong-cause failure are both invalid.
+- **Documentation or agent-policy updates:** The verifier mutation contract in
+  `TEST_STRATEGY.md`, this ledger, and the live execution handoff record the
+  count-and-cause requirement.
