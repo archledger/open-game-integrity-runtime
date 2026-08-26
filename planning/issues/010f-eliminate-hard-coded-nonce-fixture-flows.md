@@ -80,6 +80,8 @@ repository's full-branch security signal.
 - `challenge_for_publisher`, `challenge`, `challenge_for_account`, and
   `challenge_with_window` accept `nonce_seed: u8` and never accept raw nonce
   arrays.
+- Property-history helpers likewise name their scalar input `nonce_seed`, so no
+  private function retains the CodeQL query's exact `nonce` parameter sink.
 - No public API is added or changed.
 
 ## Positive tests
