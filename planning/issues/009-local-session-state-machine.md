@@ -1,5 +1,5 @@
 # M1-009: Implement the local protected-session state machine
-<!-- labels: type: implementation,area: model,area: agent,area: session,risk: trusted-computing-base,risk: privacy,status: ready -->
+<!-- labels: type: implementation,area: model,area: agent,area: session,risk: trusted-computing-base,risk: privacy,status: needs-review -->
 <!-- milestone: M1 Domain Model -->
 
 ## Problem
@@ -110,3 +110,40 @@ and existing `ogir_model::SessionId`; all affected source remains Apache-2.0.
 - Rust 1.98 visibility: https://doc.rust-lang.org/1.98.0/reference/visibility-and-privacy.html
 - Rust 1.98 ownership: https://doc.rust-lang.org/1.98.0/book/ch04-01-what-is-ownership.html
 - Rust 1.98 `must_use`: https://doc.rust-lang.org/1.98.0/core/attribute.must_use.html
+
+## Implementation evidence
+
+- `ogir-agent` now contains the pure initial, renewal, terminal, and cleanup-
+  acknowledgement state machine, with no production factory, dependency, or
+  I/O boundary added.
+- The independent model exhausts all 120 state/action pairs: 26 are allowed
+  and 94 reject without mutation. The cleanup query returns a request for
+  exactly two terminal-required states.
+- Fixed-seed histories execute exactly 1,048,576 actions: 80 scheduled and
+  1,048,496 pseudo-random. The exact deep counters are 8 initial permits, 8
+  initial activations, 12 renewal entries, 10 renewal permits, and 10 renewed
+  activations.
+- All eight capability-bearing edges reject a different session without
+  mutation. Exact diagnostic allowlists remain context-free and omit the raw
+  private session binding.
+- External authority proof includes one compile-pass and 19 single-cause
+  compile-fail doctests, plus a focused structural privacy test for every
+  authority, session-ID, and state field.
+- The final exact-head mutation run killed all 27 named mutations. The mutation
+  loop closed four proof-gap regressions test-first and recorded durable
+  lessons.
+- Scenarios `OGIR-SESSION-GATE-SKIP-001`,
+  `OGIR-SESSION-CAPABILITY-SUBSTITUTION-001`, and
+  `OGIR-SESSION-TERMINAL-CLEANUP-001` pass within nine total validated attack
+  scenarios.
+- [ADR-0006](../../docs/adr/0006-local-session-lifecycle-capabilities.md) is
+  accepted, and roadmap, architecture, threat-model, and test-strategy
+  documentation reflect the implemented and deferred boundaries.
+- Final `./scripts/check.sh` and optimized release verification pass 66
+  runtime/integration tests plus 23 doctests with no failures; range whitespace,
+  repository object-graph, and clean-worktree checks also pass.
+- Task-scoped reviews are clean. The final whole-branch scoped re-review found
+  all five findings addressed with no new breakage.
+- Trusted factories and operation adapters, real cleanup I/O, and persistence/
+  process-restart durability remain future work. DCO certification,
+  publication, and human review are not complete.
