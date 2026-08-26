@@ -892,6 +892,34 @@ fn every_authority_bearing_public_type_exists() {
 }
 
 #[test]
+fn every_authority_field_is_structurally_private() {
+    let source = include_str!("../session.rs");
+
+    for type_name in [
+        "ValidatedChallenge",
+        "BoundCaller",
+        "PreparedSession",
+        "CreatedEvidence",
+        "ValidatedPermit",
+        "CleanupRequest",
+        "CleanupCompleted",
+    ] {
+        let expected = format!("pub struct {type_name} {{\n    binding: SessionBinding,\n}}");
+        assert!(
+            source.contains(&expected),
+            "authority field visibility changed for {type_name}"
+        );
+    }
+
+    assert!(
+        source.contains(
+            "pub struct LocalSession {\n    session_id: SessionId,\n    state: SessionState,\n}"
+        ),
+        "local session authority or state field visibility changed"
+    );
+}
+
+#[test]
 fn new_session_starts_without_cleanup() {
     let session = session("session-a");
     assert_eq!(session.phase(), SessionPhase::New);

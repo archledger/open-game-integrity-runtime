@@ -125,6 +125,14 @@ impl SessionBinding {
 ///
 /// fn duplicate(value: ValidatedChallenge) { let _copy = value.clone(); }
 /// ```
+///
+/// ```compile_fail
+/// use ogir_agent::ValidatedChallenge;
+///
+/// fn reveal(value: ValidatedChallenge) {
+///     let _binding = value.binding;
+/// }
+/// ```
 #[must_use = "validated challenge capability must be consumed by its session transition"]
 pub struct ValidatedChallenge {
     binding: SessionBinding,
@@ -142,6 +150,14 @@ impl fmt::Debug for ValidatedChallenge {
 /// use ogir_agent::BoundCaller;
 ///
 /// fn duplicate(value: BoundCaller) { let _copy = value.clone(); }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_agent::BoundCaller;
+///
+/// fn reveal(value: BoundCaller) {
+///     let _binding = value.binding;
+/// }
 /// ```
 #[must_use = "caller binding capability must be consumed by its session transition"]
 pub struct BoundCaller {
@@ -161,6 +177,14 @@ impl fmt::Debug for BoundCaller {
 ///
 /// fn duplicate(value: PreparedSession) { let _copy = value.clone(); }
 /// ```
+///
+/// ```compile_fail
+/// use ogir_agent::PreparedSession;
+///
+/// fn reveal(value: PreparedSession) {
+///     let _binding = value.binding;
+/// }
+/// ```
 #[must_use = "prepared-session capability must be consumed by its session transition"]
 pub struct PreparedSession {
     binding: SessionBinding,
@@ -178,6 +202,14 @@ impl fmt::Debug for PreparedSession {
 /// use ogir_agent::CreatedEvidence;
 ///
 /// fn duplicate(value: CreatedEvidence) { let _copy = value.clone(); }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_agent::CreatedEvidence;
+///
+/// fn reveal(value: CreatedEvidence) {
+///     let _binding = value.binding;
+/// }
 /// ```
 #[must_use = "created-evidence capability must be consumed by its session transition"]
 pub struct CreatedEvidence {
@@ -201,22 +233,11 @@ impl fmt::Debug for CreatedEvidence {
 /// ```compile_fail
 /// use ogir_agent::ValidatedPermit;
 ///
-/// fn unavailable<T>() -> T { loop {} }
-///
-/// fn forge() -> ValidatedPermit {
-///     ValidatedPermit { binding: unavailable() }
-/// }
-/// ```
-///
-/// ```compile_fail
-/// use ogir_agent::ValidatedPermit;
-///
 /// fn reveal(permit: ValidatedPermit) {
 ///     let _binding = permit.binding;
 /// }
 /// ```
 #[must_use = "validated permit capability must be consumed by its session transition"]
-#[deny(private_interfaces)]
 pub struct ValidatedPermit {
     binding: SessionBinding,
 }
@@ -237,6 +258,14 @@ impl fmt::Debug for ValidatedPermit {
 /// use ogir_agent::CleanupRequest;
 ///
 /// fn duplicate(value: CleanupRequest) { let _copy = value.clone(); }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_agent::CleanupRequest;
+///
+/// fn reveal(value: CleanupRequest) {
+///     let _binding = value.binding;
+/// }
 /// ```
 #[must_use = "terminal session cleanup remains required until acknowledged"]
 pub struct CleanupRequest {
@@ -261,10 +290,8 @@ impl fmt::Debug for CleanupRequest {
 /// ```compile_fail
 /// use ogir_agent::CleanupCompleted;
 ///
-/// fn unavailable<T>() -> T { loop {} }
-///
-/// fn forge() -> CleanupCompleted {
-///     CleanupCompleted { binding: unavailable() }
+/// fn reveal(value: CleanupCompleted) {
+///     let _binding = value.binding;
 /// }
 /// ```
 #[must_use = "cleanup completion capability must be consumed by its session transition"]
@@ -350,14 +377,28 @@ impl Error for TransitionError {}
 /// ```compile_fail
 /// use ogir_agent::LocalSession;
 ///
-/// fn unavailable<T>() -> T { loop {} }
+/// fn reveal_session_id(session: &LocalSession) -> &str {
+///     session.session_id.as_str()
+/// }
+/// ```
 ///
-/// fn force_state(session: &mut LocalSession) {
-///     session.state = unavailable();
+/// ```compile_fail
+/// use ogir_agent::LocalSession;
+/// use ogir_model::SessionId;
+///
+/// fn replace_session_id(session: &mut LocalSession, replacement: SessionId) {
+///     session.session_id = replacement;
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_agent::LocalSession;
+///
+/// fn reveal_state(session: &LocalSession) {
+///     let _state = &session.state;
 /// }
 /// ```
 #[must_use = "local session lifecycle state must be retained by its trusted owner"]
-#[deny(private_interfaces)]
 pub struct LocalSession {
     session_id: SessionId,
     state: SessionState,
@@ -550,7 +591,8 @@ impl LocalSession {
     /// Ends a nonterminal session and records cleanup as required.
     ///
     /// Dropping the returned request does not change the cleanup obligation;
-    /// [`Self::cleanup_request`] reissues it for crash-safe, idempotent retry.
+    /// while this `LocalSession` remains available, [`Self::cleanup_request`]
+    /// can reissue it after request loss or an interrupted adapter call.
     ///
     /// # Errors
     ///
@@ -569,7 +611,8 @@ impl LocalSession {
     /// Invalidates a nonterminal session and records cleanup as required.
     ///
     /// Dropping the returned request does not change the cleanup obligation;
-    /// [`Self::cleanup_request`] reissues it for crash-safe, idempotent retry.
+    /// while this `LocalSession` remains available, [`Self::cleanup_request`]
+    /// can reissue it after request loss or an interrupted adapter call.
     ///
     /// # Errors
     ///
@@ -588,8 +631,10 @@ impl LocalSession {
     /// Reissues a cleanup request while terminal cleanup remains required.
     ///
     /// The eventual trusted adapter must make cleanup idempotent so retries
-    /// after a dropped response or crash are safe. Request issuance never
-    /// changes lifecycle phase or cleanup status.
+    /// after request loss or adapter interruption are safe while this
+    /// `LocalSession` remains available. Process-restart durability requires
+    /// future persistence. Request issuance never changes lifecycle phase or
+    /// cleanup status.
     pub fn cleanup_request(&self) -> Option<CleanupRequest> {
         match self.state {
             SessionState::Ended(TerminalCleanup::Required)
