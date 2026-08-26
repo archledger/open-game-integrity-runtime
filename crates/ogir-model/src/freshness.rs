@@ -7,8 +7,14 @@ use std::fmt;
 use std::num::{NonZeroU64, NonZeroUsize};
 
 /// Whole seconds since the Unix epoch from a publisher-authoritative clock.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UnixTime(u64);
+
+impl fmt::Debug for UnixTime {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("UnixTime([REDACTED])")
+    }
+}
 
 impl UnixTime {
     /// Creates a typed Unix timestamp.
@@ -43,10 +49,16 @@ impl ChallengeLifetime {
 }
 
 /// Validated half-open challenge interval `[issued_at, expires_at)`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ChallengeWindow {
     issued_at: UnixTime,
     expires_at: UnixTime,
+}
+
+impl fmt::Debug for ChallengeWindow {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("ChallengeWindow([REDACTED])")
+    }
 }
 
 impl ChallengeWindow {

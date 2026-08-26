@@ -52,8 +52,8 @@ rollback is accepted, capacity evicts a live record, a successful claim remains
 issued, future-time or context-mismatch rejection skips durable observation,
 raw claim returns a capability, binding/window failure consumes the original
 issued record, checked arithmetic wraps, rate history survives its window,
-durable handles retain purged state, or any replay binding/timestamp debug
-output is unredacted. Each
+an already-reopened handle retains later-purged state, or any binding/time leaf
+or challenge/request/replay aggregate debug output is unredacted. Each
 mutation runs in a disposable worktree; mutated source never returns to the
 primary branch.
 
@@ -71,8 +71,9 @@ primary branch.
   nonce independence;
 - replay-state restart, rollback, missing/corrupt/unavailable failure,
   rejected-future observation persistence, capacity/rate limits, exact-expiry
-  GC, rate-history GC through every durable-state handle, complete diagnostic
-  redaction, simultaneous atomic claims, and raw-claim capability exclusion.
+  GC, rate-history GC propagated to handles opened before deletion, complete
+  leaf/aggregate diagnostic redaction, simultaneous atomic claims, and
+  raw-claim capability exclusion.
 
 ### Bare-metal tests
 

@@ -2064,7 +2064,9 @@ Populate every template heading with these exact decisions:
   publisher TCB; rollback, missing/corrupt state, races, and capacity pressure
   fail closed.
 - **Privacy impact:** store only replay identity, typed binding, window, state,
-  and recovery fields; redact nonce/account/match and delete at expiry.
+  finite rate history, and recovery fields; redact binding/time leaves plus
+  challenge/request/replay aggregates; delete records/rate events when their
+  enforcement windows end through handles opened before GC.
 - **Dependency and license impact:** standard library only; no new package,
   database, serializer, async runtime, or license boundary.
 - **Validation:** name the boundary, binding, restart, rollback, capacity, GC,
@@ -2392,6 +2394,16 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
     with unique values; mutation-probe a raw parent debug implementation. Add a
     machine-readable privacy scenario and record all specialist findings in
     `docs/LESSONS_LEARNED.md`.
+13. Privacy re-review requires the retention regression to reopen each handle
+    before the live store purges rate history or replay records. Mutation-probe
+    a deep copy inside `ReferenceReplayStore::reopen`; the already-open handle
+    must retain stale state and fail the regression.
+14. Extend redaction through identifier/time leaves and
+    `PublisherChallenge`/`ExpectedContext`/`VerificationRequest` aggregates.
+    Explicit getters remain necessary trusted functional interfaces and are not
+    diagnostic sinks. Test every child and aggregate with unique values, then
+    mutation-probe raw leaf/aggregate debug. Record both re-review findings in
+    `docs/LESSONS_LEARNED.md` and obtain new exact-head TCB/privacy Yes verdicts.
 
 ---
 
@@ -2409,7 +2421,7 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
 | Privacy-minimal state and redacted errors/debug output | Task 3 private fields/getters; Task 5 redaction test; Task 6 ADR/threat/invariant text |
 | Non-disciplinary external error mapping and no `Allow` | Tasks 2 and 4 mapping/tests; Task 7 acceptance review |
 | Database-neutral synchronous boundary; no new dependency or unsafe/async/serialization choice | Task 3 `ReplayStore`; Task 6 dependency ADR; Task 7 manifest and full-matrix scans |
-| Deterministic arbitrary sequences and mutation resistance | Task 5 fixed-seed oracle and eighteen isolated mutation probes after review remediation |
+| Deterministic arbitrary sequences and mutation resistance | Task 5 fixed-seed oracle and twenty isolated mutation probes after review remediation |
 | Repository governance, issue state, independent review, DCO, and publication | Tasks 0, 6, and 7 |
 
 ---

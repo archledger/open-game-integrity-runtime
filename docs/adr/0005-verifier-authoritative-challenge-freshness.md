@@ -145,8 +145,11 @@ retention, deletion, access-control, and anti-rollback policy.
 
 Nonce bytes, publisher/game/build/account/match/policy bindings, policy
 versions, and challenge-window timestamps must not appear in errors, logs,
-metrics, or replay-state `Debug` output. Aggregate counts, redaction markers,
-or opaque internal references are the permitted diagnostic shape.
+metrics, or default `Debug` output. Binding/time leaf types and challenge,
+expected-context, verification-request, replay-state, guard, store, and durable
+handle aggregates emit redaction markers. Explicit accessors remain available
+to trusted verification/storage logic but are not approved diagnostic sinks.
+Aggregate counts or opaque internal references are also permitted.
 
 ## Dependency and license impact
 
@@ -166,12 +169,13 @@ All affected Rust, documentation, and attack-lab paths remain Apache-2.0.
   issued record claimable at that exact time.
 - Exact lifetime, total, publisher, account, and rate-window limits.
 - Issued/consumed retention, exact-expiry garbage collection, and rate-history
-  deletion through every authoritative durable-state handle.
+  deletion observed through handles reopened before the authoritative purge.
 - Two simultaneous claims yielding exactly one capability.
 - Compile-fail proof that raw public claim cannot yield `FreshnessChecked`.
 - 16,384 fixed-seed operations checked against an independent literal oracle.
-- Complete replay-state redaction tests for publisher/game/build/account/match/
-  policy/version, nonce, window timestamps, stores, guards, snapshots, and errors.
+- Complete leaf/aggregate redaction tests for publisher/game/build/account/
+  match/policy/version, nonce, window timestamps, challenge/request/replay
+  objects, stores, guards, snapshots, and errors.
 - Isolated mutations for both window edges, key scope, claim atomicity, restart,
   rollback, capacity eviction, claim release, arithmetic, and privacy.
 

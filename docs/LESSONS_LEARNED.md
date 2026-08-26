@@ -166,3 +166,47 @@ Do not use this document to expose embargoed vulnerability details before coordi
 - **Documentation or agent-policy updates:** ADR-0005, the design, architecture,
   issue, threat model, test strategy, and privacy scenario now define the full
   replay diagnostic boundary.
+
+## 2026-08-25 — Redacted parents do not make raw-debuggable children safe
+
+- **Context:** M1-008 final privacy re-review.
+- **Mistaken assumption:** Redacting replay-state aggregate roots was sufficient
+  because callers would normally format those roots rather than their public
+  children or the surrounding verifier request.
+- **Observed failure:** Public accessors returned publisher/game/build/policy/
+  version/window leaves with raw `Debug`, while `PublisherChallenge`,
+  `ExpectedContext`, and `VerificationRequest` recursively exposed the same
+  values. The regression formatted only six already-redacted roots.
+- **Security or quality impact:** Ordinary diagnostic formatting could bypass
+  the intended replay-binding redaction without deliberately calling explicit
+  value accessors.
+- **Permanent regression test:** `privacy_sensitive_debug_output_is_redacted`,
+  `publisher_challenge_uses_typed_ids_and_redacts_complete_binding`, and
+  `replay_debug_and_errors_redact_every_binding_and_timestamp` cover each
+  identifier/time child and every challenge/request/replay aggregate.
+- **New prevention rule:** Redact safe-by-default formatting at both leaf and
+  aggregate layers. Keep explicit value getters for trusted functional logic,
+  and document that they are not diagnostic interfaces.
+- **Documentation or agent-policy updates:** The model, architecture, ADR,
+  design, issue, threat model, test strategy, scenario, and mutation plan now
+  define the complete default-debug boundary.
+
+## 2026-08-25 — Shared-state tests must open handles before later mutation
+
+- **Context:** M1-008 final privacy re-review of retention propagation.
+- **Mistaken assumption:** Capturing a snapshot before garbage collection and
+  reopening it afterward proved that `reopen` preserved shared state.
+- **Observed failure:** A mutation that deep-copied the already-purged state
+  inside `reopen` would pass; no reopened store remained alive while another
+  handle performed later deletion.
+- **Security or quality impact:** The suite did not prove the documented rule
+  that every ordinary reopen handle observes subsequent authoritative GC.
+- **Permanent regression test:**
+  `gc_bounds_rate_history_and_scrubs_every_durable_state_handle` now reopens
+  before each rate/record purge and inspects that same live handle afterward.
+- **New prevention rule:** For aliasing and propagation claims, create every
+  observer before the state transition and assert through it after the
+  transition.
+- **Documentation or agent-policy updates:** The spec, issue, threat/test docs,
+  privacy scenario, and mutation plan now say “opened before deletion” rather
+  than relying on snapshot-capture timing alone.

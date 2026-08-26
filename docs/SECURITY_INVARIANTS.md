@@ -58,7 +58,7 @@ These invariants are release-blocking. A change that weakens one requires a publ
 34. A publisher request cannot expand the fixed evidence claim vocabulary.
 35. Unrelated process lists, personal files, browser/chat activity, and biometric material are outside the protocol.
 36. Stable identifiers are scoped to the publisher where possible.
-37. Logs redact secrets, home paths, raw evidence identities, and session keys.
+37. Logs and default diagnostics redact secrets, home paths, raw evidence identities, session keys, and complete challenge/replay bindings and timing; explicit value access remains confined to trusted functional code.
 38. Evidence and verifier authorization-state retention are minimal and declared; replay records end at challenge expiry and issuance-rate events end with their enforcement window unless a separately approved finite retention purpose applies.
 
 ## Failure and enforcement

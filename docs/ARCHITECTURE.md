@@ -279,9 +279,13 @@ Unicode normalization or confusable handling for protocol identifiers.
 | `SessionId` | Trusted local portal/agent | Authoritative only for the local protected-session lifecycle; never accepted from the game process. |
 | `EvidenceProfile` | Selected attestation backend and evidence envelope | A typed profile claim; verifier support policy decides whether the profile is acceptable. |
 
-`AccountScope`, `MatchId`, and `SessionId` redact their values from Rust `Debug`
-output. Logging or disclosing their canonical text requires a separate explicit
-privacy decision.
+`PublisherId`, `GameId`, `BuildId`, `AccountScope`, `MatchId`, `PolicyId`, and
+`SessionId` redact their values from Rust `Debug` output. `PolicyVersion`,
+`UnixTime`, `ChallengeWindow`, `PublisherChallenge`, `ExpectedContext`, and
+`VerificationRequest` likewise redact complete authorization bindings and
+timing. Trusted verification/storage code obtains needed values only through
+explicit accessors; those accessors are functional interfaces, not approved
+diagnostic sinks.
 
 ### Challenge freshness authority
 
@@ -314,10 +318,12 @@ Rollback, missing/corrupt/unavailable state, or exhausted explicit
 lifetime/capacity/account/rate limits makes protected mode unavailable; no
 stateless fallback or unexpired-record eviction is permitted.
 
-Replay-key, binding, registration, guard, store, and durable-state `Debug`
-implementations emit only redaction markers. Publisher, game, build, account,
-match, policy, policy version, nonce, and challenge-window timestamps never
-appear through those diagnostic surfaces.
+Identifier/time leaves plus challenge, expected-context, request, replay-key,
+binding, registration, guard, store, and durable-state `Debug` implementations
+emit only redaction markers. Publisher, game, build, account, match, policy,
+policy version, nonce, and challenge-window timestamps never appear through
+those diagnostic surfaces. Explicit field access remains necessary inside the
+trusted core and must not be copied into diagnostics.
 [ADR-0005](adr/0005-verifier-authoritative-challenge-freshness.md) records the
 complete decision and deferred production-adapter obligations.
 

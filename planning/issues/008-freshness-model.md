@@ -70,17 +70,20 @@ Nonce uniqueness alone does not define challenge freshness. The protocol needs e
   consuming the correctly bound issued record.
 - Two concurrent claims cannot both succeed; unexpired records are never evicted.
 - Expired replay records and out-of-window issuance history are purged through
-  every authoritative durable-state handle.
+  handles already reopened on the authoritative durable state.
+- Binding/time leaves and challenge, expected-context, request, replay, store,
+  guard, and durable-handle debug surfaces expose only redaction markers.
 - Extreme-future and overflow-prone timestamps cannot authorize.
 - Raw claim cannot return or construct `FreshnessChecked`.
 
 ## Fuzz/property tests
 
 - A fixed-seed independent oracle checks 16,384 register/claim/time/rollback/restart/unavailable/GC operations.
-- Eighteen isolated mutations cover both window edges, key scope, atomicity,
+- Twenty isolated mutations cover both window edges, key scope, atomicity,
   restart, rollback, capacity, claim release/error side effects, time/context
   observation, capability bypass, arithmetic, bounded retention, shared
-  durable-state deletion, and complete privacy redaction.
+  durable-state deletion after reopen, and complete leaf/aggregate privacy
+  redaction.
 - M1-008 adds no parser or wire format, so it adds no fuzz target; parser fuzzing
   remains required when challenge serialization is selected.
 
@@ -88,12 +91,14 @@ Nonce uniqueness alone does not define challenge freshness. The protocol needs e
 
 Replay records retain exact authorization bindings only through challenge
 expiry; issuance events remain only through their configured rate window.
-Every replay-state debug surface redacts publisher/game/build/account/match/
-policy/version, nonce, and window timestamps. Restart handles share the
-authoritative state generation so purge does not leave an ordinary reopen copy;
-exported backups need separate finite retention and anti-rollback review.
-State is not telemetry and no evidence claim or cross-publisher identifier is
-added.
+Default debug on binding/time leaves and challenge, expected-context, request,
+replay, store, guard, and durable-handle aggregates redacts publisher/game/
+build/account/match/policy/version, nonce, and window timestamps. Explicit
+accessors remain trusted functional interfaces, not diagnostic sinks. Handles
+reopened before purge share the authoritative state generation and observe
+later deletion; exported backups need separate finite retention and
+anti-rollback review. State is not telemetry and no evidence claim or
+cross-publisher identifier is added.
 
 ## Dependency impact
 

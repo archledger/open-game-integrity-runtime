@@ -304,7 +304,10 @@ policy, and expiry/rate-window-driven deletion. Logs, metrics, and replay-state
 `Debug` implementations use aggregate counts, explicit redaction markers, or
 an internal opaque record reference; they never include nonce bytes,
 publisher/game/build/account/match/policy bindings, policy versions, or window
-timestamps.
+timestamps. Default `Debug` is redacted on those identifier/time leaves and on
+challenge, expected-context, verification-request, replay-state, guard, store,
+and durable-handle aggregates. Explicit value accessors remain necessary for
+trusted verification/storage behavior and are not diagnostic interfaces.
 
 The store retains only the fields required for replay identity, exact binding,
 window evaluation, state, and recovery. Adding player profile, device identity,
@@ -417,8 +420,9 @@ M1-010 owns the final verifier outcome/state-machine representation.
 - the same nonce bytes under a different authenticated publisher are
   independent;
 - missing registration fails closed; and
-- replay-key/binding/registration/guard/store/snapshot debug and errors reveal
-  no raw binding, nonce, policy-version, or window-timestamp context.
+- identifier/time leaves and challenge/expected-context/request/replay-key/
+  binding/registration/guard/store/snapshot debug plus errors reveal no raw
+  binding, nonce, policy-version, or window-timestamp context.
 
 ### Atomicity, restart, and failure
 
@@ -426,7 +430,8 @@ M1-010 owns the final verifier outcome/state-machine representation.
 - the public raw claim API cannot return or construct `FreshnessChecked`;
 - crash after claim leaves the replay record consumed;
 - snapshot/reopen preserves issued and consumed records plus the time floor,
-  while every handle observes later authoritative garbage collection;
+  while a handle reopened before garbage collection observes that later
+  authoritative deletion;
 - restart with unavailable, missing, or corrupt state cannot issue or verify;
 - explicit epoch/key recovery invalidates old challenges before reset; and
 - no error path releases a consumed nonce.
@@ -455,8 +460,11 @@ restart, unavailable, and GC actions must preserve:
 - no loss of an unexpired replay record.
 
 Mutations that widen either time boundary, split check from consume, scope the
-replay key by game/match, clear state on restart, release a consumed nonce, or
-evict an unexpired record must make at least one test fail.
+replay key by game/match, clear state on restart, release a consumed nonce,
+evict an unexpired record, skip time-before-window/context observation, retain
+expired rate history, detach state during reopen, or expose any binding/time
+leaf or challenge/request/replay aggregate through default debug must make at
+least one test fail.
 
 ## Alternatives considered
 

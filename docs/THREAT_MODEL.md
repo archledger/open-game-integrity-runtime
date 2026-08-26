@@ -111,12 +111,15 @@ Threat: An overreaching publisher exposes replay bindings through diagnostic
 formatting, retains expired replay records or stale issuance-rate history, or
 uses a detached restart copy to preserve data after garbage collection.
 
-Required response: Redact every replay key, binding, registration, guard,
-store, and durable-state debug surface; retain replay records only through
-challenge expiry and rate events only through their enforcement window; make
-all reopen handles refer to the same authoritative state generation so purge
-is visible through every handle. Exported backups require a separately
-approved finite retention, deletion, access-control, and anti-rollback policy.
+Required response: Redact binding/time leaves and every challenge,
+expected-context, verification-request, replay-key, binding, registration,
+guard, store, and durable-state debug surface; treat explicit value accessors as
+trusted functional interfaces rather than diagnostic sinks; retain replay
+records only through challenge expiry and rate events only through their
+enforcement window; make all reopen handles refer to the same authoritative
+state generation so a handle opened before purge observes later deletion.
+Exported backups require a separately approved finite retention, deletion,
+access-control, and anti-rollback policy.
 
 ### Cuckoo or relay
 

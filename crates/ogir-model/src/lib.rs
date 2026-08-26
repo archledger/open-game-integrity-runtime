@@ -18,9 +18,10 @@
 //! confusable-identifier behavior; Unicode UTS #39 permits implementations to
 //! define a tighter application profile and document its exceptions.
 //!
-//! Account, match, and local-session identifiers redact their values from
-//! [`Debug`](std::fmt::Debug). Code that genuinely needs canonical text must
-//! request it explicitly through `as_str` or [`AsRef<str>`].
+//! Authorization-binding and local-session identifiers redact their values
+//! from [`Debug`](std::fmt::Debug). Code that genuinely needs canonical text
+//! must request it explicitly through `as_str` or [`AsRef<str>`]; that explicit
+//! access is functional trusted-core input and must not be copied to diagnostics.
 //!
 //! [newtype]: https://rust-lang.github.io/api-guidelines/type-safety.html#newtypes-provide-static-distinctions-c-newtype
 //! [validation]: https://rust-lang.github.io/api-guidelines/dependability.html#functions-validate-their-arguments-c-validate
@@ -193,17 +194,17 @@ define_identifier!(
     /// needs_game_id(publisher_id);
     /// ```
     PublisherId,
-    redacted = false
+    redacted = true
 );
 define_identifier!(
     /// Game namespace within a publisher.
     GameId,
-    redacted = false
+    redacted = true
 );
 define_identifier!(
     /// Exact game-build identifier.
     BuildId,
-    redacted = false
+    redacted = true
 );
 define_identifier!(
     /// Publisher-scoped account binding.
@@ -218,7 +219,7 @@ define_identifier!(
 define_identifier!(
     /// Publisher policy identifier.
     PolicyId,
-    redacted = false
+    redacted = true
 );
 define_identifier!(
     /// Locally established protected-session identifier.
@@ -232,8 +233,14 @@ define_identifier!(
 );
 
 /// Version of a publisher policy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PolicyVersion(u32);
+
+impl fmt::Debug for PolicyVersion {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("PolicyVersion([REDACTED])")
+    }
+}
 
 impl PolicyVersion {
     /// Creates a typed policy version without assigning protocol semantics to zero.
@@ -289,7 +296,7 @@ pub struct ProtocolVersion {
 }
 
 /// A publisher-issued challenge.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PublisherChallenge {
     /// Protocol version selected by the publisher.
     pub version: ProtocolVersion,
@@ -311,6 +318,12 @@ pub struct PublisherChallenge {
     pub nonce: Nonce,
     /// Validated challenge issue/expiry interval.
     pub window: ChallengeWindow,
+}
+
+impl fmt::Debug for PublisherChallenge {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("PublisherChallenge([REDACTED])")
+    }
 }
 
 /// High-level verifier decision. This type is produced only by verifier logic.

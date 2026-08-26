@@ -9,6 +9,8 @@ pub use freshness::{
     ChallengeBinding, FreshnessChecked, FreshnessGuard, ReplayKey, ReplayRegistration, ReplayStore,
 };
 
+use std::fmt;
+
 use ogir_model::{
     AccountScope, BuildId, Decision, FreshnessError, GameId, MatchId, PolicyId, PolicyVersion,
     PublisherChallenge, PublisherId, ReasonCode, UnixTime,
@@ -16,7 +18,7 @@ use ogir_model::{
 use ogir_protocol::EvidenceBundle;
 
 /// Expected relying-party context supplied independently of client evidence.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ExpectedContext {
     /// Expected publisher.
     pub publisher_id: PublisherId,
@@ -34,8 +36,14 @@ pub struct ExpectedContext {
     pub policy_version: PolicyVersion,
 }
 
+impl fmt::Debug for ExpectedContext {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("ExpectedContext([REDACTED])")
+    }
+}
+
 /// Input to the verifier.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct VerificationRequest {
     /// Publisher challenge retained by the verifier.
     pub challenge: PublisherChallenge,
@@ -45,6 +53,12 @@ pub struct VerificationRequest {
     pub expected: ExpectedContext,
     /// Publisher-verifier authoritative current Unix time.
     pub now: UnixTime,
+}
+
+impl fmt::Debug for VerificationRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("VerificationRequest([REDACTED])")
+    }
 }
 
 /// Deterministic high-level outcome.

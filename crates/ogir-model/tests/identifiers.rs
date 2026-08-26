@@ -200,6 +200,9 @@ fn every_identifier_type_has_a_distinct_runtime_type_identity() {
 
 #[test]
 fn privacy_sensitive_debug_output_is_redacted() {
+    let publisher = parse_identifier::<PublisherId>("private.publisher");
+    let game = parse_identifier::<GameId>("private.game");
+    let build = parse_identifier::<BuildId>("private-build");
     let account = match AccountScope::try_from("private-account") {
         Ok(value) => value,
         Err(error) => panic!("valid account scope rejected: {error:?}"),
@@ -212,10 +215,28 @@ fn privacy_sensitive_debug_output_is_redacted() {
         Ok(value) => value,
         Err(error) => panic!("valid session id rejected: {error:?}"),
     };
+    let policy = parse_identifier::<PolicyId>("private-policy");
+    let policy_version = PolicyVersion::new(424_242);
+    let maximum = match NonZeroU64::new(100) {
+        Some(value) => ChallengeLifetime::new(value),
+        None => panic!("fixture lifetime must be nonzero"),
+    };
+    let window =
+        match ChallengeWindow::new(UnixTime::new(4_242_400), UnixTime::new(4_242_499), maximum) {
+            Ok(value) => value,
+            Err(error) => panic!("valid fixture window rejected: {error:?}"),
+        };
 
+    assert_eq!(format!("{publisher:?}"), "PublisherId([REDACTED])");
+    assert_eq!(format!("{game:?}"), "GameId([REDACTED])");
+    assert_eq!(format!("{build:?}"), "BuildId([REDACTED])");
     assert_eq!(format!("{account:?}"), "AccountScope([REDACTED])");
     assert_eq!(format!("{match_id:?}"), "MatchId([REDACTED])");
     assert_eq!(format!("{session:?}"), "SessionId([REDACTED])");
+    assert_eq!(format!("{policy:?}"), "PolicyId([REDACTED])");
+    assert_eq!(format!("{policy_version:?}"), "PolicyVersion([REDACTED])");
+    assert_eq!(format!("{:?}", window.issued_at()), "UnixTime([REDACTED])");
+    assert_eq!(format!("{window:?}"), "ChallengeWindow([REDACTED])");
 }
 
 #[test]
@@ -237,7 +258,7 @@ fn policy_version_preserves_its_numeric_value() {
 }
 
 #[test]
-fn publisher_challenge_uses_typed_ids_and_redacts_private_context() {
+fn publisher_challenge_uses_typed_ids_and_redacts_complete_binding() {
     let maximum = match NonZeroU64::new(100) {
         Some(value) => ChallengeLifetime::new(value),
         None => panic!("fixture lifetime must be nonzero"),
@@ -261,8 +282,5 @@ fn publisher_challenge_uses_typed_ids_and_redacts_private_context() {
 
     assert_eq!(challenge.window.evaluate(UnixTime::new(150)), Ok(()));
     let debug = format!("{challenge:?}");
-    assert!(debug.contains("example.publisher"));
-    assert!(debug.contains("example.game"));
-    assert!(!debug.contains("private-account"));
-    assert!(!debug.contains("private-match"));
+    assert_eq!(debug, "PublisherChallenge([REDACTED])");
 }

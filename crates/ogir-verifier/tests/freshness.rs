@@ -596,18 +596,18 @@ fn gc_bounds_rate_history_and_scrubs_every_durable_state_handle() {
     assert_eq!(store.issuance_event_count(), Ok(1));
 
     let before_rate_gc = snapshot(&store);
+    let reopened_before_rate_gc = ReferenceReplayStore::reopen(before_rate_gc);
     assert_eq!(guard.purge_expired(UnixTime::new(160)), Ok(0));
     assert_eq!(store.issuance_event_count(), Ok(0));
-    let reopened_after_rate_gc = ReferenceReplayStore::reopen(before_rate_gc);
-    assert_eq!(reopened_after_rate_gc.issuance_event_count(), Ok(0));
-    assert_eq!(reopened_after_rate_gc.contains(&key), Ok(true));
+    assert_eq!(reopened_before_rate_gc.issuance_event_count(), Ok(0));
+    assert_eq!(reopened_before_rate_gc.contains(&key), Ok(true));
 
     let before_record_gc = snapshot(&store);
+    let reopened_before_record_gc = ReferenceReplayStore::reopen(before_record_gc);
     assert_eq!(guard.purge_expired(UnixTime::new(200)), Ok(1));
     assert_eq!(store.contains(&key), Ok(false));
-    let reopened_after_record_gc = ReferenceReplayStore::reopen(before_record_gc);
-    assert_eq!(reopened_after_record_gc.record_count(), Ok(0));
-    assert_eq!(reopened_after_record_gc.issuance_event_count(), Ok(0));
+    assert_eq!(reopened_before_record_gc.record_count(), Ok(0));
+    assert_eq!(reopened_before_record_gc.issuance_event_count(), Ok(0));
 }
 
 #[test]
@@ -699,15 +699,40 @@ fn replay_debug_and_errors_redact_every_binding_and_timestamp() {
     challenge.window = valid_window(4_242_400, 4_242_499);
 
     let registration = ReplayRegistration::from_challenge(&challenge);
+    let private_expected = ExpectedContext {
+        publisher_id: challenge.publisher_id.clone(),
+        game_id: challenge.game_id.clone(),
+        build_id: challenge.build_id.clone(),
+        account_scope: challenge.account_scope.clone(),
+        match_id: challenge.match_id.clone(),
+        policy_id: challenge.policy_id.clone(),
+        policy_version: challenge.policy_version,
+    };
+    let verification_request =
+        request_with_expected(challenge.clone(), 4_242_400, private_expected.clone());
 
     let store = ReferenceReplayStore::available();
     let guard = FreshnessGuard::new(&store, limits());
     assert_eq!(guard.register(UnixTime::new(4_242_400), &challenge), Ok(()));
 
     let debug_surfaces = [
+        format!("{challenge:?}"),
+        format!("{private_expected:?}"),
+        format!("{verification_request:?}"),
         format!("{registration:?}"),
         format!("{:?}", registration.key()),
+        format!("{:?}", registration.key().publisher_id()),
+        format!("{:?}", registration.key().nonce()),
         format!("{:?}", registration.binding()),
+        format!("{:?}", registration.binding().game_id()),
+        format!("{:?}", registration.binding().build_id()),
+        format!("{:?}", registration.binding().account_scope()),
+        format!("{:?}", registration.binding().match_id()),
+        format!("{:?}", registration.binding().policy_id()),
+        format!("{:?}", registration.binding().policy_version()),
+        format!("{:?}", registration.window()),
+        format!("{:?}", registration.window().issued_at()),
+        format!("{:?}", registration.window().expires_at()),
         format!("{store:?}"),
         format!("{guard:?}"),
         format!("{:?}", snapshot(&store)),
