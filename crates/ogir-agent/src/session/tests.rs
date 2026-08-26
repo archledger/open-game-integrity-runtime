@@ -169,10 +169,40 @@ const TEST_ACTIONS: [TestAction; 10] = [
     TestAction::CleanupComplete,
 ];
 
+const DEEP_PATH_ACTIONS: [TestAction; 10] = [
+    TestAction::Challenge,
+    TestAction::Caller,
+    TestAction::Preparation,
+    TestAction::Evidence,
+    TestAction::Permit,
+    TestAction::Activate,
+    TestAction::Renewal,
+    TestAction::Permit,
+    TestAction::Activate,
+    TestAction::End,
+];
+
+fn deep_path_action(seed: u64, action_index: usize) -> Option<TestAction> {
+    if seed.is_multiple_of(512) {
+        DEEP_PATH_ACTIONS.get(action_index).copied()
+    } else {
+        None
+    }
+}
+
 struct GateHistory {
     initial_mask: u8,
     renewal_pending: bool,
     renewal_permit: bool,
+}
+
+#[derive(Debug, Default)]
+struct DeepHistoryCoverage {
+    initial_permits: usize,
+    initial_activations: usize,
+    renewal_entries: usize,
+    renewal_permits: usize,
+    renewed_activations: usize,
 }
 
 const CHALLENGE_GATE: u8 = 1 << 0;
@@ -499,6 +529,10 @@ fn all_120_state_action_pairs_match_the_independent_model() {
             let mut session = session_for_model_state("session-a", state);
             let before_phase = session.phase();
             let before_cleanup = session.cleanup_status();
+            let expected_phase = state.phase();
+            let expected_cleanup = state.cleanup_status();
+            assert_eq!(before_phase, expected_phase, "fixture state={state:?}");
+            assert_eq!(before_cleanup, expected_cleanup, "fixture state={state:?}");
             let expected = model_transition(state, action);
             let actual = apply_action(&mut session, action, "session-a");
 
@@ -514,8 +548,8 @@ fn all_120_state_action_pairs_match_the_independent_model() {
                     assert_eq!(
                         actual,
                         Err(TransitionError::InvalidTransition {
-                            phase: before_phase,
-                            cleanup_status: before_cleanup,
+                            phase: expected_phase,
+                            cleanup_status: expected_cleanup,
                             action: action.public(),
                         }),
                         "state={state:?} action={action:?}"
@@ -533,20 +567,28 @@ fn all_120_state_action_pairs_match_the_independent_model() {
 
 #[test]
 fn cleanup_request_exists_for_exactly_the_two_required_terminal_states() {
-    let count = MODEL_STATES
-        .into_iter()
-        .filter(|state| {
-            session_for_model_state("session-a", *state)
-                .cleanup_request()
-                .is_some()
-        })
-        .count();
+    let mut count = 0usize;
+    for state in MODEL_STATES {
+        let actual = session_for_model_state("session-a", state)
+            .cleanup_request()
+            .is_some();
+        let expected = matches!(
+            state,
+            ModelState::EndedRequired | ModelState::InvalidatedRequired
+        );
+        assert_eq!(actual, expected, "state={state:?}");
+        if actual {
+            count += 1;
+        }
+    }
     assert_eq!(count, 2);
 }
 
 #[test]
 fn one_million_deterministic_actions_preserve_session_invariants() {
     let mut operations = 0usize;
+    let mut scheduled_operations = 0usize;
+    let mut coverage = DeepHistoryCoverage::default();
 
     for seed in 1..=4_096u64 {
         let mut random = seed;
@@ -559,9 +601,17 @@ fn one_million_deterministic_actions_preserve_session_invariants() {
         };
 
         for action_index in 0..256usize {
-            let action = TEST_ACTIONS[(next_random(&mut random) % 10) as usize];
-            let mismatched_capability =
-                action.uses_capability() && next_random(&mut random) & 1 == 1;
+            let (action, mismatched_capability) = match deep_path_action(seed, action_index) {
+                Some(action) => {
+                    scheduled_operations += 1;
+                    (action, false)
+                }
+                None => {
+                    let action = TEST_ACTIONS[(next_random(&mut random) % 10) as usize];
+                    let mismatched = action.uses_capability() && next_random(&mut random) & 1 == 1;
+                    (action, mismatched)
+                }
+            };
             let capability_session = if mismatched_capability {
                 "session-b"
             } else {
@@ -601,8 +651,14 @@ fn one_million_deterministic_actions_preserve_session_invariants() {
                         TestAction::Preparation => history.initial_mask |= PREPARATION_GATE,
                         TestAction::Evidence => history.initial_mask |= EVIDENCE_GATE,
                         TestAction::Permit => match prior_model {
-                            ModelState::EvidenceCreated => history.initial_mask |= PERMIT_GATE,
-                            ModelState::RenewalPending => history.renewal_permit = true,
+                            ModelState::EvidenceCreated => {
+                                history.initial_mask |= PERMIT_GATE;
+                                coverage.initial_permits += 1;
+                            }
+                            ModelState::RenewalPending => {
+                                history.renewal_permit = true;
+                                coverage.renewal_permits += 1;
+                            }
                             ModelState::New
                             | ModelState::ChallengeValidated
                             | ModelState::CallerBound
@@ -628,12 +684,16 @@ fn one_million_deterministic_actions_preserve_session_invariants() {
                                     history.renewal_permit,
                                     "seed={seed} action_index={action_index} state={prior_model:?} action={action:?}"
                                 );
+                                coverage.renewed_activations += 1;
+                            } else {
+                                coverage.initial_activations += 1;
                             }
                             history.renewal_pending = false;
                         }
                         TestAction::Renewal => {
                             history.renewal_pending = true;
                             history.renewal_permit = false;
+                            coverage.renewal_entries += 1;
                         }
                         TestAction::End | TestAction::Invalidate | TestAction::CleanupComplete => {}
                     }
@@ -657,6 +717,23 @@ fn one_million_deterministic_actions_preserve_session_invariants() {
     }
 
     assert_eq!(operations, 1_048_576);
+    assert_eq!(scheduled_operations, 80);
+    assert_eq!(operations - scheduled_operations, 1_048_496);
+    println!(
+        "history operations: total={operations} scheduled={scheduled_operations} random={} coverage={coverage:?}",
+        operations - scheduled_operations
+    );
+    assert!(coverage.initial_permits > 0, "no initial permit executed");
+    assert!(
+        coverage.initial_activations > 0,
+        "no initial activation executed"
+    );
+    assert!(coverage.renewal_entries > 0, "no renewal entry executed");
+    assert!(coverage.renewal_permits > 0, "no renewal permit executed");
+    assert!(
+        coverage.renewed_activations > 0,
+        "no renewed activation executed"
+    );
 }
 
 #[test]

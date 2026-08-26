@@ -199,10 +199,12 @@ impl fmt::Debug for CreatedEvidence {
 /// ```
 ///
 /// ```compile_fail
-/// use ogir_agent::{SessionPhase, ValidatedPermit};
+/// use ogir_agent::ValidatedPermit;
+///
+/// fn unavailable<T>() -> T { loop {} }
 ///
 /// fn forge() -> ValidatedPermit {
-///     ValidatedPermit { binding: SessionPhase::Active }
+///     ValidatedPermit { binding: unavailable() }
 /// }
 /// ```
 ///
@@ -256,10 +258,12 @@ impl fmt::Debug for CleanupRequest {
 /// ```
 ///
 /// ```compile_fail
-/// use ogir_agent::{CleanupCompleted, SessionPhase};
+/// use ogir_agent::CleanupCompleted;
+///
+/// fn unavailable<T>() -> T { loop {} }
 ///
 /// fn forge() -> CleanupCompleted {
-///     CleanupCompleted { binding: SessionPhase::Ended }
+///     CleanupCompleted { binding: unavailable() }
 /// }
 /// ```
 #[must_use = "cleanup completion capability must be consumed by its session transition"]
@@ -309,6 +313,24 @@ impl Error for TransitionError {}
 
 /// A trusted owner's local session lifecycle state.
 ///
+/// ```rust
+/// use ogir_agent::{
+///     BoundCaller, CleanupCompleted, CleanupRequest, CreatedEvidence, LocalSession,
+///     PreparedSession, ValidatedChallenge, ValidatedPermit,
+/// };
+///
+/// fn assert_public_type<T>() {}
+///
+/// assert_public_type::<LocalSession>();
+/// assert_public_type::<ValidatedChallenge>();
+/// assert_public_type::<BoundCaller>();
+/// assert_public_type::<PreparedSession>();
+/// assert_public_type::<CreatedEvidence>();
+/// assert_public_type::<ValidatedPermit>();
+/// assert_public_type::<CleanupRequest>();
+/// assert_public_type::<CleanupCompleted>();
+/// ```
+///
 /// ```compile_fail
 /// use ogir_agent::LocalSession;
 /// use ogir_model::SessionId;
@@ -325,10 +347,12 @@ impl Error for TransitionError {}
 /// ```
 ///
 /// ```compile_fail
-/// use ogir_agent::{LocalSession, SessionPhase};
+/// use ogir_agent::LocalSession;
 ///
-/// fn force_active(session: &mut LocalSession) {
-///     session.state = SessionPhase::Active;
+/// fn unavailable<T>() -> T { loop {} }
+///
+/// fn force_state(session: &mut LocalSession) {
+///     session.state = unavailable();
 /// }
 /// ```
 #[must_use = "local session lifecycle state must be retained by its trusted owner"]
