@@ -7,6 +7,9 @@ Every scenario names an accountable `owner` and a
 invariant applies regardless of the selected attestation backend or hardware
 assurance class; narrower profile names require a separately documented profile
 definition.
+The gate also requires globally unique scenario IDs and checks owner/profile
+values against explicit in-code registries; registering a new value therefore
+requires a reviewed validator and documentation change.
 
 Each `*.scenario.json` file is exactly one JSON document. JSON's strict syntax
 allows the standard-library validator to parse the document rather than scan
@@ -25,6 +28,11 @@ fields per object, 256 items per array, 4,096 characters per string/key, and
 64 characters per number token and 4,096 total nodes. These fixed limits bound
 pull-request-controlled parsing.
 Diagnostics use repository-relative labels and never print checkout/home paths.
+Schema regexes are executable input: the validator permits only the exact
+reviewed attacker-class and kebab-case patterns, never arbitrary backtracking
+expressions. Every error omits raw keys, property names, caller paths, and I/O
+paths; unexpected exceptions fail closed without a traceback. The scenario
+directory, schema, and scenario entries must not be symlinks.
 
 Initial responsibilities:
 

@@ -2396,6 +2396,18 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
     newline/nested-unknown cross-checks; correct the issue's stale “no parser”
     statement; append public lessons; rerun all gates; and obtain new exact-head
     TCB/privacy Yes verdicts before live issue sync.
+18. Final schema-program review requires constant-time-by-construction pattern
+    handling and context-free errors. Whitelist only the exact attacker and
+    kebab-case regexes; reject backtracking and oversized-repetition patterns
+    before compilation; catch unexpected exceptions without traceback paths;
+    and remove raw duplicate/property/path values from every parser, I/O,
+    schema, and instance diagnostic. Reject a symlinked scenario directory.
+    Add positive/negative coverage for scenario-file count, object-key length,
+    finite float-token length, and all prior limits. Add distinct concurrent-
+    claim and capacity-exhaustion scenarios plus a threat-to-scenario mapping.
+    Correct external Draft 2020-12 checking to optional final differential
+    evidence rather than a permanent aggregate dependency. Record the confirmed
+    defects, rerun all gates, and obtain exact-head TCB/privacy Yes before sync.
 
 ---
 

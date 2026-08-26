@@ -211,12 +211,26 @@ Scenario `owner` names the role accountable for maintaining the mitigation and
 regressions. `required_assurance_profile: all-protected-modes` means the threat
 control is mandatory for every protected mode regardless of evidence backend;
 any narrower value requires a separately documented assurance-profile
-definition. The attack-scenario schema requires both fields.
+definition and validator-registry update. The attack-scenario schema requires
+both fields, while the aggregate gate requires registered values and globally
+unique scenario IDs.
 Attack scenarios are single, duplicate-free JSON documents validated against
 the supported shared-schema contract in the aggregate gate; text scanning is
 not considered parsed enforcement. Repository-controlled scenario parsing has
 explicit byte, file-count, nesting, object-field, array-item, string, and total-
 node bounds plus a numeric-token/finite-value bound; rejects non-JSON constants
-and schema-dialect drift; and emits only repository-relative diagnostics.
+and schema-dialect drift; executes only reviewed bounded regexes; rejects a
+symlinked scenario boundary; and emits context-free diagnostics without raw
+keys, properties, or host paths.
+
+M1-008 freshness threat mapping:
+
+| Accepted threat | Scenario | Owner | Required assurance profile |
+| --- | --- | --- | --- |
+| Sequential same/altered-context replay | `OGIR-PROTOCOL-REPLAY-002` | `initial-maintainer` | `all-protected-modes` |
+| Concurrent double claim | `OGIR-PROTOCOL-FRESHNESS-RACE-001` | `initial-maintainer` | `all-protected-modes` |
+| Time rollback, restart loss, or unavailable state | `OGIR-PROTOCOL-FRESHNESS-001` | `initial-maintainer` | `all-protected-modes` |
+| Capacity/rate exhaustion and live-record eviction | `OGIR-PROTOCOL-FRESHNESS-CAPACITY-001` | `initial-maintainer` | `all-protected-modes` |
+| Diagnostic disclosure or over-retention | `OGIR-PRIVACY-FRESHNESS-001` | `initial-maintainer` | `all-protected-modes` |
 
 The threat model is updated in the same pull request as any changed trust boundary, privilege, protocol field, evidence claim, policy control, or signing/update path.

@@ -179,7 +179,10 @@ All affected Rust, documentation, and attack-lab paths remain Apache-2.0.
 - Schema validation of accountable owner and required assurance profile on
   every single-document, duplicate-free freshness attack scenario, including
   negative duplicate-key, extra-document, non-JSON constant, mapping-newline,
-  dialect, unknown-field, resource-limit, and path-redaction probes.
+  dialect, unknown-field, every resource-limit, pattern-whitelist, symlink, and
+  context-free diagnostic probe.
+- Distinct attack scenarios for sequential replay, concurrent double claim,
+  rollback/state loss, capacity exhaustion, and privacy disclosure/retention.
 - Isolated mutations for both window edges, key scope, claim atomicity, restart,
   rollback, capacity eviction, claim release, arithmetic, and privacy.
 

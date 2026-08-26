@@ -109,17 +109,22 @@ Every security claim receives a scenario under `lab/scenarios/`:
 }
 ```
 
-Challenge replay, freshness-state failure, and freshness-state privacy are
-represented by `OGIR-PROTOCOL-REPLAY-002`, `OGIR-PROTOCOL-FRESHNESS-001`, and
+Challenge replay, concurrent claim, freshness-state failure, capacity
+exhaustion, and freshness-state privacy are represented by
+`OGIR-PROTOCOL-REPLAY-002`, `OGIR-PROTOCOL-FRESHNESS-RACE-001`,
+`OGIR-PROTOCOL-FRESHNESS-001`, `OGIR-PROTOCOL-FRESHNESS-CAPACITY-001`, and
 `OGIR-PRIVACY-FRESHNESS-001`. They preserve publisher-authoritative time,
-durable single-use nonce, bounded-retention, and redacted-diagnostic
-invariants without turning failure into disciplinary evidence.
+atomic single-use nonce, live-record retention, bounded state, and redacted
+diagnostics without turning failure into disciplinary evidence.
 Scenarios use one duplicate-free JSON document per `*.scenario.json` file. The
 aggregate dependency-free validator rejects duplicate keys, extra documents,
 unknown fields, unsupported schema keywords, and every schema violation. Its
 self-tests pin owner/assurance omissions, parser-bypass regressions, non-JSON
 constants, terminal-newline mappings, schema-dialect drift, nested unknown
-fields, resource limits, and checkout-path redaction.
+fields, every resource-limit branch, scenario-directory symlinks, unapproved
+backtracking/repetition patterns, and context-free parse/duplicate/I/O/schema/
+instance diagnostics. Cross-file checks also reject duplicate scenario IDs and
+unregistered owner/profile values.
 
 ## Release gates by maturity
 

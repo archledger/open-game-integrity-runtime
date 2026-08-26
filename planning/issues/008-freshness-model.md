@@ -76,7 +76,9 @@ Nonce uniqueness alone does not define challenge freshness. The protocol needs e
 - Attack-scenario validation rejects a freshness threat without an accountable
   owner or required assurance profile, duplicate key, extra document, unknown
   field, non-JSON constant, exact schema dialect, bounded resource profile, or
-  other shared-schema violation; diagnostics redact checkout/home paths.
+  other shared-schema violation. Only reviewed bounded regexes execute;
+  directory/schema/scenario symlinks fail; diagnostics omit every raw key/path
+  and unexpected exceptions emit no traceback.
 - Extreme-future and overflow-prone timestamps cannot authorize.
 - Raw claim cannot return or construct `FreshnessChecked`.
 
@@ -116,5 +118,8 @@ serialization, async, cryptographic, or unsafe-code dependency is selected.
 - Freshness semantics are documented independently of any database.
 - Model tests reflect the written boundary rules.
 - No local-client time claim is authoritative.
-- Every accepted freshness threat has a schema-enforced owner, assurance
-  profile, invariants, scenario, tests, and residual risk.
+- Every accepted freshness threat has a schema-enforced, registry-checked owner
+  and assurance profile plus unique scenario ID, invariants, tests, and residual
+  risk.
+- Separate scenarios cover sequential replay, concurrent double claim,
+  rollback/state loss, capacity exhaustion, and privacy disclosure/retention.

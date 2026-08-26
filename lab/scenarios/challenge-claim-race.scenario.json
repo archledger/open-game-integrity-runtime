@@ -1,0 +1,30 @@
+{
+  "id": "OGIR-PROTOCOL-FRESHNESS-RACE-001",
+  "title": "Race two claims for one issued challenge",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": [
+    "protected_session_authorization",
+    "verifier_freshness_state"
+  ],
+  "preconditions": [
+    "one publisher challenge is durably registered in issued state"
+  ],
+  "steps": [
+    "prepare two otherwise valid verification requests for the same publisher nonce",
+    "release both requests concurrently against the authoritative replay store"
+  ],
+  "expected": {
+    "decision": "deny",
+    "reason": "replay-detected",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "at most one atomic claim succeeds and can create the freshness capability",
+    "the losing concurrent request observes consumed state as replay"
+  ],
+  "residual_risk": [
+    "a valid holder can burn its challenge and must request bounded reissuance"
+  ]
+}

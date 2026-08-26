@@ -10,11 +10,20 @@ import json
 import math
 import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import NoReturn
 
 TRACE_FIELDS = ("owner", "required_assurance_profile")
 EXPECTED_SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema"
+ATTACKER_PATTERN = r"^A[0-8]$"
+KEBAB_PATTERN = r"^(?![\s\S]*[^a-z0-9-])[a-z0-9]+(?:-[a-z0-9]+)*$"
+SAFE_PATTERN_MATCHERS = {
+    ATTACKER_PATTERN: re.compile(ATTACKER_PATTERN),
+    KEBAB_PATTERN: re.compile(KEBAB_PATTERN),
+}
+APPROVED_OWNERS = {"initial-maintainer"}
+APPROVED_ASSURANCE_PROFILES = {"all-protected-modes"}
 MAX_DOCUMENT_BYTES = 65_536
 MAX_NESTING_DEPTH = 16
 MAX_OBJECT_FIELDS = 64
@@ -56,13 +65,14 @@ def reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
     value: dict[str, object] = {}
     for key, item in pairs:
         if key in value:
-            raise DuplicateKeyError(f"duplicate JSON key {key!r}")
+            raise DuplicateKeyError("duplicate JSON key")
         value[key] = item
     return value
 
 
 def reject_non_json_constant(constant: str) -> NoReturn:
-    raise ScenarioValidationError(f"non-JSON numeric constant {constant!r}")
+    del constant
+    raise ScenarioValidationError("non-JSON numeric constant")
 
 
 def parse_bounded_integer(token: str) -> int:
@@ -76,13 +86,12 @@ def parse_bounded_float(token: str) -> float:
         fail(f"number exceeds {MAX_NUMBER_CHARACTERS} characters")
     value = float(token)
     if not math.isfinite(value):
-        fail(f"number is outside the finite parser range: {token!r}")
+        fail("number is outside the finite parser range")
     return value
 
 
 def diagnostic_source(source: str) -> str:
-    path = Path(source)
-    return path.name if path.is_absolute() else source
+    return Path(source).name or "input"
 
 
 def validate_resource_limits(value: object) -> None:
@@ -135,7 +144,7 @@ def parse_json_document(text: str, source: str) -> object:
         return value
     except json.JSONDecodeError as error:
         raise ScenarioValidationError(
-            f"{label}:{error.lineno}:{error.colno}: {error.msg}"
+            f"{label}:{error.lineno}:{error.colno}: malformed JSON"
         ) from error
     except (RecursionError, ScenarioValidationError) as error:
         raise ScenarioValidationError(f"{label}: {error}") from error
@@ -144,18 +153,19 @@ def parse_json_document(text: str, source: str) -> object:
 
 
 def read_json_document(path: Path, source: str) -> object:
+    label = diagnostic_source(source)
     try:
         with path.open("rb") as stream:
             encoded = stream.read(MAX_DOCUMENT_BYTES + 1)
     except OSError as error:
-        raise ScenarioValidationError(f"cannot read {source}") from error
+        raise ScenarioValidationError(f"cannot read {label}") from error
     if len(encoded) > MAX_DOCUMENT_BYTES:
-        fail(f"{source}: document exceeds {MAX_DOCUMENT_BYTES} bytes")
+        fail(f"{label}: document exceeds {MAX_DOCUMENT_BYTES} bytes")
     try:
         text = encoded.decode("utf-8")
     except UnicodeDecodeError as error:
-        raise ScenarioValidationError(f"{source}: invalid UTF-8") from error
-    return parse_json_document(text, source)
+        raise ScenarioValidationError(f"{label}: invalid UTF-8") from error
+    return parse_json_document(text, label)
 
 
 def fail(message: str) -> NoReturn:
@@ -163,18 +173,19 @@ def fail(message: str) -> NoReturn:
 
 
 def validate_schema_shape(schema: object, path: str = "schema") -> None:
+    path = diagnostic_source(path)
     if not isinstance(schema, dict):
         fail(f"{path}: schema node must be an object")
 
     unknown = set(schema).difference(SUPPORTED_SCHEMA_KEYS)
     if unknown:
-        fail(f"{path}: unsupported schema keyword(s): {', '.join(sorted(unknown))}")
+        fail(f"{path}: unsupported schema keyword")
 
     value_type = schema.get("type")
     if value_type is not None and (
         not isinstance(value_type, str) or value_type not in SUPPORTED_TYPES
     ):
-        fail(f"{path}: unsupported type {value_type!r}")
+        fail(f"{path}: unsupported type")
 
     for metadata in ("$id", "$schema", "title"):
         value = schema.get(metadata)
@@ -185,10 +196,8 @@ def validate_schema_shape(schema: object, path: str = "schema") -> None:
     if pattern is not None:
         if not isinstance(pattern, str):
             fail(f"{path}: pattern must be a string")
-        try:
-            re.compile(pattern)
-        except re.error as error:
-            raise ScenarioValidationError(f"{path}: invalid pattern") from error
+        if pattern not in SAFE_PATTERN_MATCHERS:
+            fail(f"{path}: schema pattern is not approved")
 
     for bound in ("maxLength", "minItems", "minLength"):
         value = schema.get(bound)
@@ -214,8 +223,8 @@ def validate_schema_shape(schema: object, path: str = "schema") -> None:
     if properties is not None:
         if not isinstance(properties, dict):
             fail(f"{path}: properties must be an object")
-        for name, child in properties.items():
-            validate_schema_shape(child, f"{path}.properties.{name}")
+        for index, child in enumerate(properties.values()):
+            validate_schema_shape(child, f"{path}.properties[{index}]")
 
     items = schema.get("items")
     if items is not None:
@@ -245,7 +254,9 @@ def validate_schema_contract(schema: object) -> dict[str, object]:
         pattern = field_schema.get("pattern")
         if not isinstance(pattern, str):
             fail(f"scenario schema does not constrain {field}")
-        compiled = re.compile(pattern)
+        compiled = SAFE_PATTERN_MATCHERS.get(pattern)
+        if compiled is None:
+            fail(f"scenario schema has unapproved {field} pattern")
         if (
             compiled.search("initial-maintainer") is None
             or compiled.search("Invalid Value") is not None
@@ -266,6 +277,7 @@ def type_matches(value: object, expected: str) -> bool:
 
 
 def validate_instance(value: object, schema: dict[str, object], path: str = "scenario") -> None:
+    path = diagnostic_source(path)
     expected_type = schema.get("type")
     if isinstance(expected_type, str) and not type_matches(value, expected_type):
         fail(f"{path}: expected {expected_type}")
@@ -277,16 +289,16 @@ def validate_instance(value: object, schema: dict[str, object], path: str = "sce
             fail(f"{path}: invalid object schema")
         for field in required:
             if field not in value:
-                fail(f"{path}: missing required field {field}")
+                fail(f"{path}: missing required field")
         if schema.get("additionalProperties") is False:
             unknown = set(value).difference(properties)
             if unknown:
-                fail(f"{path}: unknown field(s): {', '.join(sorted(unknown))}")
-        for field, child_schema in properties.items():
+                fail(f"{path}: unknown field")
+        for index, (field, child_schema) in enumerate(properties.items()):
             if field in value:
                 if not isinstance(child_schema, dict):
-                    fail(f"{path}.{field}: invalid property schema")
-                validate_instance(value[field], child_schema, f"{path}.{field}")
+                    fail(f"{path}.property[{index}]: invalid property schema")
+                validate_instance(value[field], child_schema, f"{path}.property[{index}]")
 
     if isinstance(value, list):
         minimum = schema.get("minItems")
@@ -305,8 +317,12 @@ def validate_instance(value: object, schema: dict[str, object], path: str = "sce
             fail(f"{path}: shorter than {minimum} character(s)")
         if isinstance(maximum, int) and len(value) > maximum:
             fail(f"{path}: longer than {maximum} character(s)")
-        if isinstance(pattern, str) and re.search(pattern, value) is None:
-            fail(f"{path}: does not match required pattern")
+        if isinstance(pattern, str):
+            matcher = SAFE_PATTERN_MATCHERS.get(pattern)
+            if matcher is None:
+                fail(f"{path}: schema pattern is not approved")
+            if matcher.search(value) is None:
+                fail(f"{path}: does not match required pattern")
 
 
 def expect_failure(name: str, operation: object) -> None:
@@ -316,6 +332,20 @@ def expect_failure(name: str, operation: object) -> None:
         else:
             fail("self-test operation is not callable")
     except ScenarioValidationError:
+        print(f"PASS: {name}")
+    else:
+        raise AssertionError(f"invalid fixture passed: {name}")
+
+
+def expect_redacted_failure(name: str, operation: object) -> None:
+    try:
+        if callable(operation):
+            operation()
+        else:
+            fail("self-test operation is not callable")
+    except ScenarioValidationError as error:
+        if "/home/" in str(error):
+            raise AssertionError(f"private path leaked: {name}") from error
         print(f"PASS: {name}")
     else:
         raise AssertionError(f"invalid fixture passed: {name}")
@@ -341,9 +371,44 @@ def valid_scenario() -> dict[str, object]:
     }
 
 
+def validate_scenario_count(count: int) -> None:
+    if count == 0:
+        fail("no attack scenarios found")
+    if count > MAX_SCENARIO_FILES:
+        fail(f"more than {MAX_SCENARIO_FILES} attack scenarios")
+
+
+def validate_scenario_directory(path: Path) -> None:
+    if path.is_symlink() or not path.is_dir():
+        fail("attack-scenario directory must be a regular directory")
+
+
+def validate_regular_file(path: Path) -> None:
+    if path.is_symlink() or not path.is_file():
+        fail("attack-scenario input must be a regular file")
+
+
+def validate_repository_semantics(scenarios: list[object]) -> None:
+    identifiers: set[str] = set()
+    for scenario in scenarios:
+        if not isinstance(scenario, dict):
+            fail("attack scenario must be an object")
+        identifier = scenario.get("id")
+        owner = scenario.get("owner")
+        profile = scenario.get("required_assurance_profile")
+        if not isinstance(identifier, str) or identifier in identifiers:
+            fail("attack-scenario identifier is missing or duplicated")
+        if owner not in APPROVED_OWNERS:
+            fail("attack-scenario owner is not registered")
+        if profile not in APPROVED_ASSURANCE_PROFILES:
+            fail("attack-scenario assurance profile is not registered")
+        identifiers.add(identifier)
+
+
 def run_self_tests(schema: dict[str, object]) -> None:
     fixture = valid_scenario()
     validate_instance(fixture, schema, "valid")
+    validate_repository_semantics([fixture])
     parse_json_document("{}" + " " * (MAX_DOCUMENT_BYTES - 2), "max-bytes")
     parse_json_document(
         "[" * MAX_NESTING_DEPTH + "0" + "]" * MAX_NESTING_DEPTH,
@@ -355,8 +420,59 @@ def run_self_tests(schema: dict[str, object]) -> None:
     )
     parse_json_document(json.dumps(list(range(MAX_ARRAY_ITEMS))), "max-items")
     parse_json_document(json.dumps("x" * MAX_STRING_CHARACTERS), "max-string")
+    parse_json_document(
+        json.dumps({"x" * MAX_STRING_CHARACTERS: True}), "max-key"
+    )
     parse_json_document("9" * MAX_NUMBER_CHARACTERS, "max-number")
+    parse_json_document(
+        "0." + "1" * (MAX_NUMBER_CHARACTERS - 2), "max-float-token"
+    )
+    validate_scenario_count(MAX_SCENARIO_FILES)
     print("PASS: parser resource boundaries")
+
+    expect_failure("zero scenario files", lambda: validate_scenario_count(0))
+    expect_failure(
+        "excessive scenario files",
+        lambda: validate_scenario_count(MAX_SCENARIO_FILES + 1),
+    )
+
+    with tempfile.TemporaryDirectory(prefix="ogir-scenario-self-test-") as directory:
+        root = Path(directory)
+        regular = root / "regular"
+        regular.mkdir()
+        linked = root / "linked"
+        linked.symlink_to(regular, target_is_directory=True)
+        expect_failure(
+            "symlinked scenario directory",
+            lambda: validate_scenario_directory(linked),
+        )
+        regular_file = root / "regular-file"
+        regular_file.write_text("{}", encoding="utf-8")
+        linked_file = root / "linked-file"
+        linked_file.symlink_to(regular_file)
+        validate_regular_file(regular_file)
+        expect_failure(
+            "symlinked scenario file",
+            lambda: validate_regular_file(linked_file),
+        )
+
+    duplicate_identifier = copy.deepcopy(fixture)
+    expect_failure(
+        "duplicate scenario identifier",
+        lambda: validate_repository_semantics([fixture, duplicate_identifier]),
+    )
+    unregistered_owner = copy.deepcopy(fixture)
+    unregistered_owner["owner"] = "unregistered-owner"
+    expect_failure(
+        "unregistered scenario owner",
+        lambda: validate_repository_semantics([unregistered_owner]),
+    )
+    unregistered_profile = copy.deepcopy(fixture)
+    unregistered_profile["required_assurance_profile"] = "unregistered-profile"
+    expect_failure(
+        "unregistered assurance profile",
+        lambda: validate_repository_semantics([unregistered_profile]),
+    )
 
     for field in TRACE_FIELDS:
         missing = copy.deepcopy(fixture)
@@ -455,6 +571,23 @@ def run_self_tests(schema: dict[str, object]) -> None:
             lambda wrong_dialect=wrong_dialect: validate_schema_contract(wrong_dialect),
         )
 
+    unsafe_pattern = copy.deepcopy(schema)
+    unsafe_properties = unsafe_pattern.get("properties")
+    if not isinstance(unsafe_properties, dict):
+        raise AssertionError("valid schema lost properties")
+    unsafe_owner = unsafe_properties.get("owner")
+    if not isinstance(unsafe_owner, dict):
+        raise AssertionError("valid schema lost owner")
+    for name, pattern in (
+        ("backtracking", r"^(?![\s\S]*[^a-z0-9-])(?:[a-z0-9-]+)+$"),
+        ("oversized repetition", "a{999999999999999999999}"),
+    ):
+        unsafe_owner["pattern"] = pattern
+        expect_failure(
+            f"non-whitelisted {name} schema pattern",
+            lambda: validate_schema_contract(unsafe_pattern),
+        )
+
     expect_failure(
         "oversized document",
         lambda: parse_json_document(
@@ -482,6 +615,20 @@ def run_self_tests(schema: dict[str, object]) -> None:
         lambda: parse_json_document(json.dumps("x" * 4_097), "long-string"),
     )
     expect_failure(
+        "excessive object key",
+        lambda: parse_json_document(
+            json.dumps({"x" * (MAX_STRING_CHARACTERS + 1): True}),
+            "long-key",
+        ),
+    )
+    expect_failure(
+        "excessive finite float token",
+        lambda: parse_json_document(
+            "0." + "1" * (MAX_NUMBER_CHARACTERS - 1),
+            "long-float-token",
+        ),
+    )
+    expect_failure(
         "excessive total nodes",
         lambda: parse_json_document(
             json.dumps(
@@ -494,14 +641,38 @@ def run_self_tests(schema: dict[str, object]) -> None:
         ),
     )
 
-    try:
-        parse_json_document("{", "/home/private-user/private-repository/scenario.json")
-    except ScenarioValidationError as error:
-        if "/home/" in str(error):
-            raise AssertionError("absolute path leaked in parser diagnostic") from error
-        print("PASS: parser diagnostic redacts absolute path")
-    else:
-        raise AssertionError("malformed absolute-path fixture passed")
+    expect_redacted_failure(
+        "parser diagnostic redacts absolute path",
+        lambda: parse_json_document(
+            "{", "/home/private-user/private-repository/scenario.json"
+        ),
+    )
+    expect_redacted_failure(
+        "duplicate-key diagnostic redacts attacker path",
+        lambda: parse_json_document(
+            '{"/home/private-key":1,"/home/private-key":2}', "duplicate-private"
+        ),
+    )
+    expect_redacted_failure(
+        "I/O diagnostic redacts absolute path",
+        lambda: read_json_document(
+            Path("/definitely-missing-ogir-scenario.json"),
+            "/home/private-user/private-repository/scenario.json",
+        ),
+    )
+    expect_redacted_failure(
+        "schema diagnostic redacts attacker path",
+        lambda: validate_schema_shape(
+            {"properties": {"/home/private-key": {"unsupported": True}}},
+            "/home/private-schema",
+        ),
+    )
+    expect_redacted_failure(
+        "instance diagnostic redacts caller path",
+        lambda: validate_instance(
+            {"unreviewed": True}, schema, "/home/private-instance"
+        ),
+    )
 
     print("All attack-scenario validation tests passed.")
 
@@ -509,9 +680,9 @@ def run_self_tests(schema: dict[str, object]) -> None:
 def load_repository_contract() -> tuple[Path, dict[str, object], list[Path]]:
     repository = Path(__file__).resolve().parent.parent
     scenario_directory = repository / "lab" / "scenarios"
+    validate_scenario_directory(scenario_directory)
     schema_path = scenario_directory / "schema.json"
-    if schema_path.is_symlink() or not schema_path.is_file():
-        fail("attack-scenario schema must be a regular file")
+    validate_regular_file(schema_path)
     schema = validate_schema_contract(
         read_json_document(schema_path, "lab/scenarios/schema.json")
     )
@@ -523,15 +694,13 @@ def load_repository_contract() -> tuple[Path, dict[str, object], list[Path]]:
     for entry in entries:
         if entry == schema_path:
             continue
-        if entry.is_symlink() or not entry.is_file() or not entry.name.endswith(
-            ".scenario.json"
-        ):
-            fail(f"unexpected attack-scenario path: {entry.relative_to(repository)}")
+        if not entry.name.endswith(".scenario.json"):
+            fail("unexpected attack-scenario path")
+        validate_regular_file(entry)
         scenarios.append(entry)
         if len(scenarios) > MAX_SCENARIO_FILES:
-            fail(f"more than {MAX_SCENARIO_FILES} attack scenarios")
-    if not scenarios:
-        fail("no attack scenarios found")
+            validate_scenario_count(len(scenarios))
+    validate_scenario_count(len(scenarios))
     scenarios.sort()
     return repository, schema, scenarios
 
@@ -546,12 +715,18 @@ def main() -> int:
         if sys.argv[1:] == ["--self-test"]:
             run_self_tests(schema)
             return 0
+        instances: list[object] = []
         for scenario in scenarios:
             source = str(scenario.relative_to(repository))
             instance = read_json_document(scenario, source)
             validate_instance(instance, schema, source)
+            instances.append(instance)
+        validate_repository_semantics(instances)
     except (AssertionError, ScenarioValidationError) as error:
         print(f"attack-scenario validation failed: {error}", file=sys.stderr)
+        return 1
+    except Exception:
+        print("attack-scenario validation failed: internal error", file=sys.stderr)
         return 1
 
     print(f"Attack-scenario validation passed for {len(scenarios)} scenario(s).")

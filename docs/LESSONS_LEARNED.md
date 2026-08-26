@@ -274,8 +274,10 @@ Do not use this document to expose embargoed vulnerability details before coordi
 - **Permanent regression test:** The aggregate self-test rejects non-JSON
   constants, terminal-newline mappings, wrong/empty dialects, nested unknown
   fields, oversized/deep/wide/long inputs, and proves malformed absolute-source
-  diagnostics omit `/home/`; external Draft 2020-12 validation independently
-  rejects newline mappings and nested unknown fields.
+  diagnostics omit `/home/`. Final verification additionally cross-checks the
+  current schema/scenarios and newline/nested-unknown probes with an external
+  Draft 2020-12 implementation; that optional tool is not an aggregate
+  dependency.
 - **New prevention rule:** A security parser contract includes its exact
   dialect, nonstandard decoder options, closed-object policy, resource budgets,
   and diagnostic data boundary—not only syntax parsing.
@@ -283,3 +285,31 @@ Do not use this document to expose embargoed vulnerability details before coordi
   README, issue, threat/test docs, ADR, approved spec, and implementation plan
   now state and enforce strict constants, exact dialect, closed expected fields,
   fixed limits, and repository-relative diagnostics.
+
+## 2026-08-25 — Validator safety includes schema programs and error arguments
+
+- **Context:** Final M1-008 TCB/privacy certification after strict JSON closure.
+- **Mistaken assumption:** Input-size bounds and source-label sanitization made
+  every schema operation and error path bounded and private.
+- **Observed failure:** Schema-provided backtracking regexes could exceed a
+  processing-time budget or raise uncaught overflow; duplicate/property/caller
+  names and I/O labels could inject home paths into errors; the scenario
+  directory symlink and three limit branches lacked regressions. Separately,
+  concurrent-claim and capacity threats had tests but no attack scenarios, and
+  an optional external Draft check was described as permanent aggregate proof.
+- **Security or quality impact:** Pull-request-controlled metadata could stall
+  validation, disclose host paths, redirect the validation boundary, or leave
+  accepted threats without required scenario traceability.
+- **Permanent regression test:** The validator accepts only two reviewed regex
+  patterns; rejects backtracking/oversized-repetition patterns; converts
+  unexpected exceptions to context-free failure; tests every parser limit,
+  scenario-count boundary, and scenario-directory symlink; and probes parse,
+  duplicate, I/O, schema, and instance errors with injected `/home/` values.
+  Dedicated race and capacity scenarios complete the threat map.
+- **New prevention rule:** Treat schemas as executable input. Whitelist bounded
+  pattern programs, make every diagnostic argument context-free, test every
+  branch behind a published limit, and distinguish permanent aggregate gates
+  from optional final differential checks.
+- **Documentation or agent-policy updates:** The validator, threat map, two new
+  scenarios, attack-lab/test/spec/ADR/issue/plan text, and corrected differential
+  statement now reflect these boundaries.
