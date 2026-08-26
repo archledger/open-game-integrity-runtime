@@ -8,6 +8,8 @@ set -euo pipefail
 ./scripts/check-adr-index.sh
 ./scripts/test-bootstrap-github.sh
 ./scripts/test-dco.sh
+python3 ./scripts/check-attack-scenario-traceability.py --self-test
+python3 ./scripts/check-attack-scenario-traceability.py
 
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings

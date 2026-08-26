@@ -1,0 +1,29 @@
+{
+  "id": "OGIR-PROTOCOL-REPLAY-002",
+  "title": "Reuse one publisher challenge across context or restart",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": [
+    "protected_session_authorization"
+  ],
+  "preconditions": [
+    "a publisher challenge was durably registered and claimed once"
+  ],
+  "steps": [
+    "resubmit the signed challenge with the same or altered game, account, match, or policy binding",
+    "repeat after the verifier reopens its durable freshness state"
+  ],
+  "expected": {
+    "decision": "deny",
+    "reason": "replay-detected",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "one publisher-scoped nonce yields at most one freshness capability in every context",
+    "restart preserves issued and consumed replay state"
+  ],
+  "residual_risk": [
+    "a valid holder can burn its own challenge and must request a bounded reissuance"
+  ]
+}

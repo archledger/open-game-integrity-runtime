@@ -1,0 +1,32 @@
+{
+  "id": "OGIR-PROTOCOL-FRESHNESS-CAPACITY-001",
+  "title": "Exhaust verifier freshness capacity",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": [
+    "protected_session_authorization",
+    "verifier_freshness_state"
+  ],
+  "preconditions": [
+    "the verifier enforces explicit finite total, publisher, account, and issuance-rate limits",
+    "one or more unexpired challenge records remain live"
+  ],
+  "steps": [
+    "request challenges until one configured capacity or rate boundary is reached",
+    "request one additional challenge while the existing records remain unexpired",
+    "inspect the previously registered records after the refusal"
+  ],
+  "expected": {
+    "decision": "retry",
+    "reason": "attestation-unavailable",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "capacity exhaustion never evicts an unexpired replay record",
+    "capacity exhaustion never enables stateless challenge verification"
+  ],
+  "residual_risk": [
+    "sustained issuance pressure can cause a fail-closed protected-mode outage"
+  ]
+}

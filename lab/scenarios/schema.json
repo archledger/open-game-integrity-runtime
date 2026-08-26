@@ -7,6 +7,8 @@
     "id",
     "title",
     "attacker",
+    "owner",
+    "required_assurance_profile",
     "assets",
     "preconditions",
     "steps",
@@ -17,7 +19,9 @@
   "properties": {
     "id": { "type": "string", "minLength": 1, "maxLength": 128 },
     "title": { "type": "string", "minLength": 1, "maxLength": 256 },
-    "attacker": { "type": "string", "pattern": "^A[0-8]$" },
+    "attacker": { "type": "string", "pattern": "^A[0-8]$", "minLength": 2, "maxLength": 2 },
+    "owner": { "type": "string", "pattern": "^(?![\\s\\S]*[^a-z0-9-])[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 128 },
+    "required_assurance_profile": { "type": "string", "pattern": "^(?![\\s\\S]*[^a-z0-9-])[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 128 },
     "assets": { "type": "array", "minItems": 1, "items": { "type": "string" } },
     "preconditions": { "type": "array", "items": { "type": "string" } },
     "steps": { "type": "array", "minItems": 1, "items": { "type": "string" } },
@@ -29,7 +33,7 @@
         "reason": { "type": "string" },
         "automatic_ban": { "type": "boolean" }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "invariants": { "type": "array", "minItems": 1, "items": { "type": "string" } },
     "residual_risk": { "type": "array", "items": { "type": "string" } }

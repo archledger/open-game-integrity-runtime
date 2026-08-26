@@ -10,6 +10,7 @@ OGIR does not claim to detect every cheat or resist every unknown vulnerability.
 
 - ranked or otherwise protected session authorization;
 - publisher verifier signing keys;
+- publisher challenge replay records and authoritative-time high-water state;
 - TPM attestation identities and ephemeral session keys;
 - integrity-policy definitions and reference values;
 - agent, bridge, verifier, and update supply chain;
@@ -42,7 +43,9 @@ The first hardware-backed prototype assumes:
 - the accepted boot measurement chain is meaningful and verifiable;
 - the publisher verifier and its keys are not compromised;
 - the accepted local agent and kernel have no successful unknown exploit during the session;
-- server time and challenge generation are trustworthy;
+- the publisher challenge issuer's nonce generation, authoritative clock, and
+  durable replay adapter satisfy
+  [ADR-0005](adr/0005-verifier-authoritative-challenge-freshness.md);
 - the game server correctly validates the permit and session-key proof;
 - the user understands that a protected mode may reject custom or unrecognized platform profiles.
 
@@ -59,6 +62,7 @@ These assumptions must become narrower as evidence and enforcement mature.
 7. Verifier -> matchmaking relying party.
 8. Source repository -> CI and release artifacts.
 9. Publisher policy -> local privacy and enforcement constraints.
+10. Publisher issuer/verifier -> authoritative clock and durable replay store.
 
 Every boundary requires explicit authentication, authorization, framing, limits, error handling, and adversarial tests.
 
@@ -80,7 +84,42 @@ Required response: Derive caller and process-tree identity through kernel creden
 
 Threat: Reuse a prior challenge, quote, evidence bundle, permit, or renewal.
 
-Required response: Single-use nonces, strict expiry, match/account/session binding, verifier replay cache, and transcript-bound session-key proof.
+Required response: Strict zero-leeway challenge windows; a replay key exactly
+`(PublisherId, Nonce)` across all contexts; durable issued/consumed records; an
+atomic irreversible claim after exact binding checks; and transcript-bound
+session-key proof for later permits. Same-key reuse returns a non-disciplinary
+replay result.
+
+### Freshness-state rollback or loss
+
+Threat: Roll back publisher time, race two claims, clear replay state on
+restart, corrupt the time floor, exhaust capacity, or make the store
+unavailable so an old or duplicate challenge is accepted.
+
+Required response: Persist the authoritative-time high-water mark and every
+unexpired issued/consumed record; durably check/advance the floor before window
+evaluation so rejection cannot hide a future observation; reject lower time;
+perform register/claim/GC as atomic durable operations; construct the freshness
+capability only inside the ordered verifier context/claim path; retain records
+through expiry; enforce explicit finite limits without live eviction; and fail
+closed without a stateless fallback. Operational failures map to
+retry/unavailable protected mode and are not cheating evidence.
+
+### Freshness-state disclosure or over-retention
+
+Threat: An overreaching publisher exposes replay bindings through diagnostic
+formatting, retains expired replay records or stale issuance-rate history, or
+uses a detached restart copy to preserve data after garbage collection.
+
+Required response: Redact binding/time leaves and every challenge,
+expected-context, verification-request, replay-key, binding, registration,
+guard, store, and durable-state debug surface; treat explicit value accessors as
+trusted functional interfaces rather than diagnostic sinks; retain replay
+records only through challenge expiry and rate events only through their
+enforcement window; make all reopen handles refer to the same authoritative
+state generation so a handle opened before purge observes later deletion.
+Exported backups require a separately approved finite retention, deletion,
+access-control, and anti-rollback policy.
 
 ### Cuckoo or relay
 
@@ -152,6 +191,8 @@ Required response: structured non-disciplinary outcome classes and separation of
 - dynamic/JIT code that cannot be fully represented by file measurement alone;
 - incomplete IMA or enforcement policies that omit a relevant object or interface;
 - compromised publisher infrastructure;
+- replay-store/clock outage or a forward time jump causing fail-closed
+  protected-mode unavailability;
 - social engineering and account abuse.
 
 ## 8. Threat-to-test rule
@@ -165,5 +206,32 @@ Every accepted threat must map to:
 - a required assurance profile;
 - a documented residual risk;
 - a regression test after every confirmed defect.
+
+Scenario `owner` names the role accountable for maintaining the mitigation and
+regressions. `required_assurance_profile: all-protected-modes` means the threat
+control is mandatory for every protected mode regardless of evidence backend;
+any narrower value requires a separately documented assurance-profile
+definition and validator-registry update. The attack-scenario schema requires
+both fields, while the aggregate gate requires registered values and globally
+unique scenario IDs.
+Attack scenarios are single, duplicate-free JSON documents validated against
+the supported shared-schema contract in the aggregate gate; text scanning is
+not considered parsed enforcement. Repository-controlled scenario parsing has
+explicit byte, file-count, nesting, object-field, array-item, string, and total-
+node bounds plus a numeric-token/finite-value bound; rejects non-JSON constants
+and schema-dialect drift; executes only reviewed bounded regexes; rejects a
+symlinked scenario boundary; and emits context-free diagnostics without raw
+filenames, keys, properties, host paths, control characters, or CI annotation
+commands.
+
+M1-008 freshness threat mapping:
+
+| Accepted threat | Scenario | Owner | Required assurance profile |
+| --- | --- | --- | --- |
+| Sequential same/altered-context replay | `OGIR-PROTOCOL-REPLAY-002` | `initial-maintainer` | `all-protected-modes` |
+| Concurrent double claim | `OGIR-PROTOCOL-FRESHNESS-RACE-001` | `initial-maintainer` | `all-protected-modes` |
+| Time rollback, restart loss, or unavailable state | `OGIR-PROTOCOL-FRESHNESS-001` | `initial-maintainer` | `all-protected-modes` |
+| Capacity/rate exhaustion and live-record eviction | `OGIR-PROTOCOL-FRESHNESS-CAPACITY-001` | `initial-maintainer` | `all-protected-modes` |
+| Diagnostic disclosure or over-retention | `OGIR-PRIVACY-FRESHNESS-001` | `initial-maintainer` | `all-protected-modes` |
 
 The threat model is updated in the same pull request as any changed trust boundary, privilege, protocol field, evidence claim, policy control, or signing/update path.

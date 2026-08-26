@@ -69,8 +69,11 @@ flowchart TB
         MM[Matchmaking / game server]
         VER[OGIR verifier]
         REF[Reference-value and revocation service]
+        FRESH[Authoritative clock and durable replay state]
         MM --> VER
         VER --> REF
+        MM --> FRESH
+        VER --> FRESH
     end
 
     subgraph Player[Linux player system]
@@ -175,7 +178,14 @@ The service must expose no arbitrary file, process, kernel, BPF, TPM, or command
 
 Responsibilities:
 
-- verify challenge freshness and single-use state;
+- durably check/advance publisher-authoritative time before evaluating a
+  window, even when that window will be rejected;
+- require strict challenge validity at `issued_at <= now < expires_at` with no
+  acceptance leeway;
+- atomically claim `(PublisherId, Nonce)` single-use state after exact context
+  matching and before expensive appraisal;
+- preserve issued/consumed replay records and the time high-water mark across
+  restart, and fail closed when that state is unavailable or rolled back;
 - verify TPM quote and attestation-key enrollment;
 - validate measured-boot and runtime evidence against accepted policy;
 - validate game, build, runtime, match, account scope, and session-key binding;
@@ -208,7 +218,10 @@ sequenceDiagram
     participant A as ogird
     participant T as TPM / Platform
     participant V as Publisher Verifier
+    participant F as Freshness Store / Clock
 
+    S->>F: Observe time + atomically register challenge
+    F-->>S: Durable issued record committed
     S->>G: Signed challenge + nonce + policy + match
     G->>B: BeginProtectedSession(challenge)
     B->>P: Bounded request
@@ -218,7 +231,14 @@ sequenceDiagram
     A->>T: Collect platform/session evidence and quote
     T-->>A: Quote + measured state
     A->>V: Evidence bundle over authenticated channel
-    V->>V: Verify freshness, quote, policy, references, revocations
+    V->>V: Authenticate challenge
+    V->>F: Durably observe/check authoritative time
+    F-->>V: Time floor committed
+    V->>V: Check strict window + relying-party context
+    V->>F: Atomically claim publisher nonce
+    F-->>V: Irreversible claim committed
+    V->>V: Construct internal FreshnessChecked capability
+    V->>V: Verify quote, policy, references, revocations
     V-->>S: Signed short-lived Attestation Result
     S-->>G: Session permit
     S->>G: Match transport challenge
@@ -259,9 +279,53 @@ Unicode normalization or confusable handling for protocol identifiers.
 | `SessionId` | Trusted local portal/agent | Authoritative only for the local protected-session lifecycle; never accepted from the game process. |
 | `EvidenceProfile` | Selected attestation backend and evidence envelope | A typed profile claim; verifier support policy decides whether the profile is acceptable. |
 
-`AccountScope`, `MatchId`, and `SessionId` redact their values from Rust `Debug`
-output. Logging or disclosing their canonical text requires a separate explicit
-privacy decision.
+`PublisherId`, `GameId`, `BuildId`, `AccountScope`, `MatchId`, `PolicyId`, and
+`SessionId` redact their values from Rust `Debug` output. `PolicyVersion`,
+`UnixTime`, `ChallengeWindow`, `PublisherChallenge`, `ExpectedContext`, and
+`VerificationRequest` likewise redact complete authorization bindings and
+timing. Trusted verification/storage code obtains needed values only through
+explicit accessors; those accessors are functional interfaces, not approved
+diagnostic sinks.
+
+### Challenge freshness authority
+
+The publisher challenge issuer generates the nonce, selects the validated
+window under explicit policy, and durably registers the issued record before
+signing or returning the challenge. The publisher verifier supplies the only
+authoritative evaluation time. Game, bridge, attester, and local-client clocks
+or nonce caches are untrusted.
+
+Every authoritative time observation durably checks/advances the persisted
+floor before strict window evaluation; later window rejection does not erase a
+future observation. `ChallengeWindow` is a validated half-open interval
+`[issued_at, expires_at)` with zero acceptance leeway. Replay identity is
+exactly `(PublisherId, Nonce)`; game, build, account, match, policy, and policy
+version remain stored binding fields. After challenge authentication and exact
+relying-party context comparison, one atomic store operation rechecks the
+persisted time floor, window, binding, and issued state before irreversibly
+changing it to consumed. Only that ordered crate-internal verifier path creates
+`FreshnessChecked`; public raw claim consumes state but yields no capability.
+Appraisal failure never releases the claim.
+
+Issued and consumed records plus the verifier-time high-water mark survive
+restart. Records are GC-eligible only when the time floor reaches expiry.
+Per-publisher issuance events are GC-eligible when their configured enforcement
+window ends. The reference adapter's reopen handles name the same authoritative
+durable state generation rather than copying it, so a successful purge removes
+data from every such handle. Exported backups require a separate finite
+retention, deletion, and anti-rollback design before production use.
+Rollback, missing/corrupt/unavailable state, or exhausted explicit
+lifetime/capacity/account/rate limits makes protected mode unavailable; no
+stateless fallback or unexpired-record eviction is permitted.
+
+Identifier/time leaves plus challenge, expected-context, request, replay-key,
+binding, registration, guard, store, and durable-state `Debug` implementations
+emit only redaction markers. Publisher, game, build, account, match, policy,
+policy version, nonce, and challenge-window timestamps never appear through
+those diagnostic surfaces. Explicit field access remains necessary inside the
+trusted core and must not be copied into diagnostics.
+[ADR-0005](adr/0005-verifier-authoritative-challenge-freshness.md) records the
+complete decision and deferred production-adapter obligations.
 
 ### 7.1 PublisherChallenge
 

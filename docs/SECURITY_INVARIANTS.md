@@ -13,10 +13,10 @@ These invariants are release-blocking. A change that weakens one requires a publ
 
 ## Freshness and replay
 
-7. The publisher supplies a cryptographically random nonce.
-8. Nonces are single-use within their validity window.
-9. Evidence and permits have explicit issued-at and expiry values.
-10. Renewal requires a fresh challenge and cannot silently downgrade policy.
+7. The publisher-controlled issuer generates a fresh cryptographically random nonce and durably registers its challenge before returning it.
+8. A challenge is eligible only during its exact publisher-verifier window `[issued_at, expires_at)`, and only the ordered verifier context/claim path can create the single freshness capability for `(PublisherId, Nonce)` in any context.
+9. Every authoritative time observation durably advances/checks the verifier-time high-water mark before later window or context rejection; the floor and issued/consumed replay state survive restart, while rollback, missing/corrupt/unavailable state, or capacity exhaustion fails closed without stateless fallback or unexpired-record eviction.
+10. Evidence and permits have explicit issued-at and expiry values; renewal requires a fresh challenge and cannot silently downgrade policy.
 
 ## Caller and session identity
 
@@ -58,8 +58,8 @@ These invariants are release-blocking. A change that weakens one requires a publ
 34. A publisher request cannot expand the fixed evidence claim vocabulary.
 35. Unrelated process lists, personal files, browser/chat activity, and biometric material are outside the protocol.
 36. Stable identifiers are scoped to the publisher where possible.
-37. Logs redact secrets, home paths, raw evidence identities, and session keys.
-38. Evidence retention is minimal and declared.
+37. Logs and default diagnostics redact secrets, home paths, raw evidence identities, session keys, and complete challenge/replay bindings and timing; explicit value access remains confined to trusted functional code.
+38. Evidence and verifier authorization-state retention are minimal and declared; replay records end at challenge expiry and issuance-rate events end with their enforcement window unless a separately approved finite retention purpose applies.
 
 ## Failure and enforcement
 

@@ -4,7 +4,11 @@
 
 ### Unit tests
 
-Pure domain invariants, length checks, state transitions, policy evaluation, redaction, expiry, identifier validation, and fail-closed behavior.
+Pure domain invariants, length checks, state transitions, policy evaluation,
+redaction, expiry, identifier validation, and fail-closed behavior. Challenge
+freshness includes checked window construction and literal before/exact issue,
+last-second, exact/after expiry, excessive lifetime, and near-`u64::MAX`
+boundaries.
 
 ### Property tests
 
@@ -16,7 +20,10 @@ Examples:
 - malformed or unknown critical input never produces `Allow`;
 - encode/decode round trips preserve one canonical representation;
 - renewal never lowers the active policy;
-- disclosure output is a subset of the profile's allowed claims.
+- disclosure output is a subset of the profile's allowed claims;
+- fixed-seed register/claim/time-advance/rollback/restart/unavailable/GC
+  sequences preserve at most one freshness capability, monotonic persisted
+  time, no success from unavailable state, and no loss of an unexpired record.
 
 ### Fuzz tests
 
@@ -37,6 +44,19 @@ Every untrusted parser:
 
 At least two independent decoders/verifiers must agree on valid and invalid conformance vectors before the signed production format is frozen.
 
+### Mutation tests
+
+Freshness tests must fail when either time edge is widened, replay identity is
+scoped by context, check and consume are split, restart clears records, clock
+rollback is accepted, capacity evicts a live record, a successful claim remains
+issued, future-time or context-mismatch rejection skips durable observation,
+raw claim returns a capability, binding/window failure consumes the original
+issued record, checked arithmetic wraps, rate history survives its window,
+an already-reopened handle retains later-purged state, or any binding/time leaf
+or challenge/request/replay aggregate debug output is unredacted. Each
+mutation runs in a disposable worktree; mutated source never returns to the
+primary branch.
+
 ### Integration tests
 
 - mock attester -> verifier -> permit;
@@ -46,7 +66,14 @@ At least two independent decoders/verifiers must agree on valid and invalid conf
 - measured boot evidence replay;
 - session-key proof of possession;
 - renewal and expiry;
-- revocation propagation.
+- revocation propagation;
+- challenge first/repeat claim, same-key changed context, and cross-publisher
+  nonce independence;
+- replay-state restart, rollback, missing/corrupt/unavailable failure,
+  poisoned availability/state locks, rejected-future observation persistence,
+  capacity/rate limits, exact-expiry GC, rate-history GC propagated to handles
+  opened before deletion, complete leaf/aggregate diagnostic redaction,
+  simultaneous atomic claims, and raw-claim capability exclusion.
 
 ### Bare-metal tests
 
@@ -62,25 +89,43 @@ At least two independent decoders/verifiers must agree on valid and invalid conf
 
 Every security claim receives a scenario under `lab/scenarios/`:
 
-```yaml
-id: OGIR-PROTOCOL-REPLAY-001
-title: Reuse a permit in another match
-attacker: A1
-assets:
-  - protected_session_authorization
-preconditions:
-  - a valid permit exists for match-A
-steps:
-  - submit the permit to match-B
-expected:
-  decision: deny
-  reason: session-binding-mismatch
-  automatic_ban: false
-invariants:
-  - permit match binding is exact
-residual_risk:
-  - full-session relay requires a separate scenario
+```json
+{
+  "id": "OGIR-PROTOCOL-REPLAY-001",
+  "title": "Reuse a permit in another match",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["protected_session_authorization"],
+  "preconditions": ["a valid permit exists for match-A"],
+  "steps": ["submit the permit to match-B"],
+  "expected": {
+    "decision": "deny",
+    "reason": "session-binding-mismatch",
+    "automatic_ban": false
+  },
+  "invariants": ["permit match binding is exact"],
+  "residual_risk": ["full-session relay requires a separate scenario"]
+}
 ```
+
+Challenge replay, concurrent claim, freshness-state failure, capacity
+exhaustion, and freshness-state privacy are represented by
+`OGIR-PROTOCOL-REPLAY-002`, `OGIR-PROTOCOL-FRESHNESS-RACE-001`,
+`OGIR-PROTOCOL-FRESHNESS-001`, `OGIR-PROTOCOL-FRESHNESS-CAPACITY-001`, and
+`OGIR-PRIVACY-FRESHNESS-001`. They preserve publisher-authoritative time,
+atomic single-use nonce, live-record retention, bounded state, and redacted
+diagnostics without turning failure into disciplinary evidence.
+Scenarios use one duplicate-free JSON document per `*.scenario.json` file. The
+aggregate dependency-free validator rejects duplicate keys, extra documents,
+unknown fields, unsupported schema keywords, and every schema violation. Its
+self-tests pin owner/assurance omissions, parser-bypass regressions, non-JSON
+constants, terminal-newline mappings, schema-dialect drift, nested unknown
+fields, every resource-limit branch, scenario-directory symlinks, unapproved
+backtracking/repetition patterns, and context-free parse/duplicate/I/O/schema/
+instance diagnostics, including newline/escape/CI-command injection through a
+scenario filename. Cross-file checks also reject duplicate scenario IDs and
+unregistered owner/profile values.
 
 ## Release gates by maturity
 
@@ -90,6 +135,7 @@ residual_risk:
 - Clippy;
 - unit tests;
 - documentation build;
+- attack-scenario owner/assurance traceability;
 - dependency and license policy.
 
 ### End-to-end prototype
