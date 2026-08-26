@@ -216,6 +216,7 @@ impl fmt::Debug for CreatedEvidence {
 /// }
 /// ```
 #[must_use = "validated permit capability must be consumed by its session transition"]
+#[deny(private_interfaces)]
 pub struct ValidatedPermit {
     binding: SessionBinding,
 }
