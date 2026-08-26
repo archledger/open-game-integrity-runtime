@@ -67,6 +67,10 @@ fn valid_window(issued_at: u64, expires_at: u64) -> ChallengeWindow {
     }
 }
 
+fn test_nonce(seed: u8) -> [u8; 32] {
+    std::array::from_fn(|index| seed ^ index as u8)
+}
+
 fn challenge_for_publisher(publisher: &str, nonce: [u8; 32]) -> PublisherChallenge {
     PublisherChallenge {
         version: ProtocolVersion { major: 0, minor: 1 },
@@ -231,7 +235,7 @@ fn first_fresh_request_reaches_fail_closed_evidence_result() {
 fn research_scaffold_reports_without_authority() {
     let store = ReferenceReplayStore::available();
     let guard = FreshnessGuard::new(&store, limits());
-    let challenge = challenge("example.game", [91; 32]);
+    let challenge = challenge("example.game", test_nonce(91));
     assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
 
     let outcome = verify_research_structure(&request(challenge, 100), &guard);
