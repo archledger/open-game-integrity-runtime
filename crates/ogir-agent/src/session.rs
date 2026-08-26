@@ -119,6 +119,12 @@ impl SessionBinding {
 }
 
 /// Opaque proof that the publisher challenge was validated for one session.
+///
+/// ```compile_fail
+/// use ogir_agent::ValidatedChallenge;
+///
+/// fn duplicate(value: ValidatedChallenge) { let _copy = value.clone(); }
+/// ```
 #[must_use = "validated challenge capability must be consumed by its session transition"]
 pub struct ValidatedChallenge {
     binding: SessionBinding,
@@ -131,6 +137,12 @@ impl fmt::Debug for ValidatedChallenge {
 }
 
 /// Opaque proof that the caller was bound to one session.
+///
+/// ```compile_fail
+/// use ogir_agent::BoundCaller;
+///
+/// fn duplicate(value: BoundCaller) { let _copy = value.clone(); }
+/// ```
 #[must_use = "caller binding capability must be consumed by its session transition"]
 pub struct BoundCaller {
     binding: SessionBinding,
@@ -143,6 +155,12 @@ impl fmt::Debug for BoundCaller {
 }
 
 /// Opaque proof that the protected session was prepared for one session.
+///
+/// ```compile_fail
+/// use ogir_agent::PreparedSession;
+///
+/// fn duplicate(value: PreparedSession) { let _copy = value.clone(); }
+/// ```
 #[must_use = "prepared-session capability must be consumed by its session transition"]
 pub struct PreparedSession {
     binding: SessionBinding,
@@ -155,6 +173,12 @@ impl fmt::Debug for PreparedSession {
 }
 
 /// Opaque proof that evidence was created for one session.
+///
+/// ```compile_fail
+/// use ogir_agent::CreatedEvidence;
+///
+/// fn duplicate(value: CreatedEvidence) { let _copy = value.clone(); }
+/// ```
 #[must_use = "created-evidence capability must be consumed by its session transition"]
 pub struct CreatedEvidence {
     binding: SessionBinding,
@@ -167,6 +191,28 @@ impl fmt::Debug for CreatedEvidence {
 }
 
 /// Opaque proof that a permit was validated for one session.
+///
+/// ```compile_fail
+/// use ogir_agent::ValidatedPermit;
+///
+/// fn duplicate(value: ValidatedPermit) { let _copy = value.clone(); }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_agent::{SessionPhase, ValidatedPermit};
+///
+/// fn forge() -> ValidatedPermit {
+///     ValidatedPermit { binding: SessionPhase::Active }
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_agent::ValidatedPermit;
+///
+/// fn reveal(permit: ValidatedPermit) {
+///     let _binding = permit.binding;
+/// }
+/// ```
 #[must_use = "validated permit capability must be consumed by its session transition"]
 pub struct ValidatedPermit {
     binding: SessionBinding,
@@ -183,6 +229,12 @@ impl fmt::Debug for ValidatedPermit {
 /// Dropping a request does not complete cleanup. While cleanup remains
 /// required, [`LocalSession::cleanup_request`] can issue another request for
 /// an idempotent trusted cleanup adapter.
+///
+/// ```compile_fail
+/// use ogir_agent::CleanupRequest;
+///
+/// fn duplicate(value: CleanupRequest) { let _copy = value.clone(); }
+/// ```
 #[must_use = "terminal session cleanup remains required until acknowledged"]
 pub struct CleanupRequest {
     binding: SessionBinding,
@@ -196,6 +248,20 @@ impl fmt::Debug for CleanupRequest {
 }
 
 /// Opaque proof that trusted cleanup completed for one terminal session.
+///
+/// ```compile_fail
+/// use ogir_agent::CleanupCompleted;
+///
+/// fn duplicate(value: CleanupCompleted) { let _copy = value.clone(); }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_agent::{CleanupCompleted, SessionPhase};
+///
+/// fn forge() -> CleanupCompleted {
+///     CleanupCompleted { binding: SessionPhase::Ended }
+/// }
+/// ```
 #[must_use = "cleanup completion capability must be consumed by its session transition"]
 pub struct CleanupCompleted {
     binding: SessionBinding,
@@ -242,6 +308,29 @@ impl fmt::Display for TransitionError {
 impl Error for TransitionError {}
 
 /// A trusted owner's local session lifecycle state.
+///
+/// ```compile_fail
+/// use ogir_agent::LocalSession;
+/// use ogir_model::SessionId;
+///
+/// let id = SessionId::try_from("session-a")?;
+/// let _session = LocalSession::new(id);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+///
+/// ```compile_fail
+/// use ogir_agent::LocalSession;
+///
+/// fn duplicate(value: LocalSession) { let _copy = value.clone(); }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_agent::{LocalSession, SessionPhase};
+///
+/// fn force_active(session: &mut LocalSession) {
+///     session.state = SessionPhase::Active;
+/// }
+/// ```
 #[must_use = "local session lifecycle state must be retained by its trusted owner"]
 pub struct LocalSession {
     session_id: SessionId,

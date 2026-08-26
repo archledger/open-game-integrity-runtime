@@ -20,6 +20,8 @@ fn session(value: &str) -> LocalSession {
     }
 }
 
+fn require_type<T>() {}
+
 const NONTERMINAL_PHASES: [SessionPhase; 8] = [
     SessionPhase::New,
     SessionPhase::ChallengeValidated,
@@ -30,6 +32,209 @@ const NONTERMINAL_PHASES: [SessionPhase; 8] = [
     SessionPhase::Active,
     SessionPhase::RenewalPending,
 ];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModelState {
+    New,
+    ChallengeValidated,
+    CallerBound,
+    SessionPrepared,
+    EvidenceCreated,
+    PermitReceived,
+    Active,
+    RenewalPending,
+    EndedRequired,
+    EndedComplete,
+    InvalidatedRequired,
+    InvalidatedComplete,
+}
+
+impl ModelState {
+    fn phase(self) -> SessionPhase {
+        match self {
+            Self::New => SessionPhase::New,
+            Self::ChallengeValidated => SessionPhase::ChallengeValidated,
+            Self::CallerBound => SessionPhase::CallerBound,
+            Self::SessionPrepared => SessionPhase::SessionPrepared,
+            Self::EvidenceCreated => SessionPhase::EvidenceCreated,
+            Self::PermitReceived => SessionPhase::PermitReceived,
+            Self::Active => SessionPhase::Active,
+            Self::RenewalPending => SessionPhase::RenewalPending,
+            Self::EndedRequired | Self::EndedComplete => SessionPhase::Ended,
+            Self::InvalidatedRequired | Self::InvalidatedComplete => SessionPhase::Invalidated,
+        }
+    }
+
+    fn cleanup_status(self) -> CleanupStatus {
+        match self {
+            Self::New
+            | Self::ChallengeValidated
+            | Self::CallerBound
+            | Self::SessionPrepared
+            | Self::EvidenceCreated
+            | Self::PermitReceived
+            | Self::Active
+            | Self::RenewalPending => CleanupStatus::NotRequired,
+            Self::EndedRequired | Self::InvalidatedRequired => CleanupStatus::Required,
+            Self::EndedComplete | Self::InvalidatedComplete => CleanupStatus::Complete,
+        }
+    }
+
+    fn is_nonterminal(self) -> bool {
+        match self {
+            Self::New
+            | Self::ChallengeValidated
+            | Self::CallerBound
+            | Self::SessionPrepared
+            | Self::EvidenceCreated
+            | Self::PermitReceived
+            | Self::Active
+            | Self::RenewalPending => true,
+            Self::EndedRequired
+            | Self::EndedComplete
+            | Self::InvalidatedRequired
+            | Self::InvalidatedComplete => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TestAction {
+    Challenge,
+    Caller,
+    Preparation,
+    Evidence,
+    Permit,
+    Activate,
+    Renewal,
+    End,
+    Invalidate,
+    CleanupComplete,
+}
+
+impl TestAction {
+    fn public(self) -> SessionAction {
+        match self {
+            Self::Challenge => SessionAction::RecordChallengeValidated,
+            Self::Caller => SessionAction::RecordCallerBound,
+            Self::Preparation => SessionAction::RecordSessionPrepared,
+            Self::Evidence => SessionAction::RecordEvidenceCreated,
+            Self::Permit => SessionAction::RecordPermitReceived,
+            Self::Activate => SessionAction::Activate,
+            Self::Renewal => SessionAction::BeginRenewal,
+            Self::End => SessionAction::End,
+            Self::Invalidate => SessionAction::Invalidate,
+            Self::CleanupComplete => SessionAction::RecordCleanupCompleted,
+        }
+    }
+
+    fn uses_capability(self) -> bool {
+        match self {
+            Self::Challenge
+            | Self::Caller
+            | Self::Preparation
+            | Self::Evidence
+            | Self::Permit
+            | Self::CleanupComplete => true,
+            Self::Activate | Self::Renewal | Self::End | Self::Invalidate => false,
+        }
+    }
+}
+
+const MODEL_STATES: [ModelState; 12] = [
+    ModelState::New,
+    ModelState::ChallengeValidated,
+    ModelState::CallerBound,
+    ModelState::SessionPrepared,
+    ModelState::EvidenceCreated,
+    ModelState::PermitReceived,
+    ModelState::Active,
+    ModelState::RenewalPending,
+    ModelState::EndedRequired,
+    ModelState::EndedComplete,
+    ModelState::InvalidatedRequired,
+    ModelState::InvalidatedComplete,
+];
+
+const TEST_ACTIONS: [TestAction; 10] = [
+    TestAction::Challenge,
+    TestAction::Caller,
+    TestAction::Preparation,
+    TestAction::Evidence,
+    TestAction::Permit,
+    TestAction::Activate,
+    TestAction::Renewal,
+    TestAction::End,
+    TestAction::Invalidate,
+    TestAction::CleanupComplete,
+];
+
+struct GateHistory {
+    initial_mask: u8,
+    renewal_pending: bool,
+    renewal_permit: bool,
+}
+
+const CHALLENGE_GATE: u8 = 1 << 0;
+const CALLER_GATE: u8 = 1 << 1;
+const PREPARATION_GATE: u8 = 1 << 2;
+const EVIDENCE_GATE: u8 = 1 << 3;
+const PERMIT_GATE: u8 = 1 << 4;
+const ALL_INITIAL_GATES: u8 =
+    CHALLENGE_GATE | CALLER_GATE | PREPARATION_GATE | EVIDENCE_GATE | PERMIT_GATE;
+
+fn next_random(state: &mut u64) -> u64 {
+    *state ^= *state << 13;
+    *state ^= *state >> 7;
+    *state ^= *state << 17;
+    *state
+}
+
+fn model_transition(state: ModelState, action: TestAction) -> Option<ModelState> {
+    match (state, action) {
+        (ModelState::New, TestAction::Challenge) => Some(ModelState::ChallengeValidated),
+        (ModelState::ChallengeValidated, TestAction::Caller) => Some(ModelState::CallerBound),
+        (ModelState::CallerBound, TestAction::Preparation) => Some(ModelState::SessionPrepared),
+        (ModelState::SessionPrepared, TestAction::Evidence) => Some(ModelState::EvidenceCreated),
+        (ModelState::EvidenceCreated | ModelState::RenewalPending, TestAction::Permit) => {
+            Some(ModelState::PermitReceived)
+        }
+        (ModelState::PermitReceived, TestAction::Activate) => Some(ModelState::Active),
+        (ModelState::Active, TestAction::Renewal) => Some(ModelState::RenewalPending),
+        (state, TestAction::End) if state.is_nonterminal() => Some(ModelState::EndedRequired),
+        (state, TestAction::Invalidate) if state.is_nonterminal() => {
+            Some(ModelState::InvalidatedRequired)
+        }
+        (ModelState::EndedRequired, TestAction::CleanupComplete) => Some(ModelState::EndedComplete),
+        (ModelState::InvalidatedRequired, TestAction::CleanupComplete) => {
+            Some(ModelState::InvalidatedComplete)
+        }
+        (
+            ModelState::New
+            | ModelState::ChallengeValidated
+            | ModelState::CallerBound
+            | ModelState::SessionPrepared
+            | ModelState::EvidenceCreated
+            | ModelState::PermitReceived
+            | ModelState::Active
+            | ModelState::RenewalPending
+            | ModelState::EndedRequired
+            | ModelState::EndedComplete
+            | ModelState::InvalidatedRequired
+            | ModelState::InvalidatedComplete,
+            TestAction::Challenge
+            | TestAction::Caller
+            | TestAction::Preparation
+            | TestAction::Evidence
+            | TestAction::Permit
+            | TestAction::Activate
+            | TestAction::Renewal
+            | TestAction::End
+            | TestAction::Invalidate
+            | TestAction::CleanupComplete,
+        ) => None,
+    }
+}
 
 fn challenge_validated_session(value: &str) -> LocalSession {
     let mut session = session(value);
@@ -140,6 +345,60 @@ fn terminal_session(value: &str, phase: SessionPhase, cleanup_complete: bool) ->
     session
 }
 
+fn session_for_model_state(value: &str, state: ModelState) -> LocalSession {
+    match state {
+        ModelState::New => session(value),
+        ModelState::ChallengeValidated => challenge_validated_session(value),
+        ModelState::CallerBound => caller_bound_session(value),
+        ModelState::SessionPrepared => prepared_session(value),
+        ModelState::EvidenceCreated => evidence_created_session(value),
+        ModelState::PermitReceived => permit_received_session(value),
+        ModelState::Active => active_session(value),
+        ModelState::RenewalPending => {
+            let mut session = active_session(value);
+            assert_eq!(session.begin_renewal(), Ok(()));
+            session
+        }
+        ModelState::EndedRequired => terminal_session(value, SessionPhase::Ended, false),
+        ModelState::EndedComplete => terminal_session(value, SessionPhase::Ended, true),
+        ModelState::InvalidatedRequired => {
+            terminal_session(value, SessionPhase::Invalidated, false)
+        }
+        ModelState::InvalidatedComplete => terminal_session(value, SessionPhase::Invalidated, true),
+    }
+}
+
+fn apply_action(
+    session: &mut LocalSession,
+    action: TestAction,
+    capability_session: &str,
+) -> Result<(), TransitionError> {
+    match action {
+        TestAction::Challenge => session.record_challenge_validated(ValidatedChallenge {
+            binding: binding(capability_session),
+        }),
+        TestAction::Caller => session.record_caller_bound(BoundCaller {
+            binding: binding(capability_session),
+        }),
+        TestAction::Preparation => session.record_session_prepared(PreparedSession {
+            binding: binding(capability_session),
+        }),
+        TestAction::Evidence => session.record_evidence_created(CreatedEvidence {
+            binding: binding(capability_session),
+        }),
+        TestAction::Permit => session.record_permit_received(ValidatedPermit {
+            binding: binding(capability_session),
+        }),
+        TestAction::Activate => session.activate(),
+        TestAction::Renewal => session.begin_renewal(),
+        TestAction::End => session.end().map(|_request| ()),
+        TestAction::Invalidate => session.invalidate().map(|_request| ()),
+        TestAction::CleanupComplete => session.record_cleanup_completed(CleanupCompleted {
+            binding: binding(capability_session),
+        }),
+    }
+}
+
 fn assert_all_lifecycle_actions_rejected(session: &mut LocalSession) {
     let phase = session.phase();
     let cleanup_status = session.cleanup_status();
@@ -228,6 +487,331 @@ fn assert_all_lifecycle_actions_rejected(session: &mut LocalSession) {
     );
     assert_eq!(session.phase(), phase);
     assert_eq!(session.cleanup_status(), cleanup_status);
+}
+
+#[test]
+fn all_120_state_action_pairs_match_the_independent_model() {
+    let mut allowed = 0usize;
+    let mut rejected = 0usize;
+
+    for state in MODEL_STATES {
+        for action in TEST_ACTIONS {
+            let mut session = session_for_model_state("session-a", state);
+            let before_phase = session.phase();
+            let before_cleanup = session.cleanup_status();
+            let expected = model_transition(state, action);
+            let actual = apply_action(&mut session, action, "session-a");
+
+            match expected {
+                Some(next) => {
+                    allowed += 1;
+                    assert_eq!(actual, Ok(()), "state={state:?} action={action:?}");
+                    assert_eq!(session.phase(), next.phase());
+                    assert_eq!(session.cleanup_status(), next.cleanup_status());
+                }
+                None => {
+                    rejected += 1;
+                    assert_eq!(
+                        actual,
+                        Err(TransitionError::InvalidTransition {
+                            phase: before_phase,
+                            cleanup_status: before_cleanup,
+                            action: action.public(),
+                        }),
+                        "state={state:?} action={action:?}"
+                    );
+                    assert_eq!(session.phase(), before_phase);
+                    assert_eq!(session.cleanup_status(), before_cleanup);
+                }
+            }
+        }
+    }
+
+    assert_eq!(allowed, 26);
+    assert_eq!(rejected, 94);
+}
+
+#[test]
+fn cleanup_request_exists_for_exactly_the_two_required_terminal_states() {
+    let count = MODEL_STATES
+        .into_iter()
+        .filter(|state| {
+            session_for_model_state("session-a", *state)
+                .cleanup_request()
+                .is_some()
+        })
+        .count();
+    assert_eq!(count, 2);
+}
+
+#[test]
+fn one_million_deterministic_actions_preserve_session_invariants() {
+    let mut operations = 0usize;
+
+    for seed in 1..=4_096u64 {
+        let mut random = seed;
+        let mut session = session("session-a");
+        let mut model = ModelState::New;
+        let mut history = GateHistory {
+            initial_mask: 0,
+            renewal_pending: false,
+            renewal_permit: false,
+        };
+
+        for action_index in 0..256usize {
+            let action = TEST_ACTIONS[(next_random(&mut random) % 10) as usize];
+            let mismatched_capability =
+                action.uses_capability() && next_random(&mut random) & 1 == 1;
+            let capability_session = if mismatched_capability {
+                "session-b"
+            } else {
+                "session-a"
+            };
+            let prior_model = model;
+            let expected = model_transition(model, action);
+            let actual = apply_action(&mut session, action, capability_session);
+
+            match expected {
+                None => assert_eq!(
+                    actual,
+                    Err(TransitionError::InvalidTransition {
+                        phase: model.phase(),
+                        cleanup_status: model.cleanup_status(),
+                        action: action.public(),
+                    }),
+                    "seed={seed} action_index={action_index} state={model:?} action={action:?}"
+                ),
+                Some(_next) if mismatched_capability => assert_eq!(
+                    actual,
+                    Err(TransitionError::CapabilityRejected {
+                        action: action.public(),
+                    }),
+                    "seed={seed} action_index={action_index} state={model:?} action={action:?}"
+                ),
+                Some(next) => {
+                    assert_eq!(
+                        actual,
+                        Ok(()),
+                        "seed={seed} action_index={action_index} state={model:?} action={action:?}"
+                    );
+
+                    match action {
+                        TestAction::Challenge => history.initial_mask |= CHALLENGE_GATE,
+                        TestAction::Caller => history.initial_mask |= CALLER_GATE,
+                        TestAction::Preparation => history.initial_mask |= PREPARATION_GATE,
+                        TestAction::Evidence => history.initial_mask |= EVIDENCE_GATE,
+                        TestAction::Permit => match prior_model {
+                            ModelState::EvidenceCreated => history.initial_mask |= PERMIT_GATE,
+                            ModelState::RenewalPending => history.renewal_permit = true,
+                            ModelState::New
+                            | ModelState::ChallengeValidated
+                            | ModelState::CallerBound
+                            | ModelState::SessionPrepared
+                            | ModelState::PermitReceived
+                            | ModelState::Active
+                            | ModelState::EndedRequired
+                            | ModelState::EndedComplete
+                            | ModelState::InvalidatedRequired
+                            | ModelState::InvalidatedComplete => {
+                                panic!(
+                                    "seed={seed} action_index={action_index} state={prior_model:?} action={action:?}"
+                                )
+                            }
+                        },
+                        TestAction::Activate => {
+                            assert_eq!(
+                                history.initial_mask, ALL_INITIAL_GATES,
+                                "seed={seed} action_index={action_index} state={prior_model:?} action={action:?}"
+                            );
+                            if history.renewal_pending {
+                                assert!(
+                                    history.renewal_permit,
+                                    "seed={seed} action_index={action_index} state={prior_model:?} action={action:?}"
+                                );
+                            }
+                            history.renewal_pending = false;
+                        }
+                        TestAction::Renewal => {
+                            history.renewal_pending = true;
+                            history.renewal_permit = false;
+                        }
+                        TestAction::End | TestAction::Invalidate | TestAction::CleanupComplete => {}
+                    }
+
+                    model = next;
+                }
+            }
+
+            assert_eq!(
+                session.phase(),
+                model.phase(),
+                "seed={seed} action_index={action_index} state={model:?} action={action:?}"
+            );
+            assert_eq!(
+                session.cleanup_status(),
+                model.cleanup_status(),
+                "seed={seed} action_index={action_index} state={model:?} action={action:?}"
+            );
+            operations += 1;
+        }
+    }
+
+    assert_eq!(operations, 1_048_576);
+}
+
+#[test]
+fn every_capability_rejects_a_different_session_without_mutation() {
+    let cases = [
+        (ModelState::New, TestAction::Challenge),
+        (ModelState::ChallengeValidated, TestAction::Caller),
+        (ModelState::CallerBound, TestAction::Preparation),
+        (ModelState::SessionPrepared, TestAction::Evidence),
+        (ModelState::EvidenceCreated, TestAction::Permit),
+        (ModelState::RenewalPending, TestAction::Permit),
+        (ModelState::EndedRequired, TestAction::CleanupComplete),
+        (ModelState::InvalidatedRequired, TestAction::CleanupComplete),
+    ];
+
+    assert_eq!(cases.len(), 8);
+    for (state, action) in cases {
+        assert!(model_transition(state, action).is_some());
+        assert!(action.uses_capability());
+        let mut session = session_for_model_state("session-a", state);
+        let before_phase = session.phase();
+        let before_cleanup = session.cleanup_status();
+
+        let actual = apply_action(&mut session, action, "session-b");
+
+        assert_eq!(
+            actual,
+            Err(TransitionError::CapabilityRejected {
+                action: action.public(),
+            }),
+            "state={state:?} action={action:?}"
+        );
+        assert_eq!(session.phase(), before_phase);
+        assert_eq!(session.cleanup_status(), before_cleanup);
+    }
+}
+
+#[test]
+fn every_session_diagnostic_is_context_free_and_redacted() {
+    let session = session("private-session-a");
+    let values = [
+        format!("{session:?}"),
+        format!(
+            "{:?}",
+            ValidatedChallenge {
+                binding: binding("private-session-a"),
+            }
+        ),
+        format!(
+            "{:?}",
+            BoundCaller {
+                binding: binding("private-session-a"),
+            }
+        ),
+        format!(
+            "{:?}",
+            PreparedSession {
+                binding: binding("private-session-a"),
+            }
+        ),
+        format!(
+            "{:?}",
+            CreatedEvidence {
+                binding: binding("private-session-a"),
+            }
+        ),
+        format!(
+            "{:?}",
+            ValidatedPermit {
+                binding: binding("private-session-a"),
+            }
+        ),
+        format!(
+            "{:?}",
+            CleanupRequest {
+                binding: binding("private-session-a"),
+            }
+        ),
+        format!(
+            "{:?}",
+            CleanupCompleted {
+                binding: binding("private-session-b"),
+            }
+        ),
+        format!(
+            "{:?}",
+            TransitionError::InvalidTransition {
+                phase: SessionPhase::New,
+                cleanup_status: CleanupStatus::NotRequired,
+                action: SessionAction::Activate,
+            }
+        ),
+        format!(
+            "{:?}",
+            TransitionError::CapabilityRejected {
+                action: SessionAction::RecordPermitReceived,
+            }
+        ),
+        TransitionError::InvalidTransition {
+            phase: SessionPhase::New,
+            cleanup_status: CleanupStatus::NotRequired,
+            action: SessionAction::Activate,
+        }
+        .to_string(),
+        TransitionError::CapabilityRejected {
+            action: SessionAction::RecordPermitReceived,
+        }
+        .to_string(),
+    ];
+
+    let expected = [
+        "LocalSession { phase: New, cleanup_status: NotRequired }",
+        "ValidatedChallenge([REDACTED])",
+        "BoundCaller([REDACTED])",
+        "PreparedSession([REDACTED])",
+        "CreatedEvidence([REDACTED])",
+        "ValidatedPermit([REDACTED])",
+        "CleanupRequest([REDACTED])",
+        "CleanupCompleted([REDACTED])",
+        "InvalidTransition { phase: New, cleanup_status: NotRequired, action: Activate }",
+        "CapabilityRejected { action: RecordPermitReceived }",
+        "local session transition is not allowed",
+        "local session capability rejected",
+    ];
+    assert_eq!(values, expected);
+
+    for value in values {
+        for forbidden in [
+            "private-session-a",
+            "private-session-b",
+            "\n",
+            "\r",
+            "\u{1b}",
+            "/home/",
+            "::error",
+            "::warning",
+        ] {
+            assert!(
+                !value.contains(forbidden),
+                "forbidden diagnostic value: {forbidden:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn every_authority_bearing_public_type_exists() {
+    require_type::<LocalSession>();
+    require_type::<ValidatedChallenge>();
+    require_type::<BoundCaller>();
+    require_type::<PreparedSession>();
+    require_type::<CreatedEvidence>();
+    require_type::<ValidatedPermit>();
+    require_type::<CleanupRequest>();
+    require_type::<CleanupCompleted>();
 }
 
 #[test]
