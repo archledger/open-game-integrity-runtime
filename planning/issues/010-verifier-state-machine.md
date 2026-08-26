@@ -1,5 +1,5 @@
 # M1-010: Implement the fail-closed verifier state machine
-<!-- labels: type: implementation,area: model,area: verifier,area: privacy,risk: trusted-computing-base,risk: privacy,status: ready -->
+<!-- labels: type: implementation,area: model,area: verifier,area: privacy,risk: trusted-computing-base,risk: privacy,status: needs-review -->
 <!-- milestone: M1 Domain Model -->
 
 ## Problem
@@ -244,3 +244,73 @@ added. All affected source remains Apache-2.0.
   https://doc.rust-lang.org/1.98.0/book/ch04-01-what-is-ownership.html
 - Rust API Guidelines for private structs, newtypes, custom types, and boundary
   validation: https://rust-lang.github.io/api-guidelines/
+
+## Implementation evidence
+
+This is a time-bounded pre-DCO review checkpoint, not a production-readiness or
+cheating-detection claim.
+
+- Recorded: `2026-08-26T16:19:22-04:00`.
+- Repository base: `b3a8f1431258a41d38df88c3724ab384dab1272a`.
+- Reviewed unsigned head: `0fac6ec582b89e28f03817a3c0bf5235f3fa5aec`.
+- Reviewed tree: `5f05a9afa6ed0ad85e0f4ed947c9cecc39679e78`.
+- Unsigned range: 12 commits in exact order from the repository base. At this
+  checkpoint every commit intentionally lacks the permitted DCO trailer;
+  publication, DCO certification/rewrite, and human line-by-line review remain
+  pending.
+
+Executable model evidence:
+
+- 14 phases × 13 action kinds = 182 pairs: exactly 48 successes and 134
+  state-preserving rejections.
+- Seven omissions and all 5,040 gate permutations: one canonical ordering and
+  5,039 noncanonical orderings.
+- Exactly 1,048,576 model-checked actions: 2,048 scheduled and 1,046,528
+  fixed-seed arbitrary actions with non-vacuous full/restricted, failure,
+  denial, binding, terminal, and unknown-required-gate counters.
+- All seven equal-request cross-flow substitutions reject; the 14 × 7 = 98
+  phase/binding precedence pairs preserve state.
+- Full and restricted returns carry the exact flow allocation and selected
+  allowed class. `Decision`, `ReasonCode`, and `VerificationOutcome` remain
+  freely constructible/read-only reports rather than authority.
+- Active request ownership exists in exactly the eight nonterminal phases and
+  is absent from all six terminals, without an allocator-zeroization claim.
+- Every phase is formatted from the same private sentinel request. Exact
+  diagnostics cover request/expected context, flow, binding, seven gates,
+  final capability, all outcomes, both error Display/Debug variants, and direct
+  `EvidenceBundle`; identifiers, nonce/time, payload, paths/control text,
+  pointer addresses, and decimal counts are excluded.
+- One public compile-pass plus 39 single-cause compile-fail doctests and a
+  17-field structural test enforce construction, cloning, field privacy,
+  raw-claim exclusion, and report/capability substitution.
+- Current repository totals: 85 runtime/integration tests, 61 doctests, 14
+  validated attack scenarios, and 7 indexed ADRs.
+
+Mutation and review evidence:
+
+- The initial 88-probe round at `cb94205` was invalidated after fresh TCB and
+  privacy reviews returned No and six review mutants reproduced proof gaps.
+- The remediated round restarted from zero at `0fac6ec` and killed exactly
+  93/93 single-cause probes with no survivor or accepted wrong-cause failure.
+  The ignored task report records every exact base, mutation, detector, exit,
+  intended cause, and cleanup result.
+- Fresh post-remediation TCB review: no Critical, Important, or Minor findings;
+  `Readiness: Yes`.
+- Fresh post-remediation privacy review: no Critical, Important, or Minor
+  findings; `Readiness: Yes`.
+
+The exact reviewed commands passed on the remediated head:
+
+```text
+./scripts/check.sh
+cargo test --workspace --all-features --release
+git diff --check
+git fsck --no-dangling
+```
+
+Limitations and deferrals remain explicit: no production gate producer,
+evidence/identity/session/revocation/policy validator, verified-claim payload,
+signature, signer, result encoder, permit, admission decision, network service,
+persistence, restart-durable capability, cryptographic choice, parser, I/O, or
+`unsafe` boundary is added. A compromised trusted gate producer/verifier
+remains residual A5 risk.
