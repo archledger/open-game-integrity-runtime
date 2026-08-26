@@ -23,3 +23,4 @@ stay traceable.
 | [ADR-0004](0004-server-side-authorization.md) | Accepted | Only a publisher-controlled verifier authorizes protected sessions. | None | None |
 | [ADR-0005](0005-verifier-authoritative-challenge-freshness.md) | Accepted | Publisher-verifier time and durable single-use nonce state define challenge freshness. | None | None |
 | [ADR-0006](0006-local-session-lifecycle-capabilities.md) | Accepted | A private checked runtime graph and session-bound capabilities govern local lifecycle and cleanup. | None | None |
+| [ADR-0007](0007-verifier-flow-capabilities.md) | Accepted | One attempt-bound checked graph is the only path to verifier appraisal authority. | None | None |

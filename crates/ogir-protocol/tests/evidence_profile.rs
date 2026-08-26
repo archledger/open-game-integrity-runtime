@@ -16,3 +16,22 @@ fn evidence_bundle_requires_a_validated_profile() {
 
     assert_eq!(evidence.profile_id.as_str(), "mock-v0");
 }
+
+#[test]
+fn evidence_bundle_debug_redacts_profile_and_payload() {
+    let profile_sentinel = "private-profile-sentinel";
+    let payload_sentinel = b"private-evidence-payload-sentinel";
+    let profile = match EvidenceProfile::try_from(profile_sentinel) {
+        Ok(value) => value,
+        Err(error) => panic!("valid evidence profile rejected: {error:?}"),
+    };
+    let evidence = EvidenceBundle {
+        profile_id: profile,
+        payload: payload_sentinel.to_vec(),
+    };
+
+    let diagnostic = format!("{evidence:?}");
+    assert_eq!(diagnostic, "EvidenceBundle([REDACTED])");
+    assert!(!diagnostic.contains(profile_sentinel));
+    assert!(!diagnostic.contains("private-evidence-payload-sentinel"));
+}

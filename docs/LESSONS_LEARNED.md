@@ -444,3 +444,60 @@ Do not use this document to expose embargoed vulnerability details before coordi
 - **Documentation or agent-policy updates:** The approved spec, implementation
   plan, test strategy, ADR-0006, 27-probe table, and Task 6 report record the
   layered proof and supersede the earlier lint-only closure.
+
+## 2026-08-26 — A focused Cargo success must execute the named test
+
+- **Context:** M1-010 immutable verifier-terminal verification.
+- **Mistaken assumption:** `cargo test --lib <bare-test-name> -- --exact` would
+  match a nested unit test whose real name begins with
+  `verification::tests::`.
+- **Observed failure:** The command exited zero while reporting `running 0
+  tests` and filtering every verifier test. Exit status alone looked green even
+  though the named terminal regression never executed.
+- **Security or quality impact:** Terminal immutability or a later mutation
+  probe could be reported as covered without exercising its detector.
+- **Permanent regression test:** Focused verifier commands use the fully
+  qualified name, including
+  `verification::tests::every_failure_class_is_terminal_and_releases_the_request`,
+  `verification::tests::all_182_phase_action_pairs_match_the_independent_model`,
+  and
+  `verification::tests::one_million_actions_match_the_independent_verifier_model`,
+  and their evidence records the expected `running 1 test`/`1 passed` count.
+  Each M1-010 mutation report row must likewise name the intended assertion or
+  compiler cause rather than accepting any nonzero result.
+- **New prevention rule:** A focused command is evidence only when its output
+  confirms the expected test count and intended assertion/compiler boundary;
+  zero-test success and wrong-cause failure are both invalid.
+- **Documentation or agent-policy updates:** The verifier mutation contract in
+  `TEST_STRATEGY.md`, this ledger, and the live execution handoff record the
+  count-and-cause requirement.
+
+## 2026-08-26 — Test the authority payload and every retained diagnostic state
+
+- **Context:** M1-010 independent TCB/privacy review after the initial mutation
+  campaign.
+- **Mistaken assumption:** Correct public flow outcomes, one sentinel-bearing
+  active flow, and exact redaction labels were sufficient proof for the
+  returned authority token and every phase-specific diagnostic surface.
+- **Observed failure:** Three terminal/error/outcome diagnostic mutants and
+  three wrong-binding/wrong-class `VerifiedAttestation` mutants all survived
+  their existing focused tests. The unknown-gate test also invoked only a
+  generic no-argument failure method rather than modeling an unknown required
+  gate.
+- **Security or quality impact:** A future result consumer could receive
+  restricted authority labeled full or a token bound to another allocation;
+  terminal-only retained state, error Debug, outcome Debug, decimal counts, or
+  unknown mandatory requirements could evade claimed proof.
+- **Permanent regression test:** Canonical full/restricted tests inspect the
+  returned capability's exact allocation and class. Every phase is formatted
+  from the private sentinel request, complete flow/outcome/error Debug strings
+  are asserted, decimal digits are forbidden, and unknown mandatory gates use
+  typed `UnsupportedRequirement` input. The mutation table expands with
+  `V01-V03`, `D14`, and `D15`, and the entire 93-probe campaign restarts.
+- **New prevention rule:** Assert the contents of an authority-bearing return
+  value directly; public container state is not a proxy. Privacy fixtures must
+  carry real private context through every retained phase, and mutations must
+  disclose the named data class rather than merely alter a label.
+- **Documentation or agent-policy updates:** ADR-0007, architecture, threat
+  model, roadmap wording, approved design/plan amendment, test strategy,
+  mutation report, and this ledger record the expanded proof.

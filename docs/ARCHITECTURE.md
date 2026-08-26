@@ -327,6 +327,34 @@ trusted core and must not be copied into diagnostics.
 [ADR-0005](adr/0005-verifier-authoritative-challenge-freshness.md) records the
 complete decision and deferred production-adapter obligations.
 
+#### Verifier appraisal-flow authority
+
+One `VerifierFlow` owns one exact request while active. Seven opaque,
+non-cloneable gate capabilities advance one private checked graph. Every
+capability carries one private `Arc` allocation identity plus the redacted
+replay registration; `Arc::ptr_eq` rejects a capability from an equal but
+distinct flow. Phase and binding checks precede mutation.
+
+Only `PolicySatisfied -> Verified` emits one non-cloneable
+`VerifiedAttestation`. `Decision`, `ReasonCode`, and `VerificationOutcome` are
+reporting views and cannot substitute for that capability. Restricted success
+is a separately selected and satisfied relying-party policy, never fallback
+after full-policy failure.
+
+Entering `Unsupported` consumes a typed `UnsupportedRequirement`; an
+`UnknownMandatoryGate` observation is distinct from an unsupported
+version/profile and cannot be silently omitted, while both remain
+non-disciplinary unsupported reports.
+
+The capability currently carries only the attempt binding and allowed class.
+It is process-local, nonserializable, and not restart-durable. Future result
+work must add typed verified claims under the same binding and consume the
+capability; raw request fields cannot be refilled into an unrelated signed
+result. Active request ownership ends at every terminal without claiming
+secure memory erasure. M1-010 adds no signature, evidence, identity,
+session-key, revocation, policy, result-signing, permit, network, or persistence
+adapter.
+
 ### 7.1 PublisherChallenge
 
 Required fields:

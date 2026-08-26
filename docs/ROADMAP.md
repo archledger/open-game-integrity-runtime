@@ -125,17 +125,30 @@ any nonterminal phase -> Ended | Invalidated
 Ended | Invalidated: lifecycle-terminal; cleanup Required -> Complete
 ```
 
-Verifier:
+Verifier appraisal attempt:
 
 ```text
-ChallengeIssued
- -> EvidenceReceived
+EvidenceReceived
+ -> ChallengeAuthenticated
  -> FreshnessChecked
  -> IdentityChecked
- -> PolicyEvaluated
- -> PermitIssued | Denied
- -> Renewed | Expired | Revoked
+ -> EvidenceAppraised
+ -> SessionBound
+ -> RevocationChecked
+ -> PolicySatisfied
+ -> Verified
+
+any nonterminal phase
+ -> Malformed | Unsupported | Retryable | Denied | Revoked
 ```
+
+All six terminals are permanent. `Verified` yields one process-local
+`VerifiedAttestation` capability; it is not a signed `AttestationResult`,
+permit, or game admission. Renewal starts a new appraisal attempt with a fresh
+challenge. Result construction, permit issuance, expiry, renewal, and
+revocation lifecycle are later domain/protocol issues. `Decision` and
+`ReasonCode` are report-only views, and both full and restricted Allow classes
+require all seven gates.
 
 ### Failure taxonomy
 
@@ -158,7 +171,8 @@ ChallengeIssued
 - nonce length exact;
 - expiry ordering enforced;
 - state transitions cannot skip security gates;
-- `Allow` cannot be constructed without a completed verifier path;
+- freely constructible `Decision`/`ReasonCode` reports grant no authority;
+- `VerifiedAttestation` cannot be constructed without a completed verifier path;
 - reason codes remain non-disciplinary;
 - debug output redacts nonce/evidence identifiers where needed.
 

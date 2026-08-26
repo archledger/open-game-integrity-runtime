@@ -1,0 +1,23 @@
+{
+  "id": "OGIR-VERIFIER-TERMINAL-IMMUTABILITY-001",
+  "title": "Mutate a verifier terminal or issue success twice",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["protected_session_authorization"],
+  "preconditions": ["a verifier flow entered Verified or one failure terminal"],
+  "steps": [
+    "request another gate transition terminal reclassification or completion",
+    "attempt to obtain another VerifiedAttestation"
+  ],
+  "expected": {
+    "decision": "deny",
+    "reason": "invalid-transition",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "all six terminals reject all thirteen actions",
+    "one flow can issue at most one non-cloneable VerifiedAttestation"
+  ],
+  "residual_risk": ["future result signing must consume rather than duplicate the verified capability"]
+}

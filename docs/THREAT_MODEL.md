@@ -137,6 +137,29 @@ state generation so a handle opened before purge observes later deletion.
 Exported backups require a separately approved finite retention, deletion,
 access-control, and anti-rollback policy.
 
+### Verifier gate skipping or cross-attempt substitution
+
+Threat: Hostile/equal requests or faulty orchestration skip an appraisal gate,
+reuse a gate result from another attempt, treat opaque evidence or report-only
+Allow as authority, or issue success twice.
+
+Required response: Keep progress in one private checked graph. Require all
+seven exact-attempt capabilities in order, compare allocation identity rather
+than request equality, make completion single-use, and keep every terminal
+permanent. A typed `UnsupportedRequirement::UnknownMandatoryGate` observation
+terminates Unsupported. Only a future trusted consumer of
+`VerifiedAttestation` may construct an attestation result.
+
+### Verifier diagnostic disclosure or over-retention
+
+Threat: Default formatting exposes request identifiers, freshness context,
+evidence payload, pointer identity, or retains the raw request after a terminal.
+
+Required response: Use fixed aggregate redaction for requests, flows,
+capabilities, errors, outcomes, bindings, and `EvidenceBundle`; release request
+ownership on terminal entry; expose no allocation address/count. This is a
+retention bound, not secure memory erasure.
+
 ### Cuckoo or relay
 
 Threat: A cheating machine relays attestation to a separate clean machine.
@@ -207,6 +230,9 @@ Required response: structured non-disciplinary outcome classes and separation of
 - dynamic/JIT code that cannot be fully represented by file measurement alone;
 - incomplete IMA or enforcement policies that omit a relevant object or interface;
 - compromised publisher infrastructure;
+- deliberate malicious behavior in a trusted gate producer or verifier remains
+  A5 risk; the pure graph narrows external/API misuse but cannot make
+  compromised TCB code honest;
 - replay-store/clock outage or a forward time jump causing fail-closed
   protected-mode unavailability;
 - social engineering and account abuse.

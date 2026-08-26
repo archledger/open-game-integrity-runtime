@@ -1,0 +1,17 @@
+{
+  "id": "OGIR-VERIFIER-UNKNOWN-GATE-001",
+  "title": "Ignore an unknown mandatory verifier gate",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["protected_session_authorization"],
+  "preconditions": ["the selected protocol or profile requires a gate this verifier does not understand"],
+  "steps": ["treat the unknown gate as optional", "continue toward verifier completion"],
+  "expected": {
+    "decision": "unsupported",
+    "reason": "unsupported-version",
+    "automatic_ban": false
+  },
+  "invariants": ["unknown mandatory gate state terminates Unsupported and cannot be skipped"],
+  "residual_risk": ["later protocol parsing must preserve unknown-critical-field detection before this mapping"]
+}
