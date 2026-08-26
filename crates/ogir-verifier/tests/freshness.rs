@@ -715,6 +715,15 @@ fn replay_debug_and_errors_redact_every_binding_and_timestamp() {
     let guard = FreshnessGuard::new(&store, limits());
     assert_eq!(guard.register(UnixTime::new(4_242_400), &challenge), Ok(()));
 
+    assert_eq!(
+        format!("{private_expected:?}"),
+        "ExpectedContext([REDACTED])"
+    );
+    assert_eq!(
+        format!("{verification_request:?}"),
+        "VerificationRequest([REDACTED])"
+    );
+
     let debug_surfaces = [
         format!("{challenge:?}"),
         format!("{private_expected:?}"),
