@@ -1,6 +1,6 @@
 # M1-010 fail-closed verifier state-machine design
 
-- Status: Awaiting written-spec review
+- Status: Approved for implementation planning
 - Date: 2026-08-26
 - Related issue: [M1-010](../../../planning/issues/010-verifier-state-machine.md)
 - Decision owner: Initial maintainer
@@ -64,6 +64,12 @@ The decision owner also authorized evidence-backed refinements inside this
 approved issue and security scope. Any refinement that changes authority,
 trust boundaries, scope, dependencies, cryptography, I/O, GitHub publication,
 or a human-only certification remains an explicit review point.
+
+The decision owner reviewed exact written-spec commit
+`3f3a1e3ab01f3b3f69af171acb8166bd4bce36e0` and explicitly approved it on
+2026-08-26 with no requested change. This status follow-up records that human
+review; it changes no approved design requirement and does not authorize
+implementation, DCO certification, or publication.
 
 ## Security objective
 
