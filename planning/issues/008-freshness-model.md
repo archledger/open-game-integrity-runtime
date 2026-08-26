@@ -79,7 +79,7 @@ Nonce uniqueness alone does not define challenge freshness. The protocol needs e
 ## Fuzz/property tests
 
 - A fixed-seed independent oracle checks 16,384 register/claim/time/rollback/restart/unavailable/GC operations.
-- Twenty isolated mutations cover both window edges, key scope, atomicity,
+- Twenty-one isolated mutations cover both window edges, key scope, atomicity,
   restart, rollback, capacity, claim release/error side effects, time/context
   observation, capability bypass, arithmetic, bounded retention, shared
   durable-state deletion after reopen, and complete leaf/aggregate privacy

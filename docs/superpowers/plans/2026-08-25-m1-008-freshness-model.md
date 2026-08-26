@@ -2402,8 +2402,9 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
     `PublisherChallenge`/`ExpectedContext`/`VerificationRequest` aggregates.
     Explicit getters remain necessary trusted functional interfaces and are not
     diagnostic sinks. Test every child and aggregate with unique values, then
-    mutation-probe raw leaf/aggregate debug. Record both re-review findings in
-    `docs/LESSONS_LEARNED.md` and obtain new exact-head TCB/privacy Yes verdicts.
+    mutation-probe raw leaf and raw aggregate debug independently. Record both
+    re-review findings in `docs/LESSONS_LEARNED.md` and obtain new exact-head
+    TCB/privacy Yes verdicts.
 
 ---
 
@@ -2421,7 +2422,7 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
 | Privacy-minimal state and redacted errors/debug output | Task 3 private fields/getters; Task 5 redaction test; Task 6 ADR/threat/invariant text |
 | Non-disciplinary external error mapping and no `Allow` | Tasks 2 and 4 mapping/tests; Task 7 acceptance review |
 | Database-neutral synchronous boundary; no new dependency or unsafe/async/serialization choice | Task 3 `ReplayStore`; Task 6 dependency ADR; Task 7 manifest and full-matrix scans |
-| Deterministic arbitrary sequences and mutation resistance | Task 5 fixed-seed oracle and twenty isolated mutation probes after review remediation |
+| Deterministic arbitrary sequences and mutation resistance | Task 5 fixed-seed oracle and twenty-one isolated mutation probes after review remediation |
 | Repository governance, issue state, independent review, DCO, and publication | Tasks 0, 6, and 7 |
 
 ---
