@@ -2405,6 +2405,16 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
     mutation-probe raw leaf and raw aggregate debug independently. Record both
     re-review findings in `docs/LESSONS_LEARNED.md` and obtain new exact-head
     TCB/privacy Yes verdicts.
+15. Final TCB review requires machine-enforced threat ownership and assurance
+    mapping. Add required kebab-case `owner` and `required_assurance_profile`
+    fields to the shared scenario schema, observe all existing scenarios fail,
+    then map every scenario to `initial-maintainer` and
+    `all-protected-modes`. Document that the latter applies independently of
+    evidence backend, record the gap in `docs/LESSONS_LEARNED.md`, revalidate
+    all scenarios, rerun final gates, and obtain new exact-head specialist Yes
+    verdicts before issue sync. Add a Python-standard-library checker with
+    negative self-tests for missing/malformed/duplicate mappings and run both
+    its self-test and repository check from `scripts/check.sh`.
 
 ---
 

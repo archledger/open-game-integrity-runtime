@@ -73,6 +73,8 @@ Nonce uniqueness alone does not define challenge freshness. The protocol needs e
   handles already reopened on the authoritative durable state.
 - Binding/time leaves and challenge, expected-context, request, replay, store,
   guard, and durable-handle debug surfaces expose only redaction markers.
+- Attack-scenario validation rejects a freshness threat without an accountable
+  owner or required assurance profile.
 - Extreme-future and overflow-prone timestamps cannot authorize.
 - Raw claim cannot return or construct `FreshnessChecked`.
 
@@ -110,3 +112,5 @@ serialization, async, cryptographic, or unsafe-code dependency is selected.
 - Freshness semantics are documented independently of any database.
 - Model tests reflect the written boundary rules.
 - No local-client time claim is authoritative.
+- Every accepted freshness threat has a schema-enforced owner, assurance
+  profile, invariants, scenario, tests, and residual risk.

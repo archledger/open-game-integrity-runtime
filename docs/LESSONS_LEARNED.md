@@ -210,3 +210,28 @@ Do not use this document to expose embargoed vulnerability details before coordi
 - **Documentation or agent-policy updates:** The spec, issue, threat/test docs,
   privacy scenario, and mutation plan now say “opened before deletion” rather
   than relying on snapshot-capture timing alone.
+
+## 2026-08-25 — Traceability requirements belong in the scenario schema
+
+- **Context:** M1-008 final trusted-computing-base/standards review.
+- **Mistaken assumption:** Naming invariants, tests, and residual risks in each
+  attack scenario satisfied the threat-to-test rule even though ownership and
+  assurance-profile mappings remained implicit.
+- **Observed failure:** All three M1-008 scenarios omitted the rule's mandatory
+  owner and required assurance profile, and the shared schema could not reject
+  either omission. The pre-existing protocol replay scenario had the same gap.
+- **Security or quality impact:** An accepted threat could lose accountable
+  maintenance or silently become optional in a weaker assurance profile while
+  still passing structural validation.
+- **Permanent regression test:** The dependency-free attack-scenario
+  traceability self-tests reject missing, malformed, duplicate, or
+  schema-optional fields; the repository check and full JSON Schema validation
+  accept all scenarios with `owner: initial-maintainer` and
+  `required_assurance_profile: all-protected-modes`.
+- **New prevention rule:** If the threat model says a traceability attribute is
+  mandatory, encode it as a required machine-readable field rather than prose
+  or reviewer convention.
+- **Documentation or agent-policy updates:** The scenario schema, standard-
+  library aggregate gate, attack-lab README, threat model, test strategy, issue,
+  ADR, approved spec, implementation plan, and all four existing scenarios now
+  carry or enforce the mapping explicitly.

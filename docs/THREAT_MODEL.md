@@ -207,4 +207,10 @@ Every accepted threat must map to:
 - a documented residual risk;
 - a regression test after every confirmed defect.
 
+Scenario `owner` names the role accountable for maintaining the mitigation and
+regressions. `required_assurance_profile: all-protected-modes` means the threat
+control is mandatory for every protected mode regardless of evidence backend;
+any narrower value requires a separately documented assurance-profile
+definition. The attack-scenario schema requires both fields.
+
 The threat model is updated in the same pull request as any changed trust boundary, privilege, protocol field, evidence claim, policy control, or signing/update path.

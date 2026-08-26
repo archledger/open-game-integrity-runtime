@@ -1,6 +1,8 @@
 id: OGIR-PROTOCOL-REPLAY-001
 title: Reuse a permit in another match
 attacker: A1
+owner: initial-maintainer
+required_assurance_profile: all-protected-modes
 assets:
   - protected_session_authorization
 preconditions:

@@ -1,6 +1,8 @@
 id: OGIR-PROTOCOL-FRESHNESS-001
 title: Roll back time or remove verifier freshness state
 attacker: A5
+owner: initial-maintainer
+required_assurance_profile: all-protected-modes
 assets:
   - protected_session_authorization
   - verifier_freshness_state

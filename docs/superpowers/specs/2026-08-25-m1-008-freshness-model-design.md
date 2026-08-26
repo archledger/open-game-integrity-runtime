@@ -466,6 +466,12 @@ expired rate history, detach state during reopen, or expose any binding/time
 leaf or challenge/request/replay aggregate through default debug must make at
 least one test fail.
 
+Every machine-readable freshness attack scenario must also satisfy the shared
+scenario schema's required accountable `owner` and
+`required_assurance_profile`. These freshness controls use
+`all-protected-modes` because replay, state integrity, and diagnostic privacy
+apply independently of the attestation backend or hardware assurance class.
+
 ## Alternatives considered
 
 ### Timestamp-only stateless validation

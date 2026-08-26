@@ -93,6 +93,8 @@ Every security claim receives a scenario under `lab/scenarios/`:
 id: OGIR-PROTOCOL-REPLAY-001
 title: Reuse a permit in another match
 attacker: A1
+owner: initial-maintainer
+required_assurance_profile: all-protected-modes
 assets:
   - protected_session_authorization
 preconditions:
@@ -114,6 +116,10 @@ represented by `OGIR-PROTOCOL-REPLAY-002`, `OGIR-PROTOCOL-FRESHNESS-001`, and
 `OGIR-PRIVACY-FRESHNESS-001`. They preserve publisher-authoritative time,
 durable single-use nonce, bounded-retention, and redacted-diagnostic
 invariants without turning failure into disciplinary evidence.
+The aggregate gate runs dependency-free traceability self-tests and verifies
+that the shared schema plus every scenario require valid owner/assurance
+mappings. Attack-lab tooling also validates each complete document against the
+JSON Schema.
 
 ## Release gates by maturity
 
@@ -123,6 +129,7 @@ invariants without turning failure into disciplinary evidence.
 - Clippy;
 - unit tests;
 - documentation build;
+- attack-scenario owner/assurance traceability;
 - dependency and license policy.
 
 ### End-to-end prototype

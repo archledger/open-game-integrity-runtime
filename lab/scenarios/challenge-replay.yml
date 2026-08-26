@@ -1,6 +1,8 @@
 id: OGIR-PROTOCOL-REPLAY-002
 title: Reuse one publisher challenge across context or restart
 attacker: A1
+owner: initial-maintainer
+required_assurance_profile: all-protected-modes
 assets:
   - protected_session_authorization
 preconditions:

@@ -1,6 +1,8 @@
 id: OGIR-PRIVACY-FRESHNESS-001
 title: Disclose or over-retain challenge replay state
 attacker: A8
+owner: initial-maintainer
+required_assurance_profile: all-protected-modes
 assets:
   - player_privacy
   - verifier_freshness_state

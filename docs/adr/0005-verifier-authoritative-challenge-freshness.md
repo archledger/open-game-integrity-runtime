@@ -176,6 +176,8 @@ All affected Rust, documentation, and attack-lab paths remain Apache-2.0.
 - Complete leaf/aggregate redaction tests for publisher/game/build/account/
   match/policy/version, nonce, window timestamps, challenge/request/replay
   objects, stores, guards, snapshots, and errors.
+- Schema validation of accountable owner and required assurance profile on
+  every freshness attack scenario.
 - Isolated mutations for both window edges, key scope, claim atomicity, restart,
   rollback, capacity eviction, claim release, arithmetic, and privacy.
 
