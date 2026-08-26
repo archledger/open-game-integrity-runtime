@@ -1335,43 +1335,52 @@ exact function bodies are:
 Each block imports only its named type from `ogir_agent` before the function.
 Because Rust requires `Clone` for `Copy`, these also prevent adding `Copy`.
 
-```rust
-use ogir_agent::{SessionPhase, ValidatedPermit};
+For each of `ValidatedChallenge`, `BoundCaller`, `PreparedSession`,
+`CreatedEvidence`, `ValidatedPermit`, `CleanupRequest`, and
+`CleanupCompleted`, add its own block that imports only the named type and uses
+this body:
 
-fn forge() -> ValidatedPermit {
-    ValidatedPermit { binding: SessionPhase::Active }
+```rust
+fn reveal(value: TYPE) {
+    let _binding = value.binding;
 }
 ```
 
-Add separate construction/read blocks for cleanup and binding privacy:
+Each must fail only with private-field error E0616. Add separate `LocalSession`
+blocks for direct session-ID read, session-ID replacement, and state read:
 
 ```rust
-use ogir_agent::{CleanupCompleted, SessionPhase};
+use ogir_agent::LocalSession;
 
-fn forge() -> CleanupCompleted {
-    CleanupCompleted { binding: SessionPhase::Ended }
-}
-```
-
-```rust
-use ogir_agent::ValidatedPermit;
-
-fn reveal(permit: ValidatedPermit) {
-    let _binding = permit.binding;
+fn reveal_session_id(session: &LocalSession) -> &str {
+    session.session_id.as_str()
 }
 ```
 
 ```rust
-use ogir_agent::{LocalSession, SessionPhase};
+use ogir_agent::LocalSession;
+use ogir_model::SessionId;
 
-fn force_active(session: &mut LocalSession) {
-    session.state = SessionPhase::Active;
+fn replace_session_id(session: &mut LocalSession, replacement: SessionId) {
+    session.session_id = replacement;
 }
 ```
 
-Ensure each import resolves before the intended privacy/trait error. Existing
-unit tests must separately prove every named type still exists so deleting a
-type cannot make a compile-fail test vacuously pass.
+```rust
+use ogir_agent::LocalSession;
+
+fn reveal_state(session: &LocalSession) {
+    let _state = &session.state;
+}
+```
+
+Retain one external compile-pass block that names every public authority type.
+Add `every_authority_field_is_structurally_private` to pin all seven binding
+fields plus `LocalSession.session_id` and `LocalSession.state` as private. This
+separate runtime assertion is required because a private supporting type can
+keep a compile-fail snippet green after its field becomes public. Ensure every
+import resolves before the intended privacy/trait error; deleting a type must
+not make a compile-fail test vacuously pass.
 
 - [ ] **Step 6: Verify the complete model/property/privacy contract**
 
@@ -1650,7 +1659,8 @@ For each row below:
    `probe="${mutation_parent}/probe-${probe_index}"`, and run
    `git worktree add --detach "${probe}" "${mutation_base}"`;
 2. use `apply_patch` only inside that explicit probe path;
-3. run the named focused test and require nonzero status;
+3. run the named focused test, require at least one test to execute, and require
+   nonzero status for the intended assertion or diagnostic;
 4. record the failing test/output summary; and
 5. run `git worktree remove --force "${probe}"` before the next row.
 
@@ -1669,9 +1679,26 @@ For each row below:
 | `11` | Accept duplicate or nonterminal cleanup completion | exhaustive matrix |
 | `12` | Change `Ended(Required)` cleanup completion to `Active` | `matching_cleanup_completion_preserves_terminal_disposition` and arbitrary property |
 | `13` | Derive `Clone` for `LocalSession`, `ValidatedPermit`, and `CleanupRequest` | the three clone compile-fail doctests |
-| `14` | Make `ValidatedPermit.binding` public | capability-construction compile-fail doctest |
-| `15` | Make `LocalSession.state` public | direct-state-mutation compile-fail doctest |
-| `16` | Add `session_id` to `LocalSession` `Debug` | `every_session_diagnostic_is_context_free_and_redacted` |
+| `14` | Make `ValidatedPermit.binding` public | `every_authority_field_is_structurally_private` |
+| `15` | Make `LocalSession.state` public | `every_authority_field_is_structurally_private` |
+| `16` | Add raw `self.session_id.as_str()` to `LocalSession` `Debug` | `every_session_diagnostic_is_context_free_and_redacted` |
+| `17` | Allow `record_caller_bound` from `New` | exhaustive matrix |
+| `18` | Allow `record_session_prepared` from `ChallengeValidated` | exhaustive matrix |
+| `19` | Allow `record_evidence_created` from `ChallengeValidated` | exhaustive matrix |
+| `20` | Make `invalidate` set `TerminalCleanup::Complete` | `every_nonterminal_phase_can_invalidate_with_cleanup_required` |
+| `21` | Make `LocalSession.session_id` public | structural privacy test plus external session-ID read/write compile-fail doctests |
+| `22` | Make `CleanupCompleted.binding` public | `every_authority_field_is_structurally_private` |
+| `23` | Make `ValidatedChallenge.binding` public | `every_authority_field_is_structurally_private` |
+| `24` | Make `BoundCaller.binding` public | `every_authority_field_is_structurally_private` |
+| `25` | Make `PreparedSession.binding` public | `every_authority_field_is_structurally_private` |
+| `26` | Make `CreatedEvidence.binding` public | `every_authority_field_is_structurally_private` |
+| `27` | Make `CleanupRequest.binding` public | `every_authority_field_is_structurally_private` |
+
+The table contains exactly 27 probes. The external compile-pass doctest proves
+all authority-bearing types remain nameable, separate compile-fail doctests
+prove each private binding cannot be read and the session ID cannot be read or
+replaced, and the structural privacy test prevents a private supporting type
+from masking a public-field mutation.
 
 If any mutation passes, remove the disposable worktree, add a focused RED
 regression in the primary worktree, implement only the needed correction, run
@@ -1753,8 +1780,8 @@ test "$(jq -r '.[0].milestone.title' <<<"${issue_json}")" = 'M1 Domain Model'
 ready_body="/tmp/ogir-m1-009-ready-body-${issue_number}.md"
 live_body="/tmp/ogir-m1-009-live-body-${issue_number}.md"
 git show HEAD^:planning/issues/009-local-session-state-machine.md >"${ready_body}"
-gh issue view "${issue_number}" --repo archledger/open-game-integrity-runtime \
-  --json body --jq '.body' >"${live_body}"
+gh api "repos/archledger/open-game-integrity-runtime/issues/${issue_number}" \
+  | jq -j '.body' >"${live_body}"
 test "$(sha256sum "${ready_body}" | cut -d' ' -f1)" = \
   "$(sha256sum "${live_body}" | cut -d' ' -f1)"
 test "$(git ls-remote origin refs/heads/main | cut -f1)" = \

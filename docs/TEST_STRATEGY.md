@@ -14,9 +14,11 @@ Local-session tests exhaust the 12 reachable state configurations × 10 actions
 = 120 pairs against an independent literal model: exactly 26 succeed and 94
 reject without state mutation. The cleanup query returns a request for exactly
 the two terminal states whose `CleanupStatus` is `Required`. One external
-compile-pass doctest and 13 separate compile-fail doctests cover public type
-availability plus capability/session construction, cloning, private binding,
-and private-state mutation. Exact diagnostic allowlists use non-vacuous private
+compile-pass doctest and 19 separate compile-fail doctests cover public type
+availability, session construction, cloning, every private capability/request
+binding, private session-ID read/replacement, and private-state access. A
+focused structural test prevents private supporting types from masking public
+authority/state fields. Exact diagnostic allowlists use non-vacuous private
 session sentinels and exclude raw authorization, process, and path values.
 
 ### Property tests
@@ -36,8 +38,9 @@ Examples:
 - 4,096 fixed-seed local-session sequences of 256 actions execute exactly
   1,048,576 actions and compare implementation state and results after every
   action. The fixed budget contains 80 scheduled deep-path actions and
-  1,048,496 pseudo-random actions; each of initial permit, initial activation,
-  renewal entry, renewal permit, and renewed activation is reached eight
+  1,048,496 pseudo-random actions. The final exact counters are initial permit
+  8, initial activation 8, renewal entry 12, renewal permit 10, and renewed
+  activation 10; every required deep path is therefore reached at least eight
   times.
 
 ### Fuzz tests
@@ -72,13 +75,15 @@ or challenge/request/replay aggregate debug output is unredacted. Each
 mutation runs in a disposable worktree; mutated source never returns to the
 primary branch.
 
-Local-session mutation runs must kill deleted or widened initial/renewal gates,
-evidence before caller binding or preparation, activation without
-`PermitReceived`, direct `RenewalPending -> Active`, cross-session capability
-acceptance, cloneable or constructible authority objects, lifecycle progress
-from a terminal state, omitted cleanup-required state on either terminal path,
-mismatched or duplicate cleanup completion, cleanup completion that changes
-terminal disposition, and private-session diagnostic disclosure.
+The exact 27-probe local-session mutation table must kill deleted or widened
+challenge/caller/preparation/evidence/permit/activation/renewal gates, evidence
+before caller binding or preparation, activation without `PermitReceived`,
+direct `RenewalPending -> Active`, cross-session capability acceptance,
+cloneable authority objects, every public authority/state field, lifecycle
+progress from a terminal state, omitted cleanup-required state on either
+terminal path, mismatched or duplicate cleanup completion, cleanup completion
+that changes terminal disposition, and raw private-session diagnostic
+disclosure.
 
 ### Integration tests
 

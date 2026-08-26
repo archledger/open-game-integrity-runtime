@@ -420,3 +420,27 @@ Do not use this document to expose embargoed vulnerability details before coordi
   the public interface itself.
 - **Documentation or agent-policy updates:** This ledger and the Task 6
   mutation report record both masked failures and their compile-time guards.
+
+## 2026-08-26 — A mutation must reach its test, not only fail compilation
+
+- **Context:** M1-009 whole-branch review of authority-field mutation proof.
+- **Mistaken assumption:** Denying `private_interfaces` on two opaque structs
+  was sufficient evidence because a public private-typed field made the focused
+  Cargo command nonzero.
+- **Observed failure:** The compiler stopped before rustdoc or a runtime test
+  executed; the same pattern left `CleanupCompleted.binding` unguarded, and no
+  external proof covered reading or replacing `LocalSession.session_id`.
+- **Security or quality impact:** Mutation closure was overstated and several
+  authority-bearing fields lacked a test whose intended failure was their own
+  privacy boundary.
+- **Permanent regression test:** One external compile-pass proves the public
+  opaque types exist; 19 separate compile-fail doctests produce field-privacy
+  errors for every binding plus session-ID read/replacement and state access;
+  and `every_authority_field_is_structurally_private` runs as one focused test
+  and rejects each exact public-field mutation.
+- **New prevention rule:** A named mutation command must execute at least one
+  test and fail its intended assertion or diagnostic. Use a structural guard
+  when a private supporting type would otherwise mask field visibility.
+- **Documentation or agent-policy updates:** The approved spec, implementation
+  plan, test strategy, ADR-0006, 27-probe table, and Task 6 report record the
+  layered proof and supersede the earlier lint-only closure.

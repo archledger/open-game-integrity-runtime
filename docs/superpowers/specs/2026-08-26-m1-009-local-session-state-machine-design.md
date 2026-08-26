@@ -217,10 +217,12 @@ The state machine authorizes cleanup by producing a session-bound
 removing or confirming the absence of session-scoped controls. Only that
 adapter may mint `CleanupCompleted` inside the crate.
 
-Cleanup requests may be reissued while cleanup remains required. This supports
-crash and transient-failure retry, so the future cleanup operation must be
-idempotent. M1-009 models the obligation and acknowledgement, not the actual
-operation or retry scheduler.
+Cleanup requests may be reissued while cleanup remains required and the
+authoritative `LocalSession` remains available. This supports retry after
+request loss or an interrupted adapter call, so the future cleanup operation
+must be idempotent. Process-restart durability requires future persistence;
+M1-009 models the in-memory obligation and acknowledgement, not persistence,
+the actual operation, or a retry scheduler.
 
 ## State representation
 
@@ -534,14 +536,20 @@ For each allowed capability-bearing edge:
 - the exact phase and cleanup status remain unchanged on rejection; and
 - no error or object diagnostic exposes either session sentinel.
 
-Compile-fail doctests prove that external code cannot:
+One external compile-pass doctest proves every authority-bearing type is
+nameable. Separate single-cause compile-fail doctests prove that external code
+cannot:
 
 - construct `LocalSession` directly from a raw `SessionId`;
-- construct any gate capability or `CleanupCompleted`;
-- read a capability's session binding;
+- read any gate, cleanup-request, or cleanup-completion session binding;
+- read or replace `LocalSession`'s private `SessionId`;
 - clone or copy a capability, `CleanupRequest`, `CleanupCompleted`, or
   `LocalSession`; or
-- write the private lifecycle state directly.
+- read the private lifecycle state directly.
+
+A focused structural test pins every authority field as private so a public
+field whose supporting type remains private cannot satisfy a compile-fail test
+for the wrong compiler error.
 
 ### Initial and renewal safety
 
@@ -606,19 +614,21 @@ reviewed module imports rather than a vacuous runtime string assertion.
 ### Mutation evidence
 
 Each mutation runs only in a disposable detached worktree and is removed after
-the named test fails. Mutations must cover at least:
+the named test fails. The implementation plan's exact 27-probe table covers:
 
-- deleting or widening each initial progression gate;
+- deleting or widening every initial progression gate, including challenge and
+  caller bypasses;
 - allowing evidence before caller binding or preparation;
 - allowing activation without `PermitReceived`;
 - allowing direct `RenewalPending -> Active`;
 - accepting a cross-session capability;
-- making a capability or `LocalSession` cloneable/constructible;
+- making a capability or `LocalSession` cloneable or exposing any private
+  authority/state field;
 - allowing any lifecycle action from a terminal state;
 - omitting cleanup-required status from either terminal path;
 - accepting mismatched or duplicate cleanup completion;
 - changing cleanup completion into a nonterminal phase; and
-- exposing the private session binding through a default diagnostic.
+- exposing the raw private session binding through a default diagnostic.
 
 Every mutation maps to a named regression. If a mutation survives, add a
 focused failing test in the primary worktree before changing implementation.

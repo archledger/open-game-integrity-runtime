@@ -162,22 +162,27 @@ Completed executable evidence covers all 12 reachable configurations × 10
 actions = 120 pairs, with exactly 26 successes and 94 state-preserving
 rejections. The cleanup query returns a request for exactly two states. The
 fixed-seed history executes exactly 1,048,576 actions: 80 scheduled deep-path
-actions and 1,048,496 pseudo-random actions, with all five deep authorization
-counters reaching eight. All eight capability-bearing allowed edges reject a
-mismatched session without mutation.
+actions and 1,048,496 pseudo-random actions. The exact deep counters are initial
+permit 8, initial activation 8, renewal entry 12, renewal permit 10, and renewed
+activation 10, so every required deep path is reached at least eight times. All
+eight capability-bearing allowed edges reject a mismatched session without
+mutation.
 
-One external compile-pass doctest and 13 separate compile-fail doctests cover
-the public opaque contract, construction, non-cloneability, private bindings,
-and private state. Exact diagnostic allowlists with private sentinels cover the
-redaction contract. The three lifecycle attack scenarios are part of the nine
-scenarios accepted by the unchanged aggregate validator. The Task 4 fix round
-received scoped re-review with all four findings addressed and no new finding.
+One external compile-pass doctest and 19 separate single-cause compile-fail
+doctests cover the public opaque contract, session construction,
+non-cloneability, every private capability/request binding, private session-ID
+read/replacement, and private state. A focused structural test prevents a
+private supporting type from masking public authority/state fields. Exact
+diagnostic allowlists with private sentinels cover the redaction contract. The
+three lifecycle attack scenarios are part of the nine scenarios accepted by
+the unchanged aggregate validator. The Task 4 fix round received scoped
+re-review with all four findings addressed and no new finding.
 
-Final M1-009 completion additionally requires the named disposable-worktree
-gate, binding, terminal, cleanup, and redaction mutations; a passing full
-`./scripts/check.sh`; and fresh independent branch review. This ADR records
-those as validation gates and does not claim the Task 6 mutation table or final
-review is already complete.
+Final M1-009 completion additionally requires the exact 27 named disposable-
+worktree gate, binding, terminal, cleanup, authority-field, and raw-redaction
+mutations; a passing full `./scripts/check.sh`; and fresh independent branch
+review. This ADR records those as validation gates and does not claim the Task
+6 mutation table or final review is already complete.
 
 ## Rollback
 
