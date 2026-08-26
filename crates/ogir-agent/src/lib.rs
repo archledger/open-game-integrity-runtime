@@ -6,8 +6,9 @@
 mod session;
 
 pub use session::{
-    BoundCaller, CleanupStatus, CreatedEvidence, LocalSession, PreparedSession, SessionAction,
-    SessionPhase, TransitionError, ValidatedChallenge, ValidatedPermit,
+    BoundCaller, CleanupCompleted, CleanupRequest, CleanupStatus, CreatedEvidence, LocalSession,
+    PreparedSession, SessionAction, SessionPhase, TransitionError, ValidatedChallenge,
+    ValidatedPermit,
 };
 
 use std::error::Error;
