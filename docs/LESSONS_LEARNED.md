@@ -235,3 +235,25 @@ Do not use this document to expose embargoed vulnerability details before coordi
   library aggregate gate, attack-lab README, threat model, test strategy, issue,
   ADR, approved spec, implementation plan, and all four existing scenarios now
   carry or enforce the mapping explicitly.
+
+## 2026-08-25 — Security metadata must be parsed, not line-scanned
+
+- **Context:** M1-008 TCB certification re-review of the new scenario gate.
+- **Mistaken assumption:** A strict-looking top-level line matcher was enough to
+  enforce two scalar fields in YAML without adding a parser dependency.
+- **Observed failure:** The checker accepted a quoted duplicate `owner` key and
+  accepted valid mappings in one YAML document followed by an ownerless second
+  document because it ignored both syntaxes.
+- **Security or quality impact:** The aggregate gate claimed owner/profile
+  enforcement while ambiguous or additional scenario content could bypass it.
+- **Permanent regression test:** The attack-scenario self-test supplies a
+  quoted duplicate key and a second-document separator; parsed validation must
+  reject both, along with missing/malformed mappings and unknown fields.
+- **New prevention rule:** Do not approximate a security-relevant serialization
+  with line matching. Use a real parser with duplicate detection and enforce a
+  single canonical document format.
+- **Documentation or agent-policy updates:** Scenarios now use one
+  `*.scenario.json` document each. The standard-library gate parses with a
+  duplicate-key hook, validates every supported shared-schema keyword, rejects
+  unsupported future keywords, and remains cross-checked with Draft 2020-12
+  validation during final verification.

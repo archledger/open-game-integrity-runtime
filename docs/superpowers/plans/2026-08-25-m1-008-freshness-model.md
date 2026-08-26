@@ -44,8 +44,8 @@
 - Modify `docs/ARCHITECTURE.md`: current freshness/replay flow and authority.
 - Modify `docs/THREAT_MODEL.md`: replay/clock/store threats and responses.
 - Modify `docs/TEST_STRATEGY.md`: new deterministic and mutation coverage.
-- Create `lab/scenarios/challenge-replay.yml`: executable attacker narrative for same-key reuse across contexts/restart.
-- Create `lab/scenarios/freshness-state-failure.yml`: fail-closed rollback/unavailable-state narrative.
+- Create `lab/scenarios/challenge-replay.scenario.json`: executable attacker narrative for same-key reuse across contexts/restart.
+- Create `lab/scenarios/freshness-state-failure.scenario.json`: fail-closed rollback/unavailable-state narrative.
 - Modify `planning/issues/008-freshness-model.md`: keep sources/metadata synchronized with live issue #8; change workflow status only through the triage process.
 
 ---
@@ -2020,8 +2020,8 @@ empty, and both focused suites pass.
 - Modify: `docs/ARCHITECTURE.md`
 - Modify: `docs/THREAT_MODEL.md`
 - Modify: `docs/TEST_STRATEGY.md`
-- Create: `lab/scenarios/challenge-replay.yml`
-- Create: `lab/scenarios/freshness-state-failure.yml`
+- Create: `lab/scenarios/challenge-replay.scenario.json`
+- Create: `lab/scenarios/freshness-state-failure.scenario.json`
 - Modify: `planning/issues/008-freshness-model.md` from `status: ready` to `status: needs-review` after deterministic evidence exists
 - Modify: `docs/superpowers/plans/2026-08-25-m1-008-freshness-model.md` only to keep executable gate commands correct
 
@@ -2104,52 +2104,11 @@ In `docs/THREAT_MODEL.md`, extend the replay threat response with atomic publish
 
 In `docs/TEST_STRATEGY.md`, list boundary, replay-context, restart, rollback, capacity, GC, concurrent claim, arbitrary-sequence, and mutation tests under pure-model/property/integration coverage.
 
-Create the two schema-conforming attack scenarios with exact content:
-
-```yaml
-id: OGIR-PROTOCOL-REPLAY-002
-title: Reuse one publisher challenge across context or restart
-attacker: A1
-assets:
-  - protected_session_authorization
-preconditions:
-  - a publisher challenge was durably registered and claimed once
-steps:
-  - resubmit the signed challenge with the same or altered game, account, match, or policy binding
-  - repeat after the verifier reopens its durable freshness state
-expected:
-  decision: deny
-  reason: replay-detected
-  automatic_ban: false
-invariants:
-  - one publisher-scoped nonce yields at most one freshness capability in every context
-  - restart preserves issued and consumed replay state
-residual_risk:
-  - a valid holder can burn its own challenge and must request a bounded reissuance
-```
-
-```yaml
-id: OGIR-PROTOCOL-FRESHNESS-001
-title: Roll back time or remove verifier freshness state
-attacker: A5
-assets:
-  - protected_session_authorization
-  - verifier_freshness_state
-preconditions:
-  - the verifier persisted a challenge record and authoritative-time high-water mark
-steps:
-  - present a lower authoritative time or make replay state missing, corrupt, or unavailable
-  - submit an otherwise in-window challenge
-expected:
-  decision: retry
-  reason: attestation-unavailable
-  automatic_ban: false
-invariants:
-  - clock rollback never extends validity
-  - unavailable security state never falls back to stateless validation
-residual_risk:
-  - a forward clock jump can cause a fail-closed protected-mode outage
-```
+Create the two single-document JSON scenarios named above. Each must validate
+against `lab/scenarios/schema.json`, include its exact threat steps/outcome/
+invariants/residual risk, and map `owner: initial-maintainer` plus
+`required_assurance_profile: all-protected-modes`. Amendment 16 records the
+final parsed-format and duplicate/document-boundary requirements.
 
 After all implementation/tests above are complete, change only the issue
 source workflow label from `status: ready` to `status: needs-review`:
@@ -2161,14 +2120,15 @@ source workflow label from `status: ready` to `status: needs-review`:
 - [ ] **Step 4: Run documentation gates**
 
 ```bash
-git add docs/adr/0005-verifier-authoritative-challenge-freshness.md docs/adr/index.md docs/SECURITY_INVARIANTS.md docs/ARCHITECTURE.md docs/THREAT_MODEL.md docs/TEST_STRATEGY.md lab/scenarios/challenge-replay.yml lab/scenarios/freshness-state-failure.yml planning/issues/008-freshness-model.md docs/superpowers/plans/2026-08-25-m1-008-freshness-model.md
+git add docs/adr/0005-verifier-authoritative-challenge-freshness.md docs/adr/index.md docs/SECURITY_INVARIANTS.md docs/ARCHITECTURE.md docs/THREAT_MODEL.md docs/TEST_STRATEGY.md lab/scenarios/challenge-replay.scenario.json lab/scenarios/freshness-state-failure.scenario.json planning/issues/008-freshness-model.md docs/superpowers/plans/2026-08-25-m1-008-freshness-model.md
 ./scripts/test-adr-index.sh
 ./scripts/check-adr-index.sh
 ./scripts/test-repository-metadata.sh
 ./scripts/check-repository-metadata.sh
 RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps
 if rg -n 'TBD|TODO|FIXME|PLACEHOLDER' docs/adr/0005-verifier-authoritative-challenge-freshness.md docs/SECURITY_INVARIANTS.md docs/ARCHITECTURE.md docs/THREAT_MODEL.md docs/TEST_STRATEGY.md; then exit 1; fi
-python3 -c 'import pathlib, yaml; required={"id","title","attacker","assets","preconditions","steps","expected","invariants","residual_risk"}; [(required <= set(yaml.safe_load(path.read_text()))) or (_ for _ in ()).throw(SystemExit(f"missing attack-scenario key: {path}")) for path in pathlib.Path("lab/scenarios").glob("*.yml")]'
+python3 scripts/check-attack-scenario-traceability.py --self-test
+python3 scripts/check-attack-scenario-traceability.py
 git diff --check
 ```
 
@@ -2177,7 +2137,7 @@ Expected: ADR tests/check pass, rustdoc exits 0, placeholder search returns no m
 - [ ] **Step 5: Commit documentation**
 
 ```bash
-git add docs/adr/0005-verifier-authoritative-challenge-freshness.md docs/adr/index.md docs/SECURITY_INVARIANTS.md docs/ARCHITECTURE.md docs/THREAT_MODEL.md docs/TEST_STRATEGY.md lab/scenarios/challenge-replay.yml lab/scenarios/freshness-state-failure.yml planning/issues/008-freshness-model.md docs/superpowers/plans/2026-08-25-m1-008-freshness-model.md
+git add docs/adr/0005-verifier-authoritative-challenge-freshness.md docs/adr/index.md docs/SECURITY_INVARIANTS.md docs/ARCHITECTURE.md docs/THREAT_MODEL.md docs/TEST_STRATEGY.md lab/scenarios/challenge-replay.scenario.json lab/scenarios/freshness-state-failure.scenario.json planning/issues/008-freshness-model.md docs/superpowers/plans/2026-08-25-m1-008-freshness-model.md
 git diff --cached --check
 git commit -m "docs: record challenge freshness decision"
 ```
@@ -2415,6 +2375,16 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
     verdicts before issue sync. Add a Python-standard-library checker with
     negative self-tests for missing/malformed/duplicate mappings and run both
     its self-test and repository check from `scripts/check.sh`.
+16. Certification review proves a line scanner is not a parser: quoted
+    duplicate keys and a second YAML document bypassed the first gate. Migrate
+    every scenario to one `*.scenario.json` document. Parse with a standard-
+    library duplicate-key hook; reject trailing/extra documents; recursively
+    validate every schema keyword used by the repository; reject unsupported
+    future keywords; and add exact duplicate-key, document-separator, unknown-
+    field, owner/profile, and schema-contract self-tests. This amendment
+    supersedes every earlier YAML filename, snippet, and PyYAML-only gate in
+    Task 6. Record the confirmed defect publicly, rerun the complete matrix,
+    and obtain new exact-head specialist Yes verdicts before live issue sync.
 
 ---
 

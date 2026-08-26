@@ -74,7 +74,8 @@ Nonce uniqueness alone does not define challenge freshness. The protocol needs e
 - Binding/time leaves and challenge, expected-context, request, replay, store,
   guard, and durable-handle debug surfaces expose only redaction markers.
 - Attack-scenario validation rejects a freshness threat without an accountable
-  owner or required assurance profile.
+  owner or required assurance profile, duplicate key, extra document, unknown
+  field, or other shared-schema violation.
 - Extreme-future and overflow-prone timestamps cannot authorize.
 - Raw claim cannot return or construct `FreshnessChecked`.
 

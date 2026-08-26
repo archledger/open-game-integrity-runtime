@@ -8,11 +8,15 @@ invariant applies regardless of the selected attestation backend or hardware
 assurance class; narrower profile names require a separately documented profile
 definition.
 
+Each `*.scenario.json` file is exactly one JSON document. JSON's strict syntax
+allows the standard-library validator to parse the document rather than scan
+text; a duplicate-key hook rejects ambiguity before schema evaluation.
+
 `scripts/check-attack-scenario-traceability.py` uses only the Python standard
-library. Its self-tests prove missing, malformed, and duplicate mappings fail;
-the repository check verifies the schema contract and every scenario on each
-aggregate run. Full JSON Schema validation remains available to attack-lab
-tooling.
+library. It fails on unsupported schema keywords, validates the complete schema
+subset used here, and rejects missing/malformed mappings, duplicate keys,
+multiple documents, unknown fields, and all other schema violations. Its
+self-tests and real repository check run in the aggregate gate.
 
 Initial responsibilities:
 

@@ -212,5 +212,8 @@ regressions. `required_assurance_profile: all-protected-modes` means the threat
 control is mandatory for every protected mode regardless of evidence backend;
 any narrower value requires a separately documented assurance-profile
 definition. The attack-scenario schema requires both fields.
+Attack scenarios are single, duplicate-free JSON documents validated against
+the supported shared-schema contract in the aggregate gate; text scanning is
+not considered parsed enforcement.
 
 The threat model is updated in the same pull request as any changed trust boundary, privilege, protocol field, evidence claim, policy control, or signing/update path.

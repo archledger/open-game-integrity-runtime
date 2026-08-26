@@ -89,26 +89,24 @@ primary branch.
 
 Every security claim receives a scenario under `lab/scenarios/`:
 
-```yaml
-id: OGIR-PROTOCOL-REPLAY-001
-title: Reuse a permit in another match
-attacker: A1
-owner: initial-maintainer
-required_assurance_profile: all-protected-modes
-assets:
-  - protected_session_authorization
-preconditions:
-  - a valid permit exists for match-A
-steps:
-  - submit the permit to match-B
-expected:
-  decision: deny
-  reason: session-binding-mismatch
-  automatic_ban: false
-invariants:
-  - permit match binding is exact
-residual_risk:
-  - full-session relay requires a separate scenario
+```json
+{
+  "id": "OGIR-PROTOCOL-REPLAY-001",
+  "title": "Reuse a permit in another match",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["protected_session_authorization"],
+  "preconditions": ["a valid permit exists for match-A"],
+  "steps": ["submit the permit to match-B"],
+  "expected": {
+    "decision": "deny",
+    "reason": "session-binding-mismatch",
+    "automatic_ban": false
+  },
+  "invariants": ["permit match binding is exact"],
+  "residual_risk": ["full-session relay requires a separate scenario"]
+}
 ```
 
 Challenge replay, freshness-state failure, and freshness-state privacy are
@@ -116,10 +114,10 @@ represented by `OGIR-PROTOCOL-REPLAY-002`, `OGIR-PROTOCOL-FRESHNESS-001`, and
 `OGIR-PRIVACY-FRESHNESS-001`. They preserve publisher-authoritative time,
 durable single-use nonce, bounded-retention, and redacted-diagnostic
 invariants without turning failure into disciplinary evidence.
-The aggregate gate runs dependency-free traceability self-tests and verifies
-that the shared schema plus every scenario require valid owner/assurance
-mappings. Attack-lab tooling also validates each complete document against the
-JSON Schema.
+Scenarios use one duplicate-free JSON document per `*.scenario.json` file. The
+aggregate dependency-free validator rejects duplicate keys, extra documents,
+unknown fields, unsupported schema keywords, and every schema violation. Its
+self-tests pin the owner/assurance omissions and parser-bypass regressions.
 
 ## Release gates by maturity
 

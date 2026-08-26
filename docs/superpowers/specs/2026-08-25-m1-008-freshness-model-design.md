@@ -471,6 +471,10 @@ scenario schema's required accountable `owner` and
 `required_assurance_profile`. These freshness controls use
 `all-protected-modes` because replay, state integrity, and diagnostic privacy
 apply independently of the attestation backend or hardware assurance class.
+Each scenario is one duplicate-free JSON document; the aggregate standard-
+library validator interprets every schema keyword used by the repository and
+rejects unsupported keywords, unknown fields, duplicate keys, trailing/extra
+documents, and all declared type/required/bound/pattern violations.
 
 ## Alternatives considered
 
