@@ -1021,18 +1021,28 @@ fn every_nonterminal_phase_can_invalidate_with_cleanup_required() {
 
 #[test]
 fn matching_cleanup_completion_preserves_terminal_disposition() {
-    let mut session = active_session("session-a");
-    assert!(session.invalidate().is_ok());
-    assert!(session.cleanup_request().is_some());
-    assert_eq!(
-        session.record_cleanup_completed(CleanupCompleted {
-            binding: binding("session-a"),
-        }),
-        Ok(())
-    );
-    assert_eq!(session.phase(), SessionPhase::Invalidated);
-    assert_eq!(session.cleanup_status(), CleanupStatus::Complete);
-    assert!(session.cleanup_request().is_none());
+    for (end_normally, expected_phase) in [
+        (true, SessionPhase::Ended),
+        (false, SessionPhase::Invalidated),
+    ] {
+        let mut session = active_session("session-a");
+        let terminal_entry = if end_normally {
+            session.end()
+        } else {
+            session.invalidate()
+        };
+        assert!(terminal_entry.is_ok());
+        assert!(session.cleanup_request().is_some());
+        assert_eq!(
+            session.record_cleanup_completed(CleanupCompleted {
+                binding: binding("session-a"),
+            }),
+            Ok(())
+        );
+        assert_eq!(session.phase(), expected_phase);
+        assert_eq!(session.cleanup_status(), CleanupStatus::Complete);
+        assert!(session.cleanup_request().is_none());
+    }
 }
 
 #[test]
