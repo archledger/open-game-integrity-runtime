@@ -180,7 +180,7 @@ All affected Rust, documentation, and attack-lab paths remain Apache-2.0.
   every single-document, duplicate-free freshness attack scenario, including
   negative duplicate-key, extra-document, non-JSON constant, mapping-newline,
   dialect, unknown-field, every resource-limit, pattern-whitelist, symlink, and
-  context-free diagnostic probe.
+  context-free path/key/filename/control-sequence diagnostic probe.
 - Distinct attack scenarios for sequential replay, concurrent double claim,
   rollback/state loss, capacity exhaustion, and privacy disclosure/retention.
 - Isolated mutations for both window edges, key scope, claim atomicity, restart,

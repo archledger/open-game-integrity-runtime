@@ -27,7 +27,9 @@ schema/scenario document is at most 65,536 UTF-8 bytes, 16 levels deep, 64
 fields per object, 256 items per array, 4,096 characters per string/key, and
 64 characters per number token and 4,096 total nodes. These fixed limits bound
 pull-request-controlled parsing.
-Diagnostics use repository-relative labels and never print checkout/home paths.
+Diagnostics use one fixed context-free label and never print scenario filenames,
+checkout/home paths, raw keys/properties, control characters, or CI annotation
+commands.
 Schema regexes are executable input: the validator permits only the exact
 reviewed attacker-class and kebab-case patterns, never arbitrary backtracking
 expressions. Every error omits raw keys, property names, caller paths, and I/O

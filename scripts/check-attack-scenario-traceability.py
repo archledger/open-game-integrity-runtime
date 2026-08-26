@@ -91,7 +91,8 @@ def parse_bounded_float(token: str) -> float:
 
 
 def diagnostic_source(source: str) -> str:
-    return Path(source).name or "input"
+    del source
+    return "attack-scenario input"
 
 
 def validate_resource_limits(value: object) -> None:
@@ -344,8 +345,10 @@ def expect_redacted_failure(name: str, operation: object) -> None:
         else:
             fail("self-test operation is not callable")
     except ScenarioValidationError as error:
-        if "/home/" in str(error):
-            raise AssertionError(f"private path leaked: {name}") from error
+        rendered = str(error)
+        forbidden = ("/home/", "\n", "\r", "\x1b", "::error::", "::warning::")
+        if any(value in rendered for value in forbidden):
+            raise AssertionError(f"unsafe diagnostic data leaked: {name}") from error
         print(f"PASS: {name}")
     else:
         raise AssertionError(f"invalid fixture passed: {name}")
@@ -645,6 +648,12 @@ def run_self_tests(schema: dict[str, object]) -> None:
         "parser diagnostic redacts absolute path",
         lambda: parse_json_document(
             "{", "/home/private-user/private-repository/scenario.json"
+        ),
+    )
+    expect_redacted_failure(
+        "parser diagnostic rejects filename control injection",
+        lambda: parse_json_document(
+            "{", "evil\n::error::forged\x1b.scenario.json"
         ),
     )
     expect_redacted_failure(

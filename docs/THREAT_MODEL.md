@@ -221,7 +221,8 @@ explicit byte, file-count, nesting, object-field, array-item, string, and total-
 node bounds plus a numeric-token/finite-value bound; rejects non-JSON constants
 and schema-dialect drift; executes only reviewed bounded regexes; rejects a
 symlinked scenario boundary; and emits context-free diagnostics without raw
-keys, properties, or host paths.
+filenames, keys, properties, host paths, control characters, or CI annotation
+commands.
 
 M1-008 freshness threat mapping:
 

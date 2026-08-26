@@ -477,12 +477,13 @@ rejects unsupported keywords, unknown fields, duplicate keys, trailing/extra
 documents, non-JSON constants, any non-Draft-2020-12 dialect, and all declared
 type/required/bound/pattern violations. Fixed file-count/byte/nesting/field/
 array/string/number-token/node limits bound repository-controlled parser work;
-diagnostics use only repository-relative source labels.
+diagnostics use one fixed context-free source label.
 Only the exact reviewed attacker-class and kebab-case patterns may execute;
 arbitrary schema regex programs and scenario-directory/schema/entry symlinks
 fail before validation. Parse/duplicate/I/O/schema/instance failures never echo
-raw keys, properties, or absolute caller paths, and unexpected exceptions emit
-a context-free error without traceback.
+raw filenames, keys, properties, caller paths, control characters, or CI
+annotation commands. Every error uses one fixed context-free label; unexpected
+exceptions emit no traceback.
 Sequential replay, concurrent double claim, rollback/state loss, capacity
 exhaustion, and diagnostic disclosure/over-retention each have a distinct
 scenario with the shared owner/profile mapping and documented residual risk.

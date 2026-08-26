@@ -123,7 +123,8 @@ self-tests pin owner/assurance omissions, parser-bypass regressions, non-JSON
 constants, terminal-newline mappings, schema-dialect drift, nested unknown
 fields, every resource-limit branch, scenario-directory symlinks, unapproved
 backtracking/repetition patterns, and context-free parse/duplicate/I/O/schema/
-instance diagnostics. Cross-file checks also reject duplicate scenario IDs and
+instance diagnostics, including newline/escape/CI-command injection through a
+scenario filename. Cross-file checks also reject duplicate scenario IDs and
 unregistered owner/profile values.
 
 ## Release gates by maturity

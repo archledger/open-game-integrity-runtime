@@ -2390,8 +2390,8 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
     2020-12 dialect, harden owner/profile patterns against terminal newlines,
     close nested `expected` fields, and enforce explicit file-count/byte/depth/
     object-field/array-item/string/number-token/total-node limits. Parser
-    diagnostics must use repository-relative labels even for absolute internal
-    paths. Add exact
+    diagnostics must not expose absolute internal paths; amendment 19 further
+    requires one fixed context-free label. Add exact
     negative self-tests for every defect/limit plus external Draft 2020-12
     newline/nested-unknown cross-checks; correct the issue's stale “no parser”
     statement; append public lessons; rerun all gates; and obtain new exact-head
@@ -2408,6 +2408,13 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
     Correct external Draft 2020-12 checking to optional final differential
     evidence rather than a permanent aggregate dependency. Record the confirmed
     defects, rerun all gates, and obtain exact-head TCB/privacy Yes before sync.
+19. Integrated diagnostic review proves even a basename is attacker-controlled:
+    a scenario named with newline/escape/`::error::` content injected a forged
+    CI annotation into stderr. Replace every source-derived label with one fixed
+    context-free token and extend the diagnostic regression to reject home
+    paths, CR/LF, terminal escapes, and CI error/warning commands. Update the
+    public lesson and every diagnostic claim, rerun all gates, and obtain fresh
+    exact-head TCB/privacy Yes verdicts before live issue sync.
 
 ---
 

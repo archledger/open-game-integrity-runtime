@@ -78,7 +78,7 @@ Nonce uniqueness alone does not define challenge freshness. The protocol needs e
   field, non-JSON constant, exact schema dialect, bounded resource profile, or
   other shared-schema violation. Only reviewed bounded regexes execute;
   directory/schema/scenario symlinks fail; diagnostics omit every raw key/path
-  and unexpected exceptions emit no traceback.
+  or filename/control sequence, and unexpected exceptions emit no traceback.
 - Extreme-future and overflow-prone timestamps cannot authorize.
 - Raw claim cannot return or construct `FreshnessChecked`.
 

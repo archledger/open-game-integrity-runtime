@@ -284,7 +284,8 @@ Do not use this document to expose embargoed vulnerability details before coordi
 - **Documentation or agent-policy updates:** The parser, schema, attack-lab
   README, issue, threat/test docs, ADR, approved spec, and implementation plan
   now state and enforce strict constants, exact dialect, closed expected fields,
-  fixed limits, and repository-relative diagnostics.
+  and fixed limits; the later basename-injection entry supersedes its diagnostic
+  label rule.
 
 ## 2026-08-25 — Validator safety includes schema programs and error arguments
 
@@ -313,3 +314,23 @@ Do not use this document to expose embargoed vulnerability details before coordi
 - **Documentation or agent-policy updates:** The validator, threat map, two new
   scenarios, attack-lab/test/spec/ADR/issue/plan text, and corrected differential
   statement now reflect these boundaries.
+
+## 2026-08-25 — A basename is still attacker-controlled diagnostic data
+
+- **Context:** Final M1-008 TCB certification of context-free parser errors.
+- **Mistaken assumption:** Reducing an absolute scenario path to its basename
+  made the diagnostic source safe and useful.
+- **Observed failure:** A PR-controlled filename containing a newline and
+  `::error::` produced a second forged GitHub-style annotation line in stderr.
+- **Security or quality impact:** Malicious repository metadata could spoof CI
+  log structure or annotations even though it no longer disclosed the host path.
+- **Permanent regression test:** A malformed parse source containing CR/LF,
+  terminal escape, and CI error-command text must yield an error containing none
+  of those values; the same helper continues to cover home-path injection across
+  parse, duplicate, I/O, schema, and instance failures.
+- **New prevention rule:** Do not sanitize an untrusted diagnostic label into a
+  different untrusted label. Use a fixed context-free token unless the value has
+  a formally encoded safe representation.
+- **Documentation or agent-policy updates:** Parser code, attack-lab README,
+  threat/test docs, issue, ADR, approved spec, and implementation plan now
+  require one fixed label and forbid filenames, controls, and CI commands.
