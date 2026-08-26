@@ -452,6 +452,42 @@ fn missing_or_corrupt_snapshot_fails_closed() {
 }
 
 #[test]
+fn poisoned_replay_store_locks_fail_closed_without_allow() {
+    let availability_poisoned = ReferenceReplayStore::available();
+    availability_poisoned.poison_availability_lock();
+    let state_poisoned = ReferenceReplayStore::available();
+    state_poisoned.poison_state_lock();
+
+    for (nonce, store) in [50_u8, 51]
+        .into_iter()
+        .zip([availability_poisoned, state_poisoned])
+    {
+        let challenge = challenge("example.game", [nonce; 32]);
+        let guard = FreshnessGuard::new(&store, limits());
+        assert_eq!(
+            guard.register(UnixTime::new(100), &challenge),
+            Err(FreshnessError::StateUnavailable)
+        );
+        assert_eq!(
+            guard.claim(UnixTime::new(100), &challenge),
+            Err(FreshnessError::StateUnavailable)
+        );
+        assert_eq!(
+            guard.purge_expired(UnixTime::new(200)),
+            Err(FreshnessError::StateUnavailable)
+        );
+        assert!(matches!(
+            store.snapshot(),
+            Err(FreshnessError::StateUnavailable)
+        ));
+
+        let outcome = verify_research_structure(&request(challenge, 100), &guard);
+        assert_eq!(outcome.decision, Decision::Retry);
+        assert_eq!(outcome.reason, ReasonCode::AttestationUnavailable);
+    }
+}
+
+#[test]
 fn capacity_refuses_issuance_without_evicting_unexpired_records() {
     let store = ReferenceReplayStore::available();
     let guard = FreshnessGuard::new(&store, limits_for(2, 2, 1, 60, 2));

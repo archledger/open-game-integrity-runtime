@@ -164,6 +164,8 @@ All affected Rust, documentation, and attack-lab paths remain Apache-2.0.
 - Same-key same/different-context replay and cross-publisher independence.
 - Altered same-key binding/window rejection leaves the original record issued.
 - Missing/unavailable/corrupt state, restart, and high-water rollback tests.
+- Poisoned availability and replay-state mutexes map every operation and
+  verifier request to unavailable/retry without authorization.
 - Rejected future-time persistence followed by post-restart rollback.
 - Later context mismatch persists time before rejection and leaves the original
   issued record claimable at that exact time.
@@ -210,3 +212,12 @@ every outstanding challenge is invalidated.
   is deliberately not selected.
 - [Rust `SystemTime`](https://doc.rust-lang.org/std/time/struct.SystemTime.html)
   documents that wall-clock measurements are not monotonic.
+- [RFC 8259 Sections 4, 6, and 9](https://www.rfc-editor.org/rfc/rfc8259.html)
+  motivate unique object names, strict finite JSON numbers, and explicit parser
+  size/depth/range limits for repository attack scenarios.
+- [JSON Schema Draft 2020-12 core](https://json-schema.org/draft/2020-12/json-schema-core)
+  and [validation](https://json-schema.org/draft/2020-12/json-schema-validation)
+  define the exact declared schema dialect and validation vocabulary.
+- [Python `json`](https://docs.python.org/3/library/json.html) documents
+  `object_pairs_hook`, `parse_constant`, `parse_int`, and `parse_float`, which
+  the dependency-free repository validator constrains explicitly.

@@ -2415,6 +2415,15 @@ findings. The following amendments supersede earlier Task 3–5 snippets:
     paths, CR/LF, terminal escapes, and CI error/warning commands. Update the
     public lesson and every diagnostic claim, rerun all gates, and obtain fresh
     exact-head TCB/privacy Yes verdicts before live issue sync.
+20. Final standards review requires primary-source and non-vacuous failure
+    evidence for the added repository parser/state adapter. Record RFC 8259,
+    JSON Schema Draft 2020-12 core/validation, and Python `json` documentation
+    in the issue/spec/ADR/lab. Add a real negative test that intentionally
+    poisons both availability and replay-state mutexes, then proves register,
+    claim, GC, snapshot, and verifier evaluation all fail unavailable/retry
+    without `Allow`. Put CR and `::warning::` in the hostile filename fixture,
+    not only its forbidden-output list. Record confirmed gaps publicly, rerun
+    all gates, and obtain exact-head TCB/privacy Yes before live issue sync.
 
 ---
 

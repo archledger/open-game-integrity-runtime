@@ -334,3 +334,46 @@ Do not use this document to expose embargoed vulnerability details before coordi
 - **Documentation or agent-policy updates:** Parser code, attack-lab README,
   threat/test docs, issue, ADR, approved spec, and implementation plan now
   require one fixed label and forbid filenames, controls, and CI commands.
+
+## 2026-08-25 — Review primary sources again when remediation expands scope
+
+- **Context:** M1-008 final standards review after adding a repository JSON/
+  schema validator during freshness-review remediation.
+- **Mistaken assumption:** The issue's original freshness/time sources remained
+  complete because the parser was support tooling rather than protocol code.
+- **Observed failure:** The implementation enforced RFC 8259, Draft 2020-12,
+  and Python decoder-hook behavior without recording any of those primary
+  sources in the issue/spec/ADR/lab contract.
+- **Security or quality impact:** Reviewers could not distinguish deliberate
+  strictness/limit decisions from ad hoc parser behavior using the canonical
+  task source list.
+- **Permanent regression test:** Final issue-contract review now includes direct
+  official links for JSON syntax/parser limits, JSON Schema core/validation,
+  and Python `json` controls alongside the freshness sources.
+- **New prevention rule:** Re-run the primary-source inventory whenever review
+  remediation adds a new language, parser, format, dependency boundary, or
+  security mechanism—even when it is test/repository tooling.
+- **Documentation or agent-policy updates:** Issue #8, the approved design,
+  ADR-0005, and attack-lab README now record all four parser/schema sources.
+
+## 2026-08-25 — Every named failure mode and sentinel must execute
+
+- **Context:** M1-008 final TCB review of fail-closed and diagnostic tests.
+- **Mistaken assumption:** Poisoned-lock behavior was covered by inspection and
+  unavailable-state tests, while listing CR/`::warning::` in forbidden output
+  was equivalent to injecting them.
+- **Observed failure:** No test actually poisoned either replay-store mutex, and
+  the hostile filename contained LF/escape/`::error::` but neither CR nor
+  `::warning::`.
+- **Security or quality impact:** Required fail-closed branches and two claimed
+  diagnostic sentinels could regress while the suite stayed green.
+- **Permanent regression test:**
+  `poisoned_replay_store_locks_fail_closed_without_allow` poisons both locks and
+  exercises register/claim/GC/snapshot/verifier mapping. The filename fixture
+  now contains CR, LF, escape, `::error::`, and `::warning::`, all forbidden in
+  the rendered error.
+- **New prevention rule:** For every named branch or forbidden sentinel, make
+  the fixture reach or contain it; assertions against absent inputs are vacuous.
+- **Documentation or agent-policy updates:** Freshness spec/ADR/test strategy,
+  parser self-test, implementation plan, and this ledger record the executable
+  coverage.

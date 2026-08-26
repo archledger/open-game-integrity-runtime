@@ -78,6 +78,14 @@ reports an operationally unavailable protected mode.
 - Rust documents [`SystemTime`](https://doc.rust-lang.org/std/time/struct.SystemTime.html)
   as non-monotonic, so a persisted high-water guard is required if wall time is
   used across authorization operations and restarts.
+- [RFC 8259](https://www.rfc-editor.org/rfc/rfc8259.html) defines strict JSON,
+  unique-name interoperability guidance, finite number grammar, and parser
+  limit authority for repository attack scenarios.
+- [JSON Schema Draft 2020-12 core](https://json-schema.org/draft/2020-12/json-schema-core)
+  and [validation](https://json-schema.org/draft/2020-12/json-schema-validation)
+  define the scenario schema dialect/vocabulary.
+- [Python `json`](https://docs.python.org/3/library/json.html) documents the
+  duplicate-key and numeric parsing hooks used by the standard-library gate.
 
 ## Trust and authority
 
@@ -433,6 +441,8 @@ M1-010 owns the final verifier outcome/state-machine representation.
   while a handle reopened before garbage collection observes that later
   authoritative deletion;
 - restart with unavailable, missing, or corrupt state cannot issue or verify;
+- poisoned availability or replay-state locks make register/claim/GC/snapshot
+  unavailable and the verifier returns retry without authorization;
 - explicit epoch/key recovery invalidates old challenges before reset; and
 - no error path releases a consumed nonce.
 

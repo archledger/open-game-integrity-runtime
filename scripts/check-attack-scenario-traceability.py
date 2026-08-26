@@ -653,7 +653,8 @@ def run_self_tests(schema: dict[str, object]) -> None:
     expect_redacted_failure(
         "parser diagnostic rejects filename control injection",
         lambda: parse_json_document(
-            "{", "evil\n::error::forged\x1b.scenario.json"
+            "{",
+            "evil\r\n::error::forged\n::warning::also-forged\x1b.scenario.json",
         ),
     )
     expect_redacted_failure(

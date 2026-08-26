@@ -46,3 +46,8 @@ Initial responsibilities:
 - verify that unrelated user processes are not affected by protected-session policies.
 
 Attack tooling must use test accounts, test keys, dedicated systems, and responsible-disclosure practices.
+
+Parser/schema sources: [RFC 8259](https://www.rfc-editor.org/rfc/rfc8259.html),
+[JSON Schema Draft 2020-12 core](https://json-schema.org/draft/2020-12/json-schema-core),
+[validation](https://json-schema.org/draft/2020-12/json-schema-validation), and
+the Python standard-library [`json` documentation](https://docs.python.org/3/library/json.html).

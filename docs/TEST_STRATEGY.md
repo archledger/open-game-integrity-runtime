@@ -70,10 +70,10 @@ primary branch.
 - challenge first/repeat claim, same-key changed context, and cross-publisher
   nonce independence;
 - replay-state restart, rollback, missing/corrupt/unavailable failure,
-  rejected-future observation persistence, capacity/rate limits, exact-expiry
-  GC, rate-history GC propagated to handles opened before deletion, complete
-  leaf/aggregate diagnostic redaction, simultaneous atomic claims, and
-  raw-claim capability exclusion.
+  poisoned availability/state locks, rejected-future observation persistence,
+  capacity/rate limits, exact-expiry GC, rate-history GC propagated to handles
+  opened before deletion, complete leaf/aggregate diagnostic redaction,
+  simultaneous atomic claims, and raw-claim capability exclusion.
 
 ### Bare-metal tests
 

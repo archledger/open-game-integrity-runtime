@@ -33,6 +33,10 @@ Nonce uniqueness alone does not define challenge freshness. The protocol needs e
 - RFC 9711 EAT: https://www.rfc-editor.org/rfc/rfc9711.html
 - RFC 7519 JWT time boundaries: https://www.rfc-editor.org/rfc/rfc7519.html
 - Rust `SystemTime` behavior: https://doc.rust-lang.org/std/time/struct.SystemTime.html
+- RFC 8259 JSON syntax, interoperability, and parser limits: https://www.rfc-editor.org/rfc/rfc8259.html
+- JSON Schema Draft 2020-12 core: https://json-schema.org/draft/2020-12/json-schema-core
+- JSON Schema Draft 2020-12 validation: https://json-schema.org/draft/2020-12/json-schema-validation
+- Python standard-library `json` decoder controls: https://docs.python.org/3/library/json.html
 
 ## Threats addressed
 

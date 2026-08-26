@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fmt;
 use std::sync::{Arc, Mutex};
+use std::thread;
 
 use ogir_model::{ChallengeWindow, FreshnessError, FreshnessLimits, PublisherId, UnixTime};
 use ogir_verifier::{ChallengeBinding, ReplayKey, ReplayRegistration, ReplayStore};
@@ -116,6 +117,14 @@ impl ReferenceReplayStore {
         Ok(())
     }
 
+    pub fn poison_availability_lock(&self) {
+        poison_mutex(&self.availability);
+    }
+
+    pub fn poison_state_lock(&self) {
+        poison_mutex(&self.state);
+    }
+
     pub fn high_water(&self) -> Result<Option<UnixTime>, FreshnessError> {
         self.with_state(|state| Ok(state.high_water))
     }
@@ -149,6 +158,21 @@ impl ReferenceReplayStore {
             .map_err(|_| FreshnessError::StateUnavailable)?;
         operation(&mut state)
     }
+}
+
+fn poison_mutex<Value: Send + 'static>(mutex: &Arc<Mutex<Value>>) {
+    let mutex = Arc::clone(mutex);
+    let handle = thread::spawn(move || {
+        let _guard = match mutex.lock() {
+            Ok(guard) => guard,
+            Err(_) => panic!("fixture mutex was already poisoned"),
+        };
+        panic!("intentional replay-store lock poison");
+    });
+    assert!(
+        handle.join().is_err(),
+        "intentional poison worker unexpectedly succeeded"
+    );
 }
 
 fn observe_time(state: &mut State, now: UnixTime) -> Result<(), FreshnessError> {
