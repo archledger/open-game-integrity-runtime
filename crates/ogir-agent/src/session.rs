@@ -357,6 +357,7 @@ impl Error for TransitionError {}
 /// }
 /// ```
 #[must_use = "local session lifecycle state must be retained by its trusted owner"]
+#[deny(private_interfaces)]
 pub struct LocalSession {
     session_id: SessionId,
     state: SessionState,
