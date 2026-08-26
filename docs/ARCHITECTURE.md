@@ -361,6 +361,25 @@ active protected-session policy digest
 ephemeral session public key
 ```
 
+#### Local session lifecycle authority
+
+Trusted local adapters mint opaque completion capabilities only after their
+operations succeed. Every capability is privately bound to one `SessionId`
+and consumed once by the checked lifecycle transition that accepts it. The
+pure state machine owns ordering, but stores no raw operation payload and
+performs no I/O.
+
+Renewal reuses the permit-received and activation gates:
+
+```text
+Active -> RenewalPending -> PermitReceived -> Active
+```
+
+Terminal cleanup status is orthogonal to lifecycle disposition. `Ended` and
+`Invalidated` never reactivate; cleanup moves only from `Required` to
+`Complete` after matching trusted acknowledgement. Production adapters and
+actual cleanup I/O remain future work.
+
 ### 7.3 EvidenceBundle
 
 Contains clearly separated evidence classes:

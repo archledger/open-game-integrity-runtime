@@ -118,8 +118,11 @@ New
  -> EvidenceCreated
  -> PermitReceived
  -> Active
- -> RenewalPending
- -> Ended | Invalidated
+
+Active -> RenewalPending -> PermitReceived -> Active
+
+any nonterminal phase -> Ended | Invalidated
+Ended | Invalidated: lifecycle-terminal; cleanup Required -> Complete
 ```
 
 Verifier:

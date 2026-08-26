@@ -80,6 +80,22 @@ Threat: Another process presents copied App IDs, paths, or environment variables
 
 Required response: Derive caller and process-tree identity through kernel credentials, process handles, cgroups, and independently computed manifests.
 
+### Local session gate bypass or stranded cleanup
+
+Threat: A modified client skips challenge, caller, preparation, evidence, or
+permit gates; substitutes a capability from another session; reactivates a
+terminal session; or abandons required cleanup after end or invalidation.
+
+Required response: Keep lifecycle state in one private checked graph, reject a
+capability not bound to the exact local session without mutation, and require a
+fresh validated permit for every renewal through the permit-received and
+activation gates. `Ended` and `Invalidated` remain permanently terminal, while
+orthogonal `CleanupStatus::Required`/`CleanupStatus::Complete` state preserves
+the cleanup obligation. Cleanup requests remain reissuable, and the future
+cleanup adapter must make the actual operation idempotent. Every rejection or
+cleanup failure is non-disciplinary and never authorizes protected-mode
+fallback.
+
 ### Replay
 
 Threat: Reuse a prior challenge, quote, evidence bundle, permit, or renewal.
