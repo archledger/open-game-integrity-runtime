@@ -101,6 +101,41 @@ impl VerificationOutcome {
             reason: ReasonCode::None,
         }
     }
+
+    const fn malformed() -> Self {
+        Self {
+            decision: Decision::Deny,
+            reason: ReasonCode::Malformed,
+        }
+    }
+
+    const fn unsupported() -> Self {
+        Self {
+            decision: Decision::Unsupported,
+            reason: ReasonCode::UnsupportedVersion,
+        }
+    }
+
+    const fn retryable() -> Self {
+        Self {
+            decision: Decision::Retry,
+            reason: ReasonCode::AttestationUnavailable,
+        }
+    }
+
+    const fn revoked() -> Self {
+        Self {
+            decision: Decision::Deny,
+            reason: ReasonCode::Revoked,
+        }
+    }
+
+    const fn denied(reason: DenialReason) -> Self {
+        Self {
+            decision: Decision::Deny,
+            reason: reason.as_reason_code(),
+        }
+    }
 }
 
 /// Redacted public view of the verifier's current state.
@@ -186,6 +221,20 @@ pub enum DenialReason {
     ProtectedSessionLost,
 }
 
+impl DenialReason {
+    const fn as_reason_code(self) -> ReasonCode {
+        match self {
+            Self::NotYetValid => ReasonCode::NotYetValid,
+            Self::Expired => ReasonCode::Expired,
+            Self::ReplayDetected => ReasonCode::ReplayDetected,
+            Self::SessionBindingMismatch => ReasonCode::SessionBindingMismatch,
+            Self::EvidenceInvalid => ReasonCode::EvidenceInvalid,
+            Self::PolicyDenied => ReasonCode::PolicyDenied,
+            Self::ProtectedSessionLost => ReasonCode::ProtectedSessionLost,
+        }
+    }
+}
+
 struct AttemptRecord {
     _registration: ReplayRegistration,
 }
@@ -211,7 +260,7 @@ impl fmt::Debug for VerificationBinding {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AllowedClass {
     Full,
     Restricted,
@@ -233,6 +282,11 @@ enum VerificationState {
     RevocationChecked,
     PolicySatisfied(AllowedClass),
     Verified(AllowedClass),
+    Malformed,
+    Unsupported,
+    Retryable,
+    Denied(DenialReason),
+    Revoked,
 }
 
 /// Opaque proof that the publisher challenge was authenticated for one attempt.
@@ -368,6 +422,11 @@ impl VerifierFlow {
             VerificationState::RevocationChecked => VerificationPhase::RevocationChecked,
             VerificationState::PolicySatisfied(_) => VerificationPhase::PolicySatisfied,
             VerificationState::Verified(_) => VerificationPhase::Verified,
+            VerificationState::Malformed => VerificationPhase::Malformed,
+            VerificationState::Unsupported => VerificationPhase::Unsupported,
+            VerificationState::Retryable => VerificationPhase::Retryable,
+            VerificationState::Denied(_) => VerificationPhase::Denied,
+            VerificationState::Revoked => VerificationPhase::Revoked,
         }
     }
 
@@ -381,7 +440,19 @@ impl VerifierFlow {
             VerificationState::Verified(AllowedClass::RESTRICTED) => {
                 Some(VerificationOutcome::allowed_restricted())
             }
-            _ => None,
+            VerificationState::Malformed => Some(VerificationOutcome::malformed()),
+            VerificationState::Unsupported => Some(VerificationOutcome::unsupported()),
+            VerificationState::Retryable => Some(VerificationOutcome::retryable()),
+            VerificationState::Denied(reason) => Some(VerificationOutcome::denied(reason)),
+            VerificationState::Revoked => Some(VerificationOutcome::revoked()),
+            VerificationState::EvidenceReceived
+            | VerificationState::ChallengeAuthenticated
+            | VerificationState::FreshnessChecked
+            | VerificationState::IdentityChecked
+            | VerificationState::EvidenceAppraised
+            | VerificationState::SessionBound
+            | VerificationState::RevocationChecked
+            | VerificationState::PolicySatisfied(_) => None,
         }
     }
 
@@ -548,6 +619,90 @@ impl VerifierFlow {
         })
     }
 
+    /// Terminates this attempt because its input was malformed.
+    ///
+    /// # Errors
+    ///
+    /// Returns a redacted invalid-transition error when the flow is already
+    /// terminal.
+    pub fn mark_malformed(&mut self) -> Result<(), TransitionError> {
+        self.enter_failure(
+            VerificationAction::MarkMalformed,
+            VerificationState::Malformed,
+        )
+    }
+
+    /// Terminates this attempt because a mandatory feature was unsupported.
+    ///
+    /// # Errors
+    ///
+    /// Returns a redacted invalid-transition error when the flow is already
+    /// terminal.
+    pub fn mark_unsupported(&mut self) -> Result<(), TransitionError> {
+        self.enter_failure(
+            VerificationAction::MarkUnsupported,
+            VerificationState::Unsupported,
+        )
+    }
+
+    /// Terminates this attempt with a retryable unavailable result.
+    ///
+    /// # Errors
+    ///
+    /// Returns a redacted invalid-transition error when the flow is already
+    /// terminal.
+    pub fn mark_retryable(&mut self) -> Result<(), TransitionError> {
+        self.enter_failure(
+            VerificationAction::MarkRetryable,
+            VerificationState::Retryable,
+        )
+    }
+
+    /// Terminates this attempt with one fixed typed denial reason.
+    ///
+    /// # Errors
+    ///
+    /// Returns a redacted invalid-transition error when the flow is already
+    /// terminal.
+    pub fn deny(&mut self, reason: DenialReason) -> Result<(), TransitionError> {
+        self.enter_failure(VerificationAction::Deny, VerificationState::Denied(reason))
+    }
+
+    /// Terminates this attempt because a required input was revoked.
+    ///
+    /// # Errors
+    ///
+    /// Returns a redacted invalid-transition error when the flow is already
+    /// terminal.
+    pub fn mark_revoked(&mut self) -> Result<(), TransitionError> {
+        self.enter_failure(VerificationAction::MarkRevoked, VerificationState::Revoked)
+    }
+
+    fn is_terminal(&self) -> bool {
+        matches!(
+            self.state,
+            VerificationState::Verified(_)
+                | VerificationState::Malformed
+                | VerificationState::Unsupported
+                | VerificationState::Retryable
+                | VerificationState::Denied(_)
+                | VerificationState::Revoked
+        )
+    }
+
+    fn enter_failure(
+        &mut self,
+        action: VerificationAction,
+        next: VerificationState,
+    ) -> Result<(), TransitionError> {
+        if self.is_terminal() {
+            return Err(self.invalid_transition(action));
+        }
+        self.request = None;
+        self.state = next;
+        Ok(())
+    }
+
     fn invalid_transition(&self, action: VerificationAction) -> TransitionError {
         TransitionError::InvalidTransition {
             phase: self.phase(),
@@ -604,7 +759,7 @@ pub fn verify_research_structure<Store: ReplayStore + ?Sized>(
         && expected.policy_version == challenge.policy_version;
 
     if !binding_matches {
-        return denied(ReasonCode::SessionBindingMismatch);
+        return VerificationOutcome::denied(DenialReason::SessionBindingMismatch);
     }
 
     if let Err(error) = freshness.claim(request.now, &request.challenge) {
@@ -612,34 +767,20 @@ pub fn verify_research_structure<Store: ReplayStore + ?Sized>(
     }
 
     // Deliberate fail-closed scaffold until cryptographic and policy verification exists.
-    denied(ReasonCode::EvidenceInvalid)
-}
-
-const fn denied(reason: ReasonCode) -> VerificationOutcome {
-    VerificationOutcome {
-        decision: Decision::Deny,
-        reason,
-    }
-}
-
-const fn retry_unavailable() -> VerificationOutcome {
-    VerificationOutcome {
-        decision: Decision::Retry,
-        reason: ReasonCode::AttestationUnavailable,
-    }
+    VerificationOutcome::denied(DenialReason::EvidenceInvalid)
 }
 
 fn freshness_failure(error: FreshnessError) -> VerificationOutcome {
     match error {
         FreshnessError::InvalidWindow | FreshnessError::LifetimeExceeded => {
-            denied(ReasonCode::Malformed)
+            VerificationOutcome::malformed()
         }
-        FreshnessError::NotYetValid => denied(ReasonCode::NotYetValid),
-        FreshnessError::Expired => denied(ReasonCode::Expired),
-        FreshnessError::ReplayDetected => denied(ReasonCode::ReplayDetected),
+        FreshnessError::NotYetValid => VerificationOutcome::denied(DenialReason::NotYetValid),
+        FreshnessError::Expired => VerificationOutcome::denied(DenialReason::Expired),
+        FreshnessError::ReplayDetected => VerificationOutcome::denied(DenialReason::ReplayDetected),
         FreshnessError::ClockRollback
         | FreshnessError::StateUnavailable
-        | FreshnessError::CapacityExceeded => retry_unavailable(),
+        | FreshnessError::CapacityExceeded => VerificationOutcome::retryable(),
     }
 }
 
