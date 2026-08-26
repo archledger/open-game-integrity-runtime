@@ -3,6 +3,14 @@
 #![forbid(unsafe_code)]
 //! Backend-neutral interfaces for the local OGIR agent.
 
+mod session;
+
+pub use session::{
+    BoundCaller, CleanupCompleted, CleanupRequest, CleanupStatus, CreatedEvidence, LocalSession,
+    PreparedSession, SessionAction, SessionPhase, TransitionError, ValidatedChallenge,
+    ValidatedPermit,
+};
+
 use std::error::Error;
 use std::fmt;
 

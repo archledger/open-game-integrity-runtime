@@ -377,3 +377,70 @@ Do not use this document to expose embargoed vulnerability details before coordi
 - **Documentation or agent-policy updates:** Freshness spec/ADR/test strategy,
   parser self-test, implementation plan, and this ledger record the executable
   coverage.
+
+## 2026-08-26 — Named invalid edges need deterministic execution
+
+- **Context:** M1-009 local-session mutation testing.
+- **Mistaken assumption:** One million deterministic actions plus nonzero valid
+  renewal counters made the history property sensitive to direct activation
+  from `RenewalPending`.
+- **Observed failure:** The focused renewal test rejected the shortcut, but the
+  history test passed the mutant because its scheduled prefix exercised only
+  the valid renewal path and its pseudo-random remainder never attempted that
+  invalid edge in a reachable renewal state.
+- **Security or quality impact:** A renewal authorization bypass could survive
+  the claimed arbitrary-history proof despite the large action count.
+- **Permanent regression test:** The fixed deep-history prefix now attempts
+  `Activate` immediately after entering `RenewalPending`, requires rejection,
+  then continues through a fresh permit and valid renewed activation without
+  changing the exact 1,048,576-action budget.
+- **New prevention rule:** For every named security-sensitive invalid edge,
+  schedule a reachable deterministic attempt; action volume and valid-path
+  counters do not prove invalid-edge coverage.
+- **Documentation or agent-policy updates:** This ledger and the Task 6
+  mutation report record the gap, RED mutant, and corrected exact history.
+
+## 2026-08-26 — Compile-fail tests must fail for the intended privacy boundary
+
+- **Context:** M1-009 opaque-capability and private-state mutation testing.
+- **Mistaken assumption:** The external construction and state-mutation
+  compile-fail doctests would fail if their target fields became public.
+- **Observed failure:** Both doctests remained green after the fields became
+  public because the compiler instead rejected the still-private
+  `SessionBinding` or `SessionState` type inferred by the generic fixture.
+- **Security or quality impact:** Public authority/state fields could survive
+  the named focused proof while the test appeared to enforce field privacy.
+- **Permanent regression test:** `ValidatedPermit` and `LocalSession` locally
+  deny Rust's `private_interfaces` lint. The exact public-field mutations now
+  fail compilation at the boundary, while the existing doctests continue to
+  cover construction or mutation if both the field and its type become public.
+- **New prevention rule:** Inspect the compiler error for every compile-fail
+  test and mutation. When a private supporting type can mask the target
+  visibility failure, add an independent compile-time or structural guard for
+  the public interface itself.
+- **Documentation or agent-policy updates:** This ledger and the Task 6
+  mutation report record both masked failures and their compile-time guards.
+
+## 2026-08-26 — A mutation must reach its test, not only fail compilation
+
+- **Context:** M1-009 whole-branch review of authority-field mutation proof.
+- **Mistaken assumption:** Denying `private_interfaces` on two opaque structs
+  was sufficient evidence because a public private-typed field made the focused
+  Cargo command nonzero.
+- **Observed failure:** The compiler stopped before rustdoc or a runtime test
+  executed; the same pattern left `CleanupCompleted.binding` unguarded, and no
+  external proof covered reading or replacing `LocalSession.session_id`.
+- **Security or quality impact:** Mutation closure was overstated and several
+  authority-bearing fields lacked a test whose intended failure was their own
+  privacy boundary.
+- **Permanent regression test:** One external compile-pass proves the public
+  opaque types exist; 19 separate compile-fail doctests produce field-privacy
+  errors for every binding plus session-ID read/replacement and state access;
+  and `every_authority_field_is_structurally_private` runs as one focused test
+  and rejects each exact public-field mutation.
+- **New prevention rule:** A named mutation command must execute at least one
+  test and fail its intended assertion or diagnostic. Use a structural guard
+  when a private supporting type would otherwise mask field visibility.
+- **Documentation or agent-policy updates:** The approved spec, implementation
+  plan, test strategy, ADR-0006, 27-probe table, and Task 6 report record the
+  layered proof and supersede the earlier lint-only closure.

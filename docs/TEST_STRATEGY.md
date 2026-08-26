@@ -10,6 +10,17 @@ freshness includes checked window construction and literal before/exact issue,
 last-second, exact/after expiry, excessive lifetime, and near-`u64::MAX`
 boundaries.
 
+Local-session tests exhaust the 12 reachable state configurations × 10 actions
+= 120 pairs against an independent literal model: exactly 26 succeed and 94
+reject without state mutation. The cleanup query returns a request for exactly
+the two terminal states whose `CleanupStatus` is `Required`. One external
+compile-pass doctest and 19 separate compile-fail doctests cover public type
+availability, session construction, cloning, every private capability/request
+binding, private session-ID read/replacement, and private-state access. A
+focused structural test prevents private supporting types from masking public
+authority/state fields. Exact diagnostic allowlists use non-vacuous private
+session sentinels and exclude raw authorization, process, and path values.
+
 ### Property tests
 
 Examples:
@@ -24,6 +35,13 @@ Examples:
 - fixed-seed register/claim/time-advance/rollback/restart/unavailable/GC
   sequences preserve at most one freshness capability, monotonic persisted
   time, no success from unavailable state, and no loss of an unexpired record.
+- 4,096 fixed-seed local-session sequences of 256 actions execute exactly
+  1,048,576 actions and compare implementation state and results after every
+  action. The fixed budget contains 80 scheduled deep-path actions and
+  1,048,496 pseudo-random actions. The final exact counters are initial permit
+  8, initial activation 8, renewal entry 12, renewal permit 10, and renewed
+  activation 10; every required deep path is therefore reached at least eight
+  times.
 
 ### Fuzz tests
 
@@ -56,6 +74,16 @@ an already-reopened handle retains later-purged state, or any binding/time leaf
 or challenge/request/replay aggregate debug output is unredacted. Each
 mutation runs in a disposable worktree; mutated source never returns to the
 primary branch.
+
+The exact 27-probe local-session mutation table must kill deleted or widened
+challenge/caller/preparation/evidence/permit/activation/renewal gates, evidence
+before caller binding or preparation, activation without `PermitReceived`,
+direct `RenewalPending -> Active`, cross-session capability acceptance,
+cloneable authority objects, every public authority/state field, lifecycle
+progress from a terminal state, omitted cleanup-required state on either
+terminal path, mismatched or duplicate cleanup completion, cleanup completion
+that changes terminal disposition, and raw private-session diagnostic
+disclosure.
 
 ### Integration tests
 
@@ -116,6 +144,13 @@ exhaustion, and freshness-state privacy are represented by
 `OGIR-PRIVACY-FRESHNESS-001`. They preserve publisher-authoritative time,
 atomic single-use nonce, live-record retention, bounded state, and redacted
 diagnostics without turning failure into disciplinary evidence.
+Local-session gate skipping, cross-session capability substitution, and
+terminal reactivation or stranded cleanup are represented by
+`OGIR-SESSION-GATE-SKIP-001`,
+`OGIR-SESSION-CAPABILITY-SUBSTITUTION-001`, and
+`OGIR-SESSION-TERMINAL-CLEANUP-001`. These scenarios exercise only the pure
+lifecycle contract; trusted production adapters and actual idempotent cleanup
+I/O remain future coverage.
 Scenarios use one duplicate-free JSON document per `*.scenario.json` file. The
 aggregate dependency-free validator rejects duplicate keys, extra documents,
 unknown fields, unsupported schema keywords, and every schema violation. Its

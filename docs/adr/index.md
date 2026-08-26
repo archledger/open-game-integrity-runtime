@@ -22,3 +22,4 @@ stay traceable.
 | [ADR-0003](0003-separate-compatibility-and-attestation.md) | Accepted | Virtual TPM compatibility remains separate from physical platform attestation. | None | None |
 | [ADR-0004](0004-server-side-authorization.md) | Accepted | Only a publisher-controlled verifier authorizes protected sessions. | None | None |
 | [ADR-0005](0005-verifier-authoritative-challenge-freshness.md) | Accepted | Publisher-verifier time and durable single-use nonce state define challenge freshness. | None | None |
+| [ADR-0006](0006-local-session-lifecycle-capabilities.md) | Accepted | A private checked runtime graph and session-bound capabilities govern local lifecycle and cleanup. | None | None |
