@@ -146,8 +146,9 @@ Allow as authority, or issue success twice.
 Required response: Keep progress in one private checked graph. Require all
 seven exact-attempt capabilities in order, compare allocation identity rather
 than request equality, make completion single-use, and keep every terminal
-permanent. Unknown required gates terminate Unsupported. Only a future trusted
-consumer of `VerifiedAttestation` may construct an attestation result.
+permanent. A typed `UnsupportedRequirement::UnknownMandatoryGate` observation
+terminates Unsupported. Only a future trusted consumer of
+`VerifiedAttestation` may construct an attestation result.
 
 ### Verifier diagnostic disclosure or over-retention
 

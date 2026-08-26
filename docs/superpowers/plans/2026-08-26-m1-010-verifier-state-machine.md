@@ -1125,7 +1125,7 @@ Add to `verification/tests.rs`:
 fn every_failure_class_is_terminal_and_releases_the_request() {
     for (action, expected_phase, expected_decision, expected_reason) in [
         (TestAction::MarkMalformed, VerificationPhase::Malformed, Decision::Deny, ReasonCode::Malformed),
-        (TestAction::MarkUnsupported, VerificationPhase::Unsupported, Decision::Unsupported, ReasonCode::UnsupportedVersion),
+        (TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile), VerificationPhase::Unsupported, Decision::Unsupported, ReasonCode::UnsupportedVersion),
         (TestAction::MarkRetryable, VerificationPhase::Retryable, Decision::Retry, ReasonCode::AttestationUnavailable),
         (TestAction::Deny(DenialReason::PolicyDenied), VerificationPhase::Denied, Decision::Deny, ReasonCode::PolicyDenied),
         (TestAction::MarkRevoked, VerificationPhase::Revoked, Decision::Deny, ReasonCode::Revoked),
@@ -1168,7 +1168,10 @@ fn every_denial_reason_has_its_only_valid_reporting_mapping() {
 #[test]
 fn unknown_mandatory_gate_maps_to_unsupported() {
     let mut flow = flow_fixture(44);
-    assert_eq!(flow.mark_unsupported(), Ok(()));
+    assert_eq!(
+        flow.mark_unsupported(UnsupportedRequirement::UnknownMandatoryGate),
+        Ok(())
+    );
     assert_eq!(flow.phase(), VerificationPhase::Unsupported);
     assert_eq!(flow.outcome().map(VerificationOutcome::reason), Some(ReasonCode::UnsupportedVersion));
 }
@@ -1320,7 +1323,11 @@ pub fn mark_malformed(&mut self) -> Result<(), TransitionError> {
     self.enter_failure(VerificationAction::MarkMalformed, VerificationState::Malformed)
 }
 
-pub fn mark_unsupported(&mut self) -> Result<(), TransitionError> {
+pub fn mark_unsupported(
+    &mut self,
+    requirement: UnsupportedRequirement,
+) -> Result<(), TransitionError> {
+    let _checked_requirement = requirement;
     self.enter_failure(VerificationAction::MarkUnsupported, VerificationState::Unsupported)
 }
 
@@ -1379,7 +1386,7 @@ impl TestAction {
             Self::Policy(_, _) => VerificationAction::RecordPolicySatisfied,
             Self::Complete => VerificationAction::Complete,
             Self::MarkMalformed => VerificationAction::MarkMalformed,
-            Self::MarkUnsupported => VerificationAction::MarkUnsupported,
+            Self::MarkUnsupported(_) => VerificationAction::MarkUnsupported,
             Self::MarkRetryable => VerificationAction::MarkRetryable,
             Self::Deny(_) => VerificationAction::Deny,
             Self::MarkRevoked => VerificationAction::MarkRevoked,
@@ -1397,7 +1404,7 @@ impl TestAction {
             | Self::Policy(_, mode) => Some(mode),
             Self::Complete
             | Self::MarkMalformed
-            | Self::MarkUnsupported
+            | Self::MarkUnsupported(_)
             | Self::MarkRetryable
             | Self::Deny(_)
             | Self::MarkRevoked => None,
@@ -1415,7 +1422,7 @@ impl TestAction {
             Self::Policy(_, _) => Some(VerificationPhase::RevocationChecked),
             Self::Complete => Some(VerificationPhase::PolicySatisfied),
             Self::MarkMalformed
-            | Self::MarkUnsupported
+            | Self::MarkUnsupported(_)
             | Self::MarkRetryable
             | Self::Deny(_)
             | Self::MarkRevoked => None,
@@ -1501,7 +1508,7 @@ const ALL_13_MATRIX_ACTIONS: [TestAction; 13] = [
     TestAction::Policy(AllowedClass::Full, BindingMode::Matching),
     TestAction::Complete,
     TestAction::MarkMalformed,
-    TestAction::MarkUnsupported,
+    TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
     TestAction::MarkRetryable,
     TestAction::Deny(DenialReason::PolicyDenied),
     TestAction::MarkRevoked,
@@ -1535,7 +1542,7 @@ fn model_transition(state: ModelState, action: TestAction) -> Option<ModelState>
         (ModelState::RevocationChecked, TestAction::Policy(class, BindingMode::Matching)) => Some(ModelState::PolicySatisfied(class)),
         (ModelState::PolicySatisfied(class), TestAction::Complete) => Some(ModelState::Verified(class)),
         (state, TestAction::MarkMalformed) if model_is_nonterminal(state) => Some(ModelState::Malformed),
-        (state, TestAction::MarkUnsupported) if model_is_nonterminal(state) => Some(ModelState::Unsupported),
+        (state, TestAction::MarkUnsupported(_)) if model_is_nonterminal(state) => Some(ModelState::Unsupported),
         (state, TestAction::MarkRetryable) if model_is_nonterminal(state) => Some(ModelState::Retryable),
         (state, TestAction::Deny(reason)) if model_is_nonterminal(state) => Some(ModelState::Denied(reason)),
         (state, TestAction::MarkRevoked) if model_is_nonterminal(state) => Some(ModelState::Revoked),
@@ -1849,12 +1856,21 @@ RevocationChecked([REDACTED])
 PolicySatisfied([REDACTED])
 VerifiedAttestation([REDACTED])
 VerificationRequest([REDACTED])
+ExpectedContext([REDACTED])
 EvidenceBundle([REDACTED])
 verifier transition is not allowed
 verifier capability was rejected
+TransitionError::InvalidTransition([REDACTED])
+TransitionError::CapabilityRejected([REDACTED])
 ```
 
 `VerifierFlow` uses only the literal shape `VerifierFlow { phase: EvidenceReceived, outcome: None }` or the corresponding approved phase/outcome enum names; `VerificationOutcome` uses only its safe decision/reason enums. Implement `diagnostics_for_every_surface` by formatting each listed object once, then each of the 14 flow phases and 13 reporting outcomes from the mapping table.
+
+Every one of the 14 phase flows must originate from the same non-vacuous private
+sentinel request, including terminal flows that retain only the attempt binding.
+Compare complete flow/outcome/error Debug strings and reject every decimal digit
+so terminal-only registration/time leaks and decimal Arc counts cannot hide
+behind generic fixtures or partial prefix/suffix assertions.
 
 Use these exact helper contracts:
 
@@ -2045,7 +2061,7 @@ fn arbitrary_action_from_index(index: usize, selector: u64) -> TestAction {
         ),
         7 => TestAction::Complete,
         8 => TestAction::MarkMalformed,
-        9 => TestAction::MarkUnsupported,
+        9 => TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
         10 => TestAction::MarkRetryable,
         11 => TestAction::Deny(
             denial_reasons[(selector % denial_reasons.len() as u64) as usize],
@@ -2749,7 +2765,14 @@ If and only if Step 4 added a real lesson, include `docs/LESSONS_LEARNED.md` in 
 
 ---
 
-### Task 10: Prove 88 Mutations, Obtain Independent Review, and Move to `needs-review`
+### Task 10: Prove 93 Mutations, Obtain Independent Review, and Move to `needs-review`
+
+> Evidence-backed amendment (2026-08-26): the first independent TCB/privacy
+> reviews found that the returned `VerifiedAttestation` payload, transition
+> error Debug, outcome Debug, and per-phase retained-binding diagnostics lacked
+> isolated proof. The frozen campaign therefore expands from 88 to 93 probes:
+> `V01-V03`, `D14`, and `D15`. The initial 88-probe round is retained as
+> invalidated evidence, and every probe restarts at the remediated head.
 
 **Files:**
 
@@ -2761,7 +2784,7 @@ If and only if Step 4 added a real lesson, include `docs/LESSONS_LEARNED.md` in 
 **Interfaces:**
 
 - Consumes: clean Task 9 head, complete tests/docs/scenarios, live ready issue.
-- Produces: 88/88 killed mutation evidence, full/release green exact head, clean independent TCB/privacy verdicts, committed implementation evidence, and exact live `needs-review` synchronization.
+- Produces: 93/93 killed mutation evidence, full/release green exact head, clean independent TCB/privacy verdicts, committed implementation evidence, and exact live `needs-review` synchronization.
 
 - [ ] **Step 1: Freeze the clean pre-mutation head and topology**
 
@@ -2816,13 +2839,14 @@ git status --short --branch
 
 Never use a workspace root, home directory, unresolved glob, or unresolved environment variable as a removal target.
 
-The exact table is 88 probes:
+The exact table is 93 probes:
 
 | Group | Probe IDs | Exact mutation | Required detector |
 | --- | --- | --- | --- |
 | Phase guards (9) | `P01` challenge, `P02` freshness, `P03` identity, `P04` evidence, `P05` session, `P06` revocation, `P07` policy, `P08` early full completion, `P09` early restricted completion | delete/widen one expected-phase comparison; each completion mutation chooses only its named allowed class | 182-pair oracle, omission/permutation, and full/restricted early-completion tests |
 | Binding (8) | `B01` challenge, `B02` freshness, `B03` identity, `B04` evidence, `B05` session, `B06` revocation, `B07` policy, `B08` allocation identity | bypass only that capability comparison; for `B08`, replace `Arc::ptr_eq` with replay-registration/request equality | seven equal-data cross-flow test |
 | Authority production (3) | `A01` accept `Decision`, `A02` raw claim returns/mints `FreshnessChecked`, `A03` issue a second `VerifiedAttestation` | add one forbidden authority shortcut | single-cause compile-fail or repeated-completion test |
+| Verified capability payload (3) | `V01` returned binding, `V02` full allowed class, `V03` restricted allowed class | return a distinct allocation with equal registration, or flip exactly one returned allowed class while leaving the flow report unchanged | direct private assertions on returned `VerifiedAttestation` binding and allowed class |
 | Terminality (7) | `T01` Verified, `T02` Malformed, `T03` Unsupported, `T04` Retryable, `T05` Denied, `T06` Revoked, `T07` reclassification | permit one action from that terminal or allow failure terminal to change class/reason | terminal × 13 matrix and terminal-class test |
 | Unknown gate (1) | `U01` | continue progress instead of `mark_unsupported` | unknown-gate regression/scenario |
 | Outcome mapping (7) | `M01` full, `M02` restricted, `M03` malformed, `M04` unsupported, `M05` retryable, `M06` revoked, `M07` denial-reason map | change one decision or reason mapping | complete outcome table test |
@@ -2830,9 +2854,9 @@ The exact table is 88 probes:
 | Clone/copy (9) | `C01` flow, `C02` challenge, `C03` freshness, `C04` identity, `C05` evidence, `C06` session, `C07` revocation, `C08` policy, `C09` verified | add `Clone` (or `Copy` where compilable) to exactly one authority type | matching single-cause compile-fail doctest |
 | Private fields (17) | `F01` flow binding, `F02` flow request, `F03` flow state, `F04` attempt registration, `F05` binding Arc, `F06` challenge binding, `F07` freshness binding, `F08` identity binding, `F09` evidence binding, `F10` session binding, `F11` revocation binding, `F12` policy binding, `F13` policy allowed, `F14` verified binding, `F15` verified allowed, `F16` outcome decision, `F17` outcome reason | make exactly one field externally or crate visible | per-field structural assertion plus corresponding compile-fail block |
 | Public construction (8) | `K01` challenge, `K02` freshness, `K03` identity, `K04` evidence, `K05` session, `K06` revocation, `K07` policy, `K08` verified | add one public constructor/factory | corresponding external construction compile-fail block |
-| Diagnostics (13) | `D01` flow, `D02` binding, `D03` challenge, `D04` freshness, `D05` identity, `D06` evidence, `D07` session, `D08` revocation, `D09` policy, `D10` verified, `D11` transition error, `D12` request, `D13` evidence bundle | expose one private sentinel/address/count/payload through default formatting | exact diagnostic privacy tests |
+| Diagnostics (15) | `D01` flow, `D02` binding, `D03` challenge, `D04` freshness, `D05` identity, `D06` evidence, `D07` session, `D08` revocation, `D09` policy, `D10` verified, `D11` transition error Display, `D12` request, `D13` evidence bundle, `D14` transition error Debug, `D15` outcome Debug | expose a real private sentinel/address/count/payload through exactly one default formatting surface; harmless label-only changes do not count | exact per-phase diagnostic privacy tests |
 
-Count assertion: `9 + 8 + 3 + 7 + 1 + 7 + 6 + 9 + 17 + 8 + 13 = 88`.
+Count assertion: `9 + 8 + 3 + 3 + 7 + 1 + 7 + 6 + 9 + 17 + 8 + 15 = 93`.
 
 Focused commands are the smallest test named in the detector column. For a compile-fail mutation run `cargo test -p ogir-verifier --doc`; for structural/privacy groups run the exact named unit/integration test; for `D13` run the protocol diagnostic test. Do not accept a failure caused by syntax, formatting, or an unrelated compile error.
 
@@ -2846,7 +2870,7 @@ If any probe passes or fails for the wrong reason:
 4. re-run the mutation in a fresh worktree and require the intended failure;
 5. commit only the regression (and minimal production correction if a real defect exists) unsigned;
 6. refresh `m1_010_mutation_head`; and
-7. restart all 88 probes at the new exact head.
+7. restart all 93 probes at the new exact head.
 
 Never copy mutated source into the primary worktree.
 
@@ -2864,7 +2888,7 @@ git diff --check
 cargo test --workspace --all-features --release
 ```
 
-Expected: primary branch clean; no mutation worktrees/branches; 88/88 report complete; at least 71 runtime/integration tests (66 baseline plus the new protocol/public/private verifier coverage), all doctests/scenarios/ADRs and quality gates pass. Record actual counts rather than retaining this lower bound.
+Expected: primary branch clean; no mutation worktrees/branches; 93/93 report complete; at least 71 runtime/integration tests (66 baseline plus the new protocol/public/private verifier coverage), all doctests/scenarios/ADRs and quality gates pass. Record actual counts rather than retaining this lower bound.
 
 - [ ] **Step 5: Obtain separate fresh TCB and privacy reviews**
 
@@ -2876,7 +2900,7 @@ head: exact current unsigned HEAD
 spec: docs/superpowers/specs/2026-08-26-m1-010-verifier-state-machine-design.md
 issue: planning/issues/010-verifier-state-machine.md
 plan: docs/superpowers/plans/2026-08-26-m1-010-verifier-state-machine.md
-mutation report: exact 88/88 names/commands/results
+mutation report: exact 93/93 names/commands/results
 ```
 
 Dispatch two independent fresh-context reviewers:
@@ -2891,7 +2915,7 @@ Require each to report only concrete Critical/Important/Minor findings and a fin
 Before editing, capture the current live body/metadata and prove it still equals the committed ready issue source. Then use `apply_patch` on `planning/issues/010-verifier-state-machine.md` to:
 
 - change only `status: ready` to `status: needs-review` in metadata;
-- append `## Implementation evidence` with the exact time-bounded pre-DCO review checkpoint (base, unsigned head, tree, commit count), actual test/doctest/scenario/ADR counts, 182/48/134, 5,040/5,039, 1,048,576/2,048/1,046,528, 88/88 mutations, compile-pass/fail counts, cross-flow coverage, request/diagnostic proof, full/release commands, review verdicts, limitations, and deferred adapters;
+- append `## Implementation evidence` with the exact time-bounded pre-DCO review checkpoint (base, unsigned head, tree, commit count), actual test/doctest/scenario/ADR counts, 182/48/134, 5,040/5,039, 1,048,576/2,048/1,046,528, 93/93 mutations, compile-pass/fail counts, cross-flow coverage, request/diagnostic proof, full/release commands, review verdicts, limitations, and deferred adapters;
 - state explicitly that, at that recorded checkpoint, every commit was unsigned and publication/DCO/human review remained pending; later metadata-only SHA equivalence is recorded in Shared Memory and the PR rather than rewriting this historical sentence; and
 - avoid any production-readiness or cheating-detection claim.
 
@@ -3068,7 +3092,7 @@ In scope: pure attempt-bound graph, report boundary, proof suite, docs/scenarios
 Out of scope: every deferred validator/signer/permit/network/crypto item.
 Primary sources: RFC 9334, Rust 1.98 visibility/Arc/ownership, API Guidelines.
 Trust boundary: Verifier/relying party checked.
-Verification: exact final commands/counts and 88/88 mutations.
+Verification: exact final commands/counts and 93/93 mutations.
 Privacy: no new disclosed claim/log field; model/redaction tests updated.
 Dependencies: no dependency added or changed; SPDX boundary reviewed.
 AI-Assisted: yes
@@ -3123,7 +3147,7 @@ When checks/reviews are clean, refresh Shared Memory and hand the exact PR URL/h
 | Active-only request ownership | Tasks 4-6, `R01-R06` |
 | No unauthenticated freshness capability | Task 3, raw-claim compile proof, `A02` |
 | Non-cloneable/private authority surface | Tasks 4 and 6, `C01-C09`, `F01-F17`, `K01-K08` |
-| Exact diagnostic redaction and EvidenceBundle hardening | Tasks 2 and 6, scenario 5, `D01-D13` |
+| Exact diagnostic redaction and EvidenceBundle hardening | Tasks 2 and 6, scenario 5, `D01-D15` |
 | 182 pairs, 5,040 permutations, exact million histories | Tasks 5-6 |
 | Five machine-readable scenarios | Task 7 |
 | Architecture/roadmap/threat/test/ADR traceability | Tasks 8-9 |
@@ -3138,7 +3162,7 @@ When checks/reviews are clean, refresh Shared Memory and hand the exact PR URL/h
 - [x] Every issue/spec requirement maps to at least one task and executable command.
 - [x] File map matches every create/modify path used by tasks; no task touches an intentionally unchanged path.
 - [x] All seven gate types, eight success edges, five failure actions, six terminals, seven denial reasons, five decisions, and twelve reasons are named consistently.
-- [x] Matrix arithmetic is `14 × 13 = 182`, `48 + 134 = 182`; permutations are `5,040 = 1 + 5,039`; action budget is `2,048 + 1,046,528 = 1,048,576`; mutation groups sum to 88.
+- [x] Matrix arithmetic is `14 × 13 = 182`, `48 + 134 = 182`; permutations are `5,040 = 1 + 5,039`; action budget is `2,048 + 1,046,528 = 1,048,576`; amended mutation groups sum to 93.
 - [x] Task 3 removes unauthenticated `claim_checked`; Task 4 adds no production replacement constructor.
 - [x] Every code-producing task has a focused RED command before implementation and focused/full GREEN commands after.
 - [x] Every authority field/type and diagnostic surface has both compile/structural/privacy coverage and a named mutation.

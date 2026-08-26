@@ -171,7 +171,8 @@ require all seven gates.
 - nonce length exact;
 - expiry ordering enforced;
 - state transitions cannot skip security gates;
-- `Allow` cannot be constructed without a completed verifier path;
+- freely constructible `Decision`/`ReasonCode` reports grant no authority;
+- `VerifiedAttestation` cannot be constructed without a completed verifier path;
 - reason codes remain non-disciplinary;
 - debug output redacts nonce/evidence identifiers where needed.
 

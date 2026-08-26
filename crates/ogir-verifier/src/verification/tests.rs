@@ -137,7 +137,7 @@ enum TestAction {
     Policy(AllowedClass, BindingMode),
     Complete,
     MarkMalformed,
-    MarkUnsupported,
+    MarkUnsupported(UnsupportedRequirement),
     MarkRetryable,
     Deny(DenialReason),
     MarkRevoked,
@@ -155,7 +155,7 @@ impl TestAction {
             Self::Policy(_, _) => VerificationAction::RecordPolicySatisfied,
             Self::Complete => VerificationAction::Complete,
             Self::MarkMalformed => VerificationAction::MarkMalformed,
-            Self::MarkUnsupported => VerificationAction::MarkUnsupported,
+            Self::MarkUnsupported(_) => VerificationAction::MarkUnsupported,
             Self::MarkRetryable => VerificationAction::MarkRetryable,
             Self::Deny(_) => VerificationAction::Deny,
             Self::MarkRevoked => VerificationAction::MarkRevoked,
@@ -173,7 +173,7 @@ impl TestAction {
             | Self::Policy(_, mode) => Some(mode),
             Self::Complete
             | Self::MarkMalformed
-            | Self::MarkUnsupported
+            | Self::MarkUnsupported(_)
             | Self::MarkRetryable
             | Self::Deny(_)
             | Self::MarkRevoked => None,
@@ -191,7 +191,7 @@ impl TestAction {
             Self::Policy(_, _) => Some(VerificationPhase::RevocationChecked),
             Self::Complete => Some(VerificationPhase::PolicySatisfied),
             Self::MarkMalformed
-            | Self::MarkUnsupported
+            | Self::MarkUnsupported(_)
             | Self::MarkRetryable
             | Self::Deny(_)
             | Self::MarkRevoked => None,
@@ -224,7 +224,7 @@ const ALL_13_MATRIX_ACTIONS: [TestAction; 13] = [
     TestAction::Policy(AllowedClass::Full, BindingMode::Matching),
     TestAction::Complete,
     TestAction::MarkMalformed,
-    TestAction::MarkUnsupported,
+    TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
     TestAction::MarkRetryable,
     TestAction::Deny(DenialReason::PolicyDenied),
     TestAction::MarkRevoked,
@@ -353,7 +353,7 @@ fn model_transition(state: ModelState, action: TestAction) -> Option<ModelState>
         (state, TestAction::MarkMalformed) if model_is_nonterminal(state) => {
             Some(ModelState::Malformed)
         }
-        (state, TestAction::MarkUnsupported) if model_is_nonterminal(state) => {
+        (state, TestAction::MarkUnsupported(_)) if model_is_nonterminal(state) => {
             Some(ModelState::Unsupported)
         }
         (state, TestAction::MarkRetryable) if model_is_nonterminal(state) => {
@@ -436,6 +436,23 @@ fn model_report(state: ModelState) -> Option<(Decision, ReasonCode)> {
     }
 }
 
+fn expected_outcome_diagnostic(state: ModelState) -> Option<String> {
+    model_report(state).map(|(decision, reason)| {
+        format!("VerificationOutcome {{ decision: {decision:?}, reason: {reason:?} }}")
+    })
+}
+
+fn expected_flow_diagnostic(state: ModelState) -> String {
+    let outcome = match expected_outcome_diagnostic(state) {
+        Some(value) => format!("Some({value})"),
+        None => String::from("None"),
+    };
+    format!(
+        "VerifierFlow {{ phase: {:?}, outcome: {outcome} }}",
+        model_phase(state)
+    )
+}
+
 fn selected_binding(
     flow: &VerifierFlow,
     other_binding: &VerificationBinding,
@@ -497,8 +514,8 @@ fn apply_action(
             flow.mark_malformed()?;
             Ok(ActionResult::NoCapability)
         }
-        TestAction::MarkUnsupported => {
-            flow.mark_unsupported()?;
+        TestAction::MarkUnsupported(requirement) => {
+            flow.mark_unsupported(requirement)?;
             Ok(ActionResult::NoCapability)
         }
         TestAction::MarkRetryable => {
@@ -516,15 +533,21 @@ fn apply_action(
     }
 }
 
-fn flow_for_model_state(state: ModelState, seed: u8) -> VerifierFlow {
-    let mut flow = flow_fixture(seed);
+fn advance_flow_to_model_state(
+    mut flow: VerifierFlow,
+    state: ModelState,
+    other_binding: &VerificationBinding,
+) -> VerifierFlow {
     match state {
         ModelState::Malformed => {
             assert_eq!(flow.mark_malformed(), Ok(()));
             return flow;
         }
         ModelState::Unsupported => {
-            assert_eq!(flow.mark_unsupported(), Ok(()));
+            assert_eq!(
+                flow.mark_unsupported(UnsupportedRequirement::VersionOrProfile),
+                Ok(())
+            );
             return flow;
         }
         ModelState::Retryable => {
@@ -566,22 +589,27 @@ fn flow_for_model_state(state: ModelState, seed: u8) -> VerifierFlow {
         | ModelState::Denied(_)
         | ModelState::Revoked => unreachable!("failure states returned above"),
     };
-    let other_binding = flow_fixture(seed.wrapping_add(1)).binding;
     for gate in ALL_7_GATE_KINDS.into_iter().take(gate_count) {
         let action = gate.matching_action(allowed);
         assert_eq!(action.public(), gate.action());
         assert_eq!(
-            apply_action(&mut flow, &other_binding, action),
+            apply_action(&mut flow, other_binding, action),
             Ok(ActionResult::NoCapability)
         );
     }
     if should_complete {
         assert_eq!(
-            apply_action(&mut flow, &other_binding, TestAction::Complete),
+            apply_action(&mut flow, other_binding, TestAction::Complete),
             Ok(ActionResult::Verified)
         );
     }
     flow
+}
+
+fn flow_for_model_state(state: ModelState, seed: u8) -> VerifierFlow {
+    let flow = flow_fixture(seed);
+    let other_binding = flow_fixture(seed.wrapping_add(1)).binding;
+    advance_flow_to_model_state(flow, state, &other_binding)
 }
 
 fn assert_flow_matches_model(flow: &VerifierFlow, state: ModelState) {
@@ -691,6 +719,12 @@ fn flow_with_private_sentinels() -> VerifierFlow {
     })
 }
 
+fn private_flow_for_model_state(state: ModelState) -> VerifierFlow {
+    let flow = flow_with_private_sentinels();
+    let other_binding = flow_fixture(86).binding;
+    advance_flow_to_model_state(flow, state, &other_binding)
+}
+
 fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
     let mut diagnostics = Vec::new();
     let binding = flow.binding.clone();
@@ -762,6 +796,9 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
     let diagnostic = format!("{request:?}");
     assert_eq!(diagnostic, "VerificationRequest([REDACTED])");
     diagnostics.push(diagnostic);
+    let diagnostic = format!("{:?}", request.expected);
+    assert_eq!(diagnostic, "ExpectedContext([REDACTED])");
+    diagnostics.push(diagnostic);
     let diagnostic = format!("{:?}", request.evidence);
     assert_eq!(diagnostic, "EvidenceBundle([REDACTED])");
     diagnostics.push(diagnostic);
@@ -773,11 +810,20 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
     let diagnostic = invalid.to_string();
     assert_eq!(diagnostic, "verifier transition is not allowed");
     diagnostics.push(diagnostic);
+    let diagnostic = format!("{invalid:?}");
+    assert_eq!(diagnostic, "TransitionError::InvalidTransition([REDACTED])");
+    diagnostics.push(diagnostic);
     let rejected = TransitionError::CapabilityRejected {
         action: VerificationAction::RecordChallengeAuthenticated,
     };
     let diagnostic = rejected.to_string();
     assert_eq!(diagnostic, "verifier capability was rejected");
+    diagnostics.push(diagnostic);
+    let diagnostic = format!("{rejected:?}");
+    assert_eq!(
+        diagnostic,
+        "TransitionError::CapabilityRejected([REDACTED])"
+    );
     diagnostics.push(diagnostic);
 
     let diagnostic = format!("{flow:?}");
@@ -788,10 +834,9 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
     diagnostics.push(diagnostic);
 
     for state in ALL_14_MODEL_STATES {
-        let state_flow = flow_for_model_state(state, 84);
+        let state_flow = private_flow_for_model_state(state);
         let diagnostic = format!("{state_flow:?}");
-        assert!(diagnostic.starts_with("VerifierFlow { phase: "));
-        assert!(diagnostic.ends_with(" }"));
+        assert_eq!(diagnostic, expected_flow_diagnostic(state));
         diagnostics.push(diagnostic);
     }
 
@@ -816,8 +861,11 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
             None => panic!("terminal model state produced no report: {state:?}"),
         };
         let diagnostic = format!("{outcome:?}");
-        assert!(diagnostic.starts_with("VerificationOutcome { decision: "));
-        assert!(diagnostic.ends_with(" }"));
+        let expected = match expected_outcome_diagnostic(state) {
+            Some(value) => value,
+            None => panic!("terminal model state lacked expected report: {state:?}"),
+        };
+        assert_eq!(diagnostic, expected);
         diagnostics.push(diagnostic);
     }
 
@@ -911,7 +959,7 @@ fn arbitrary_action_from_index(index: usize, selector: u64) -> TestAction {
         ),
         7 => TestAction::Complete,
         8 => TestAction::MarkMalformed,
-        9 => TestAction::MarkUnsupported,
+        9 => TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
         10 => TestAction::MarkRetryable,
         11 => TestAction::Deny(
             ALL_7_DENIAL_REASONS[(selector % ALL_7_DENIAL_REASONS.len() as u64) as usize],
@@ -956,7 +1004,7 @@ fn canonical_completion(allowed: AllowedClass) -> [TestAction; 8] {
 
 const ALL_5_FAILURE_ACTIONS: [TestAction; 5] = [
     TestAction::MarkMalformed,
-    TestAction::MarkUnsupported,
+    TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
     TestAction::MarkRetryable,
     TestAction::Deny(DenialReason::PolicyDenied),
     TestAction::MarkRevoked,
@@ -965,7 +1013,7 @@ const ALL_5_FAILURE_ACTIONS: [TestAction; 5] = [
 const ALL_6_TERMINAL_CONSTRUCTORS: [TestAction; 6] = [
     TestAction::Complete,
     TestAction::MarkMalformed,
-    TestAction::MarkUnsupported,
+    TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
     TestAction::MarkRetryable,
     TestAction::Deny(DenialReason::PolicyDenied),
     TestAction::MarkRevoked,
@@ -1048,7 +1096,12 @@ fn scheduled_actions() -> Vec<ScheduledStep> {
     assert_eq!(terminal_sequences, 78);
     assert_eq!(schedule.len(), 970);
 
-    push_sequence(&mut schedule, &[TestAction::MarkUnsupported]);
+    push_sequence(
+        &mut schedule,
+        &[TestAction::MarkUnsupported(
+            UnsupportedRequirement::UnknownMandatoryGate,
+        )],
+    );
     let unknown_gate_sequences = 1usize;
     assert_eq!(unknown_gate_sequences, 1);
     assert_eq!(schedule.len(), 971);
@@ -1140,7 +1193,7 @@ fn terminal_index(state: ModelState) -> Option<usize> {
 fn failure_index(action: TestAction) -> Option<usize> {
     match action {
         TestAction::MarkMalformed => Some(0),
-        TestAction::MarkUnsupported => Some(1),
+        TestAction::MarkUnsupported(_) => Some(1),
         TestAction::MarkRetryable => Some(2),
         TestAction::Deny(_) => Some(3),
         TestAction::MarkRevoked => Some(4),
@@ -1178,7 +1231,7 @@ fn gate_index(action: TestAction) -> Option<usize> {
         TestAction::Policy(_, _) => Some(6),
         TestAction::Complete
         | TestAction::MarkMalformed
-        | TestAction::MarkUnsupported
+        | TestAction::MarkUnsupported(_)
         | TestAction::MarkRetryable
         | TestAction::Deny(_)
         | TestAction::MarkRevoked => None,
@@ -1196,7 +1249,7 @@ fn action_index(action: TestAction) -> usize {
         TestAction::Policy(_, _) => 6,
         TestAction::Complete => 7,
         TestAction::MarkMalformed => 8,
-        TestAction::MarkUnsupported => 9,
+        TestAction::MarkUnsupported(_) => 9,
         TestAction::MarkRetryable => 10,
         TestAction::Deny(_) => 11,
         TestAction::MarkRevoked => 12,
@@ -1278,7 +1331,8 @@ impl Coverage {
                 self.matching_gates[gate] += 1;
             }
             if before == ModelState::EvidenceReceived
-                && action == TestAction::MarkUnsupported
+                && action
+                    == TestAction::MarkUnsupported(UnsupportedRequirement::UnknownMandatoryGate)
                 && next == ModelState::Unsupported
             {
                 self.unknown_gate += 1;
@@ -1413,6 +1467,8 @@ fn canonical_full_path_returns_one_bound_verified_capability() {
         Ok(value) => value,
         Err(error) => panic!("canonical path rejected: {error:?}"),
     };
+    assert!(verified.binding.matches(&flow.binding));
+    assert_eq!(verified.allowed, AllowedClass::Full);
     assert_eq!(flow.phase(), VerificationPhase::Verified);
     assert_eq!(
         flow.outcome().map(VerificationOutcome::decision),
@@ -1466,7 +1522,12 @@ fn equal_request_from_another_flow_rejects_challenge_capability() {
 #[test]
 fn restricted_success_uses_the_same_complete_gate() {
     let mut flow = policy_ready_flow(9, AllowedClass::Restricted);
-    assert!(flow.complete().is_ok());
+    let verified = match flow.complete() {
+        Ok(value) => value,
+        Err(error) => panic!("restricted path rejected: {error:?}"),
+    };
+    assert!(verified.binding.matches(&flow.binding));
+    assert_eq!(verified.allowed, AllowedClass::Restricted);
     assert_eq!(
         flow.outcome().map(VerificationOutcome::decision),
         Some(Decision::AllowRestricted)
@@ -1487,7 +1548,7 @@ fn every_failure_class_is_terminal_and_releases_the_request() {
             ReasonCode::Malformed,
         ),
         (
-            TestAction::MarkUnsupported,
+            TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
             VerificationPhase::Unsupported,
             Decision::Unsupported,
             ReasonCode::UnsupportedVersion,
@@ -1567,7 +1628,10 @@ fn every_denial_reason_has_its_only_valid_reporting_mapping() {
 #[test]
 fn unknown_mandatory_gate_maps_to_unsupported() {
     let mut flow = flow_fixture(44);
-    assert_eq!(flow.mark_unsupported(), Ok(()));
+    assert_eq!(
+        flow.mark_unsupported(UnsupportedRequirement::UnknownMandatoryGate),
+        Ok(())
+    );
     assert_eq!(flow.phase(), VerificationPhase::Unsupported);
     assert_eq!(
         flow.outcome().map(VerificationOutcome::reason),
@@ -1778,6 +1842,16 @@ fn every_flow_capability_outcome_and_error_diagnostic_is_redacted() {
         "::error::",
         "\n",
         "0x",
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
     ];
 
     for diagnostic in diagnostics {

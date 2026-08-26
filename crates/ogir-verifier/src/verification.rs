@@ -221,6 +221,15 @@ pub enum DenialReason {
     ProtectedSessionLost,
 }
 
+/// Typed cause for entering the non-disciplinary unsupported terminal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UnsupportedRequirement {
+    /// A protocol version or evidence profile is not implemented.
+    VersionOrProfile,
+    /// A required gate is unknown and therefore cannot be safely skipped.
+    UnknownMandatoryGate,
+}
+
 impl DenialReason {
     const fn as_reason_code(self) -> ReasonCode {
         match self {
@@ -359,7 +368,7 @@ impl fmt::Debug for VerifiedAttestation {
 }
 
 /// A deterministic, non-secret verifier transition failure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TransitionError {
     /// The action is not valid from the current phase.
     InvalidTransition {
@@ -373,6 +382,19 @@ pub enum TransitionError {
         /// Rejected public action.
         action: VerificationAction,
     },
+}
+
+impl fmt::Debug for TransitionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidTransition { .. } => {
+                formatter.write_str("TransitionError::InvalidTransition([REDACTED])")
+            }
+            Self::CapabilityRejected { .. } => {
+                formatter.write_str("TransitionError::CapabilityRejected([REDACTED])")
+            }
+        }
+    }
 }
 
 impl fmt::Display for TransitionError {
@@ -401,6 +423,7 @@ impl Error for TransitionError {}
 ///     RevocationChecked, SessionBound, TransitionError,
 ///     VerificationAction, VerificationOutcome, VerificationPhase,
 ///     VerificationRequest, VerifiedAttestation, VerifierFlow,
+///     UnsupportedRequirement,
 /// };
 ///
 /// fn assert_public<T>() {}
@@ -419,6 +442,7 @@ impl Error for TransitionError {}
 /// assert_public::<VerificationAction>();
 /// assert_public::<DenialReason>();
 /// assert_public::<TransitionError>();
+/// assert_public::<UnsupportedRequirement>();
 ///
 /// fn inspect(flow: &VerifierFlow) {
 ///     let _phase = flow.phase();
@@ -874,7 +898,11 @@ impl VerifierFlow {
     ///
     /// Returns a redacted invalid-transition error when the flow is already
     /// terminal.
-    pub fn mark_unsupported(&mut self) -> Result<(), TransitionError> {
+    pub fn mark_unsupported(
+        &mut self,
+        requirement: UnsupportedRequirement,
+    ) -> Result<(), TransitionError> {
+        let _checked_requirement = requirement;
         self.enter_failure(
             VerificationAction::MarkUnsupported,
             VerificationState::Unsupported,

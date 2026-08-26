@@ -326,7 +326,7 @@ impl fmt::Debug for PublisherChallenge {
     }
 }
 
-/// High-level verifier decision. This type is produced only by verifier logic.
+/// Freely constructible, non-authoritative verifier decision report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
     /// Requested protected mode is permitted.

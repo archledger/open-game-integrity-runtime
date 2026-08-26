@@ -341,6 +341,11 @@ reporting views and cannot substitute for that capability. Restricted success
 is a separately selected and satisfied relying-party policy, never fallback
 after full-policy failure.
 
+Entering `Unsupported` consumes a typed `UnsupportedRequirement`; an
+`UnknownMandatoryGate` observation is distinct from an unsupported
+version/profile and cannot be silently omitted, while both remain
+non-disciplinary unsupported reports.
+
 The capability currently carries only the attempt binding and allowed class.
 It is process-local, nonserializable, and not restart-durable. Future result
 work must add typed verified claims under the same binding and consume the

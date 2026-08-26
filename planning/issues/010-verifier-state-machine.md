@@ -69,6 +69,9 @@ relying-party enforcement remains in the explicitly deferred adapters.
 
 - Immutable `Malformed`, `Unsupported`, `Retryable`, `Denied`, and `Revoked`
   terminal phases reachable from every nonterminal phase.
+- Typed `UnsupportedRequirement::{VersionOrProfile, UnknownMandatoryGate}`
+  input so the unknown-required-gate scenario is modeled rather than inferred
+  from a generic no-argument failure method.
 - Opaque non-`Clone`/non-`Copy` request-bound gate capabilities and
   `VerifiedAttestation`.
 - Process-local attempt identity using one private shared allocation plus the
@@ -147,6 +150,8 @@ relying-party enforcement remains in the explicitly deferred adapters.
 - Every denial reason and all five `Decision` plus twelve `ReasonCode` values
   through their one valid outcome mapping.
 - Exactly one `VerifiedAttestation` from a canonical completed flow.
+- The returned `VerifiedAttestation` carries the exact flow allocation identity
+  and the privately selected full/restricted class.
 - Request ownership ends on each terminal path while minimal redacted binding
   and safe outcome remain observable.
 

@@ -194,7 +194,9 @@ against an independent literal model, with exactly 48 successes and 134
 state-preserving rejections. Seven omissions and all 7! = 5,040 gate orderings
 admit exactly one canonical ordering. All seven capability types reject equal
 request data from another flow, and a 14 × 7 matrix proves phase checks precede
-binding checks.
+binding checks. Full and restricted completion tests inspect the returned
+capability's exact allocation identity and allowed class rather than inferring
+them from the flow report.
 
 The fixed history executes exactly 1,048,576 actions: 2,048 scheduled actions
 cover both allowed classes, all failure/reason classes, every matching and
@@ -207,11 +209,13 @@ One public-surface compile-pass and 39 single-cause compile-fail doctests cover
 construction, cloning, private fields, report construction/substitution,
 nonexistent authority shortcuts, and raw-claim exclusion. A CRLF-only-
 normalized structural test pins all 17 authority/report fields. Exact private
-sentinels cover every diagnostic surface, and request presence is checked in
-all 14 phases. Five verifier scenarios are part of the 14-scenario validated
-aggregate.
+sentinels cover every diagnostic surface in every phase, including manual
+transition-error Debug and exact outcome Debug; request presence is checked in
+all 14 phases. A typed unknown-mandatory-gate observation is exercised
+separately from ordinary version/profile unsupported state. Five verifier
+scenarios are part of the 14-scenario validated aggregate.
 
-Completion of M1-010 additionally requires the exact 88 disposable-worktree
+Completion of M1-010 additionally requires the exact 93 disposable-worktree
 mutations and separate fresh trusted-computing-base and privacy reviews. Those
 Task 10 gates are required validation and are not claimed complete by this ADR.
 

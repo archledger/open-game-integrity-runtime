@@ -295,7 +295,7 @@ deterministic and avoids turning the error taxonomy into a binding oracle.
 Each of these actions is valid from every one of the eight nonterminal phases:
 
 - `mark_malformed()`
-- `mark_unsupported()`
+- `mark_unsupported(UnsupportedRequirement)`
 - `mark_retryable()`
 - `deny(DenialReason)`
 - `mark_revoked()`
@@ -307,8 +307,9 @@ availability but cannot grant protected-mode authority.
 
 No failure or progression action succeeds from any terminal phase. A terminal
 cannot change reason, switch class, re-enter progress, or issue a capability.
-An unknown required gate maps to `Unsupported`; omission is not a compatibility
-strategy.
+`UnsupportedRequirement` distinguishes a version/profile failure from a typed
+`UnknownMandatoryGate` observation. Either maps to `Unsupported`; omission is
+not a compatibility strategy.
 
 ## Outcome taxonomy
 
@@ -443,7 +444,10 @@ impl VerifierFlow {
     pub fn complete(&mut self) -> Result<VerifiedAttestation, TransitionError>;
 
     pub fn mark_malformed(&mut self) -> Result<(), TransitionError>;
-    pub fn mark_unsupported(&mut self) -> Result<(), TransitionError>;
+    pub fn mark_unsupported(
+        &mut self,
+        requirement: UnsupportedRequirement,
+    ) -> Result<(), TransitionError>;
     pub fn mark_retryable(&mut self) -> Result<(), TransitionError>;
     pub fn deny(&mut self, reason: DenialReason) -> Result<(), TransitionError>;
     pub fn mark_revoked(&mut self) -> Result<(), TransitionError>;
