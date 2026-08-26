@@ -1,0 +1,24 @@
+{
+  "id": "OGIR-PRIVACY-VERIFIER-DIAGNOSTICS-001",
+  "title": "Disclose verifier request evidence or attempt identity through diagnostics",
+  "attacker": "A8",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["player_privacy", "verifier_freshness_state"],
+  "preconditions": ["a verifier flow owns privacy-sensitive request and evidence data"],
+  "steps": [
+    "format the request flow capabilities errors outcomes binding and final capability",
+    "format EvidenceBundle directly",
+    "search output for identifiers nonce time evidence payload pointer values paths or control text"
+  ],
+  "expected": {
+    "decision": "deny",
+    "reason": "privacy-boundary",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "default aggregate diagnostics contain only fixed redaction markers and approved safe enums",
+    "terminal entry releases owned raw request data without claiming allocator zeroization"
+  ],
+  "residual_risk": ["explicit trusted value accessors and future operator telemetry require separate privacy review"]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "OGIR-VERIFIER-CAPABILITY-SUBSTITUTION-001",
+  "title": "Use a gate capability on an equal but distinct verifier flow",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["protected_session_authorization", "verifier_freshness_state"],
+  "preconditions": ["two verifier flows contain equal cloned request data"],
+  "steps": [
+    "obtain a valid opaque gate capability bound to flow-A",
+    "submit that capability to flow-B at the otherwise correct phase"
+  ],
+  "expected": {
+    "decision": "deny",
+    "reason": "capability-rejected",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "capability identity uses the exact process-local attempt allocation rather than request equality",
+    "rejection preserves phase outcome and request ownership"
+  ],
+  "residual_risk": ["trusted producer code can still lie about which operation it performed"]
+}

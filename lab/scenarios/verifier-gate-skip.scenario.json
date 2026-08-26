@@ -1,0 +1,23 @@
+{
+  "id": "OGIR-VERIFIER-GATE-SKIP-001",
+  "title": "Skip a mandatory verifier appraisal gate",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["protected_session_authorization"],
+  "preconditions": ["one verifier flow received hostile or opaque evidence"],
+  "steps": [
+    "omit one of challenge authentication, freshness, identity, evidence, session binding, revocation, or policy satisfaction",
+    "request completion or present a report-only allow decision"
+  ],
+  "expected": {
+    "decision": "deny",
+    "reason": "invalid-transition",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "only the canonical seven-gate path can create VerifiedAttestation",
+    "Decision and VerificationOutcome are reporting views rather than authority"
+  ],
+  "residual_risk": ["a deliberately compromised trusted gate producer remains inside the verifier TCB"]
+}
