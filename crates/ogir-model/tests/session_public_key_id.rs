@@ -10,10 +10,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use ogir_model::{Nonce, SESSION_PUBLIC_KEY_ID_LENGTH, SessionId, SessionPublicKeyId};
 
 const EXPECTED_SESSION_PUBLIC_KEY_ID_LENGTH: usize = 32;
+const SESSION_PUBLIC_KEY_ID_NAME: &str = "SessionPublicKeyId";
 const PRIVATE_SENTINEL: [u8; EXPECTED_SESSION_PUBLIC_KEY_ID_LENGTH] = [
     0x03, 0x17, 0x2b, 0x3f, 0x53, 0x67, 0x7b, 0x8f, 0xa3, 0xb7, 0xcb, 0xdf, 0xf3, 0x07, 0x1b, 0x2f,
     0x43, 0x57, 0x6b, 0x7f, 0x93, 0xa7, 0xbb, 0xcf, 0xe3, 0xf7, 0x0b, 0x1f, 0x33, 0x47, 0x5b, 0x6f,
 ];
+const EXPECTED_CRATE_INNER_ATTRIBUTE_TOKENS: &[&str] =
+    &["#", "!", "[", "forbid", "(", "unsafe_code", ")", "]"];
 const EXPECTED_SESSION_PUBLIC_KEY_ID_STRUCT_TOKENS: &[&str] = &[
     "#",
     "[",
@@ -378,13 +381,43 @@ fn identifier_end(source: &str, start: usize) -> Option<usize> {
     Some(cursor)
 }
 
+fn normalize_identifier_for_target_comparison(identifier: &str) -> String {
+    // Rust compares identifiers after NFC normalization. For this all-ASCII
+    // target, UnicodeData's only singleton canonical decomposition to any
+    // target code point is U+212A KELVIN SIGN -> U+004B LATIN CAPITAL LETTER K.
+    // Compatibility-only K forms (for example U+FF2B) must remain distinct.
+    identifier
+        .chars()
+        .map(|character| {
+            if character == '\u{212a}' {
+                'K'
+            } else {
+                character
+            }
+        })
+        .collect()
+}
+
+fn literal_suffix_end(source: &str, literal_end: usize) -> usize {
+    identifier_end(source, literal_end).unwrap_or(literal_end)
+}
+
 fn raw_identifier(source: &str, start: usize) -> Option<(usize, String)> {
     if !source.as_bytes().get(start..)?.starts_with(b"r#") {
         return None;
     }
     let identifier_start = start + 2;
     let end = identifier_end(source, identifier_start)?;
-    Some((end, source[identifier_start..end].to_owned()))
+    let normalized = normalize_identifier_for_target_comparison(&source[identifier_start..end]);
+    let token = if matches!(
+        normalized.as_str(),
+        SESSION_PUBLIC_KEY_ID_NAME | "cfg_attr" | "include" | "path"
+    ) {
+        normalized
+    } else {
+        format!("r#{normalized}")
+    };
+    Some((end, token))
 }
 
 fn lifetime_or_label(source: &str, quote: usize) -> Option<(usize, String)> {
@@ -404,6 +437,7 @@ fn lifetime_or_label(source: &str, quote: usize) -> Option<(usize, String)> {
 }
 
 fn rust_tokens(source: &str) -> Vec<String> {
+    let source = source.strip_prefix('\u{feff}').unwrap_or(source);
     let bytes = source.as_bytes();
     let mut tokens = Vec::new();
     let mut cursor = 0;
@@ -444,25 +478,26 @@ fn rust_tokens(source: &str) -> Vec<String> {
             continue;
         }
         if let Some(end) = raw_string_end(source, cursor) {
-            cursor = end;
+            cursor = literal_suffix_end(source, end);
             continue;
         }
         if bytes[cursor] == b'"' {
-            cursor = quoted_string_end(source, cursor);
+            cursor = literal_suffix_end(source, quoted_string_end(source, cursor));
             continue;
         }
         if matches!(bytes.get(cursor), Some(b'b' | b'c')) && bytes.get(cursor + 1) == Some(&b'"') {
-            cursor = quoted_string_end(source, cursor + 1);
+            cursor = literal_suffix_end(source, quoted_string_end(source, cursor + 1));
             continue;
         }
         if bytes[cursor] == b'b' && bytes.get(cursor + 1) == Some(&b'\'') {
-            cursor = char_literal_end(source, cursor + 1)
+            let end = char_literal_end(source, cursor + 1)
                 .unwrap_or_else(|| panic!("invalid byte character at byte {cursor}"));
+            cursor = literal_suffix_end(source, end);
             continue;
         }
         if bytes[cursor] == b'\'' {
             if let Some(end) = char_literal_end(source, cursor) {
-                cursor = end;
+                cursor = literal_suffix_end(source, end);
             } else if let Some((end, lifetime)) = lifetime_or_label(source, cursor) {
                 tokens.push(lifetime);
                 cursor = end;
@@ -480,7 +515,9 @@ fn rust_tokens(source: &str) -> Vec<String> {
         if is_identifier_start(character) {
             let end = identifier_end(source, cursor)
                 .unwrap_or_else(|| panic!("identifier at byte {cursor} has no end"));
-            tokens.push(source[cursor..end].to_owned());
+            tokens.push(normalize_identifier_for_target_comparison(
+                &source[cursor..end],
+            ));
             cursor = end;
             continue;
         }
@@ -491,6 +528,15 @@ fn rust_tokens(source: &str) -> Vec<String> {
                 && (bytes[cursor].is_ascii_alphanumeric() || matches!(bytes[cursor], b'_' | b'.'))
             {
                 cursor += 1;
+            }
+            if cursor < bytes.len()
+                && source[cursor..]
+                    .chars()
+                    .next()
+                    .is_some_and(is_identifier_start)
+            {
+                cursor = identifier_end(source, cursor)
+                    .unwrap_or_else(|| panic!("literal suffix at byte {cursor} has no end"));
             }
             tokens.push(source[start..cursor].to_owned());
             continue;
@@ -503,18 +549,22 @@ fn rust_tokens(source: &str) -> Vec<String> {
     tokens
 }
 
-fn matching_square_bracket(tokens: &[String], open: usize) -> Option<usize> {
-    if tokens.get(open).map(String::as_str) != Some("[") {
+fn matching_delimiter(tokens: &[String], open: usize) -> Option<usize> {
+    if !matches!(tokens.get(open).map(String::as_str), Some("(" | "[" | "{")) {
         return None;
     }
 
-    let mut depth = 0_usize;
+    let mut expected_closes = Vec::new();
     for (index, token) in tokens.iter().enumerate().skip(open) {
         match token.as_str() {
-            "[" => depth += 1,
-            "]" => {
-                depth = depth.checked_sub(1)?;
-                if depth == 0 {
+            "(" => expected_closes.push(")"),
+            "[" => expected_closes.push("]"),
+            "{" => expected_closes.push("}"),
+            ")" | "]" | "}" => {
+                if expected_closes.pop() != Some(token.as_str()) {
+                    return None;
+                }
+                if expected_closes.is_empty() {
                     return Some(index);
                 }
             }
@@ -524,12 +574,239 @@ fn matching_square_bracket(tokens: &[String], open: usize) -> Option<usize> {
     None
 }
 
+fn matching_square_bracket(tokens: &[String], open: usize) -> Option<usize> {
+    (tokens.get(open).map(String::as_str) == Some("["))
+        .then(|| matching_delimiter(tokens, open))
+        .flatten()
+}
+
+fn delimiter_depths(tokens: &[String]) -> Result<Vec<usize>, String> {
+    let mut expected_closes = Vec::new();
+    let mut depths = Vec::with_capacity(tokens.len());
+
+    for token in tokens {
+        depths.push(expected_closes.len());
+        match token.as_str() {
+            "(" => expected_closes.push(")"),
+            "[" => expected_closes.push("]"),
+            "{" => expected_closes.push("}"),
+            ")" | "]" | "}" if expected_closes.pop() != Some(token.as_str()) => {
+                return Err(format!("mismatched delimiter before token {token}"));
+            }
+            ")" | "]" | "}" => {}
+            _ => {}
+        }
+    }
+
+    if expected_closes.is_empty() {
+        Ok(depths)
+    } else {
+        Err(format!(
+            "unclosed delimiter(s) expecting {expected_closes:?}"
+        ))
+    }
+}
+
+fn macro_token_tree_ranges(tokens: &[String]) -> Result<Vec<(usize, usize)>, String> {
+    let mut ranges = Vec::new();
+
+    for (bang, token) in tokens.iter().enumerate() {
+        let macro_name = tokens.get(bang.wrapping_sub(1)).map(String::as_str);
+        if token != "!"
+            || macro_name == Some("#")
+            || !macro_name.is_some_and(|name| name.chars().next().is_some_and(is_identifier_start))
+        {
+            continue;
+        }
+
+        let direct_open = bang + 1;
+        let rules_open = bang + 2;
+        let open = if matches!(
+            tokens.get(direct_open).map(String::as_str),
+            Some("(" | "[" | "{")
+        ) {
+            direct_open
+        } else if macro_name == Some("macro_rules")
+            && matches!(
+                tokens.get(rules_open).map(String::as_str),
+                Some("(" | "[" | "{")
+            )
+        {
+            rules_open
+        } else {
+            continue;
+        };
+
+        let close = matching_delimiter(tokens, open)
+            .ok_or_else(|| format!("macro token tree beginning at token {open} is unbalanced"))?;
+        ranges.push((open, close));
+    }
+
+    Ok(ranges)
+}
+
+fn token_is_inside_ranges(index: usize, ranges: &[(usize, usize)]) -> bool {
+    ranges
+        .iter()
+        .any(|(open, close)| *open < index && index < *close)
+}
+
+fn token_is_macro_metavariable(tokens: &[String], index: usize) -> bool {
+    index > 0 && tokens[index - 1] == "$"
+}
+
+fn use_item_ranges(
+    tokens: &[String],
+    depths: &[usize],
+    macro_ranges: &[(usize, usize)],
+) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+
+    for (start, token) in tokens.iter().enumerate() {
+        if token != "use" || token_is_inside_ranges(start, macro_ranges) {
+            continue;
+        }
+        let depth = depths[start];
+        if let Some(end) = tokens
+            .iter()
+            .enumerate()
+            .skip(start + 1)
+            .find_map(|(index, token)| (token == ";" && depths[index] == depth).then_some(index))
+        {
+            ranges.push((start, end));
+        }
+    }
+
+    ranges
+}
+
+fn token_is_inside_or_at_ranges(index: usize, ranges: &[(usize, usize)]) -> bool {
+    ranges
+        .iter()
+        .any(|(start, end)| *start <= index && index <= *end)
+}
+
+fn skip_outer_attributes(tokens: &[String], mut cursor: usize) -> Option<usize> {
+    while tokens.get(cursor).map(String::as_str) == Some("#")
+        && tokens.get(cursor + 1).map(String::as_str) == Some("[")
+    {
+        cursor = matching_square_bracket(tokens, cursor + 1)? + 1;
+    }
+    Some(cursor)
+}
+
+fn skip_visibility(tokens: &[String], mut cursor: usize) -> Option<usize> {
+    if tokens.get(cursor).map(String::as_str) != Some("pub") {
+        return Some(cursor);
+    }
+    cursor += 1;
+    if tokens.get(cursor).map(String::as_str) == Some("(") {
+        cursor = matching_delimiter(tokens, cursor)? + 1;
+    }
+    Some(cursor)
+}
+
+fn top_level_meta_segments(tokens: &[String]) -> Vec<&[String]> {
+    let mut segments = Vec::new();
+    let mut start = 0;
+    let mut depth = 0_usize;
+
+    for (index, token) in tokens.iter().enumerate() {
+        match token.as_str() {
+            "(" | "[" | "{" => depth += 1,
+            ")" | "]" | "}" => depth = depth.saturating_sub(1),
+            "," if depth == 0 => {
+                segments.push(&tokens[start..index]);
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    segments.push(&tokens[start..]);
+    segments
+}
+
+fn meta_item_can_emit_path_attribute(tokens: &[String]) -> bool {
+    if tokens.first().map(String::as_str) == Some("path")
+        && tokens.get(1).map(String::as_str) == Some("=")
+    {
+        return true;
+    }
+    if tokens.first().map(String::as_str) != Some("cfg_attr")
+        || tokens.get(1).map(String::as_str) != Some("(")
+    {
+        return false;
+    }
+    let Some(close) = matching_delimiter(tokens, 1) else {
+        return false;
+    };
+    if close + 1 != tokens.len() {
+        return false;
+    }
+
+    top_level_meta_segments(&tokens[2..close])
+        .into_iter()
+        .skip(1)
+        .any(meta_item_can_emit_path_attribute)
+}
+
+fn path_attribute_is_attached_to_module(tokens: &[String], attribute_close: usize) -> bool {
+    let after_attributes = match skip_outer_attributes(tokens, attribute_close + 1) {
+        Some(cursor) => cursor,
+        None => return false,
+    };
+    let after_visibility = match skip_visibility(tokens, after_attributes) {
+        Some(cursor) => cursor,
+        None => return false,
+    };
+    tokens.get(after_visibility).map(String::as_str) == Some("mod")
+}
+
 fn validate_no_unscanned_item_sources(path: &Path, tokens: &[String]) -> Result<(), String> {
-    if tokens.iter().any(|token| token == "include") {
-        return Err(format!(
-            "unscanned item-source mechanism include identity is forbidden in {}",
-            path.display()
-        ));
+    // `include` is reserved only where it can name a macro or a namespace-
+    // ambiguous import; ordinary functions and bindings remain valid. `path`
+    // is reserved inside macro token trees because declarative expansion can
+    // turn either a concrete token or a metavariable named `$path` into the
+    // module-loading attribute. Outside macros, only a path meta-item attached
+    // to `mod` is rejected.
+    let depths = delimiter_depths(tokens)
+        .map_err(|error| format!("cannot classify tokens in {}: {error}", path.display()))?;
+    let macro_ranges = macro_token_tree_ranges(tokens)
+        .map_err(|error| format!("cannot classify macros in {}: {error}", path.display()))?;
+    let use_ranges = use_item_ranges(tokens, &depths, &macro_ranges);
+
+    for (index, token) in tokens.iter().enumerate() {
+        if token == "trait"
+            && !(token_is_inside_ranges(index, &macro_ranges)
+                && token_is_macro_metavariable(tokens, index))
+        {
+            return Err(format!(
+                "local trait declarations are forbidden by the exact SessionPublicKeyId surface policy in {}",
+                path.display()
+            ));
+        }
+
+        if token == "include"
+            && (tokens.get(index + 1).map(String::as_str) == Some("!")
+                || token_is_inside_or_at_ranges(index, &use_ranges)
+                || (token_is_inside_ranges(index, &macro_ranges)
+                    && !token_is_macro_metavariable(tokens, index)))
+        {
+            return Err(format!(
+                "unscanned item-source mechanism include macro/import identity is forbidden in {}",
+                path.display()
+            ));
+        }
+
+        if token == "path"
+            && (tokens.get(index + 1).map(String::as_str) == Some("!")
+                || token_is_inside_ranges(index, &macro_ranges))
+        {
+            return Err(format!(
+                "unscanned item-source mechanism reserves path spelling in macro/meta context in {}",
+                path.display()
+            ));
+        }
     }
 
     let mut cursor = 0;
@@ -554,9 +831,8 @@ fn validate_no_unscanned_item_sources(path: &Path, tokens: &[String]) -> Result<
                 path.display()
             )
         })?;
-        if tokens[open + 1..close]
-            .windows(2)
-            .any(|window| window[0] == "path" && window[1] == "=")
+        if meta_item_can_emit_path_attribute(&tokens[open + 1..close])
+            && path_attribute_is_attached_to_module(tokens, close)
         {
             return Err(format!(
                 "unscanned item-source mechanism path meta-item is forbidden in {}",
@@ -567,27 +843,6 @@ fn validate_no_unscanned_item_sources(path: &Path, tokens: &[String]) -> Result<
     }
 
     Ok(())
-}
-
-fn token_sequence_count(tokens: &[String], sequence: &[&str]) -> usize {
-    tokens
-        .windows(sequence.len())
-        .filter(|window| {
-            window
-                .iter()
-                .zip(sequence)
-                .all(|(actual, expected)| actual == expected)
-        })
-        .count()
-}
-
-fn token_sequence_start(tokens: &[String], sequence: &[&str]) -> Option<usize> {
-    tokens.windows(sequence.len()).position(|window| {
-        window
-            .iter()
-            .zip(sequence)
-            .all(|(actual, expected)| actual == expected)
-    })
 }
 
 fn attached_attributes_start(tokens: &[String], item_start: usize) -> usize {
@@ -668,6 +923,289 @@ fn exact_tokens_match(actual: &[String], expected: &[&str]) -> bool {
             .all(|(actual, expected)| actual == expected)
 }
 
+fn root_token_sequence_starts(
+    tokens: &[String],
+    depths: &[usize],
+    sequence: &[&str],
+) -> Vec<usize> {
+    tokens
+        .windows(sequence.len())
+        .enumerate()
+        .filter(|(start, window)| {
+            depths[*start] == 0
+                && window
+                    .iter()
+                    .zip(sequence)
+                    .all(|(actual, expected)| actual == expected)
+        })
+        .map(|(start, _)| start)
+        .collect()
+}
+
+fn attribute_ranges(tokens: &[String]) -> Result<Vec<(usize, usize)>, String> {
+    let mut ranges = Vec::new();
+    let mut cursor = 0;
+
+    while cursor < tokens.len() {
+        if tokens[cursor] != "#" {
+            cursor += 1;
+            continue;
+        }
+        let mut open = cursor + 1;
+        if tokens.get(open).map(String::as_str) == Some("!") {
+            open += 1;
+        }
+        if tokens.get(open).map(String::as_str) != Some("[") {
+            cursor += 1;
+            continue;
+        }
+        let close = matching_square_bracket(tokens, open)
+            .ok_or_else(|| format!("attribute beginning at token {cursor} is unbalanced"))?;
+        ranges.push((cursor, close));
+        cursor = close + 1;
+    }
+
+    Ok(ranges)
+}
+
+fn validate_crate_inner_attribute_surface(
+    tokens: &[String],
+    depths: &[usize],
+) -> Result<(), String> {
+    let mut inner_attributes = Vec::new();
+
+    for (start, token) in tokens.iter().enumerate() {
+        if token != "#"
+            || depths[start] != 0
+            || tokens.get(start + 1).map(String::as_str) != Some("!")
+            || tokens.get(start + 2).map(String::as_str) != Some("[")
+        {
+            continue;
+        }
+        let close = matching_square_bracket(tokens, start + 2)
+            .ok_or_else(|| "crate inner attribute is unbalanced".to_owned())?;
+        inner_attributes.push(&tokens[start..=close]);
+    }
+
+    if inner_attributes.len() != 1
+        || !exact_tokens_match(inner_attributes[0], EXPECTED_CRATE_INNER_ATTRIBUTE_TOKENS)
+    {
+        return Err(format!(
+            "crate inner attribute inventory must contain only #![forbid(unsafe_code)]; found {inner_attributes:?}"
+        ));
+    }
+
+    Ok(())
+}
+
+fn token_is_macro_definition_name(tokens: &[String], index: usize) -> bool {
+    index >= 2 && tokens[index - 2] == "macro_rules" && tokens[index - 1] == "!"
+}
+
+fn token_is_in_braced_item_header(
+    tokens: &[String],
+    depths: &[usize],
+    macro_ranges: &[(usize, usize)],
+    index: usize,
+    keyword: &str,
+) -> bool {
+    tokens
+        .iter()
+        .enumerate()
+        .take(index)
+        .filter(|(start, token)| {
+            token.as_str() == keyword && !token_is_inside_ranges(*start, macro_ranges)
+        })
+        .any(|(start, _)| {
+            let depth = depths[start];
+            tokens
+                .iter()
+                .enumerate()
+                .skip(start + 1)
+                .find_map(|(cursor, token)| {
+                    (token == "{" && depths[cursor] == depth).then_some(cursor)
+                })
+                .is_some_and(|body| index < body)
+        })
+}
+
+fn token_is_in_type_item(
+    tokens: &[String],
+    depths: &[usize],
+    macro_ranges: &[(usize, usize)],
+    index: usize,
+) -> bool {
+    tokens
+        .iter()
+        .enumerate()
+        .take(index)
+        .filter(|(start, token)| {
+            token.as_str() == "type" && !token_is_inside_ranges(*start, macro_ranges)
+        })
+        .any(|(start, _)| {
+            let depth = depths[start];
+            tokens
+                .iter()
+                .enumerate()
+                .skip(start + 1)
+                .find_map(|(cursor, token)| {
+                    (token == ";" && depths[cursor] == depth).then_some(cursor)
+                })
+                .is_some_and(|end| index < end)
+        })
+}
+
+#[derive(Clone, Copy)]
+struct TargetValueBinding {
+    name_index: usize,
+    available_after: usize,
+    scope: Option<(usize, usize)>,
+}
+
+fn brace_scope_ranges(tokens: &[String]) -> Vec<(usize, usize)> {
+    tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(open, token)| {
+            (token == "{")
+                .then(|| matching_delimiter(tokens, open).map(|close| (open, close)))
+                .flatten()
+        })
+        .collect()
+}
+
+fn innermost_brace_scope(scopes: &[(usize, usize)], index: usize) -> Option<(usize, usize)> {
+    scopes
+        .iter()
+        .copied()
+        .filter(|(open, close)| *open < index && index < *close)
+        .min_by_key(|(open, close)| close - open)
+}
+
+fn simple_value_declaration_kind(tokens: &[String], index: usize) -> Option<&'static str> {
+    match tokens.get(index.wrapping_sub(1)).map(String::as_str) {
+        Some("fn" | "const" | "static") => Some("item"),
+        Some("let") => Some("let"),
+        Some("mut") if index >= 2 && tokens.get(index - 2).map(String::as_str) == Some("let") => {
+            Some("let")
+        }
+        _ => None,
+    }
+}
+
+fn target_value_bindings(
+    tokens: &[String],
+    depths: &[usize],
+    macro_ranges: &[(usize, usize)],
+) -> Vec<TargetValueBinding> {
+    let scopes = brace_scope_ranges(tokens);
+    let mut bindings = Vec::new();
+
+    for (index, token) in tokens.iter().enumerate() {
+        if token != SESSION_PUBLIC_KEY_ID_NAME || token_is_inside_ranges(index, macro_ranges) {
+            continue;
+        }
+        let Some(kind) = simple_value_declaration_kind(tokens, index) else {
+            continue;
+        };
+        let available_after = if kind == "item" {
+            0
+        } else {
+            let depth = depths[index];
+            match tokens
+                .iter()
+                .enumerate()
+                .skip(index + 1)
+                .find_map(|(cursor, token)| {
+                    (token == ";" && depths[cursor] == depth).then_some(cursor)
+                }) {
+                Some(semicolon) => semicolon,
+                None => index,
+            }
+        };
+        bindings.push(TargetValueBinding {
+            name_index: index,
+            available_after,
+            scope: innermost_brace_scope(&scopes, index),
+        });
+    }
+
+    bindings
+}
+
+fn target_is_shadowed_value_use(bindings: &[TargetValueBinding], index: usize) -> bool {
+    bindings.iter().any(|binding| {
+        index > binding.available_after
+            && binding
+                .scope
+                .is_none_or(|(open, close)| open < index && index < close)
+    })
+}
+
+fn target_use_reservation_reason(
+    tokens: &[String],
+    depths: &[usize],
+    macro_ranges: &[(usize, usize)],
+    attribute_ranges: &[(usize, usize)],
+    value_bindings: &[TargetValueBinding],
+    index: usize,
+) -> Option<&'static str> {
+    // The proof can recognize harmless macro declaration/metavariable names
+    // and simple fn/const/static/let value bindings with lexical scope. Every
+    // concrete macro use and every ambiguous unshadowed spelling stays
+    // reserved: it might be the tuple constructor, a constructor pattern, or
+    // a type/associated-item path even when inference hides the return type.
+    if token_is_macro_definition_name(tokens, index) {
+        return None;
+    }
+    if token_is_inside_ranges(index, macro_ranges) && token_is_macro_metavariable(tokens, index) {
+        return None;
+    }
+    if token_is_inside_ranges(index, macro_ranges)
+        || tokens.get(index + 1).map(String::as_str) == Some("!")
+    {
+        return Some("concrete target spelling in macro expansion context");
+    }
+    if token_is_inside_or_at_ranges(index, attribute_ranges) {
+        return Some("target spelling in attribute expansion context");
+    }
+    if tokens.get(index + 1).map(String::as_str) == Some(":") {
+        return Some("associated item or type path");
+    }
+    if token_is_in_braced_item_header(tokens, depths, macro_ranges, index, "impl") {
+        return Some("noncanonical impl header");
+    }
+    if token_is_in_type_item(tokens, depths, macro_ranges, index) {
+        return Some("type alias or associated type item");
+    }
+    if matches!(
+        tokens.get(index.wrapping_sub(1)).map(String::as_str),
+        Some("struct" | "enum" | "union" | "mod")
+    ) {
+        return Some("noncanonical type-namespace declaration");
+    }
+    if tokens.get(index.wrapping_sub(1)).map(String::as_str) != Some("fn")
+        && token_is_in_braced_item_header(tokens, depths, macro_ranges, index, "fn")
+    {
+        return Some("function signature type use");
+    }
+    if matches!(
+        tokens.get(index.wrapping_sub(1)).map(String::as_str),
+        Some(":" | "as" | "for")
+    ) {
+        return Some("type-path context");
+    }
+    if value_bindings
+        .iter()
+        .any(|binding| binding.name_index == index)
+        || target_is_shadowed_value_use(value_bindings, index)
+    {
+        return None;
+    }
+
+    Some("ambiguous unshadowed value/type spelling")
+}
+
 fn validate_session_public_key_id_token_surface(
     sources: &[(PathBuf, String)],
 ) -> Result<(), String> {
@@ -683,52 +1221,90 @@ fn validate_session_public_key_id_token_surface(
         "SessionPublicKeyId",
         "{",
     ];
-    let mut uses = Vec::new();
-    let mut declaration_count = 0;
-    let mut inherent_count = 0;
-    let mut debug_count = 0;
-    let mut primary_tokens = None;
+    let mut tokenized_sources = Vec::new();
+    let mut primary_index = None;
 
     for (path, source) in sources {
         let tokens = rust_tokens(source);
         validate_no_unscanned_item_sources(path, &tokens)?;
-        declaration_count += token_sequence_count(&tokens, &declaration);
-        inherent_count += token_sequence_count(&tokens, &inherent_impl);
-        debug_count += token_sequence_count(&tokens, &debug_impl);
+        if path.ends_with("src/lib.rs") && primary_index.replace(tokenized_sources.len()).is_some()
+        {
+            return Err("model source inventory contains multiple src/lib.rs files".to_owned());
+        }
+        tokenized_sources.push((path, tokens));
+    }
+
+    let primary_index = match primary_index {
+        Some(index) => index,
+        None => return Err("model source inventory omitted src/lib.rs".to_owned()),
+    };
+    let primary_tokens = &tokenized_sources[primary_index].1;
+    let primary_depths = delimiter_depths(primary_tokens)
+        .map_err(|error| format!("cannot classify primary source tokens: {error}"))?;
+    validate_crate_inner_attribute_surface(primary_tokens, &primary_depths)?;
+
+    let declaration_roots =
+        root_token_sequence_starts(primary_tokens, &primary_depths, &declaration);
+    let inherent_roots =
+        root_token_sequence_starts(primary_tokens, &primary_depths, &inherent_impl);
+    let debug_roots = root_token_sequence_starts(primary_tokens, &primary_depths, &debug_impl);
+    if declaration_roots.len() != 1 || inherent_roots.len() != 1 || debug_roots.len() != 1 {
+        return Err(format!(
+            "SessionPublicKeyId token inventory requires its three canonical anchors to be direct root production items; found {} declaration, {} inherent impl, and {} Debug impl root anchor(s)",
+            declaration_roots.len(),
+            inherent_roots.len(),
+            debug_roots.len()
+        ));
+    }
+
+    let canonical_target_indices = [
+        declaration_roots[0] + 2,
+        inherent_roots[0] + 1,
+        debug_roots[0] + 6,
+    ];
+    let mut reserved_uses = Vec::new();
+    for (source_index, (path, tokens)) in tokenized_sources.iter().enumerate() {
+        let depths = delimiter_depths(tokens)
+            .map_err(|error| format!("cannot classify {}: {error}", path.display()))?;
+        let macro_ranges = macro_token_tree_ranges(tokens)
+            .map_err(|error| format!("cannot classify macros in {}: {error}", path.display()))?;
+        let attributes = attribute_ranges(tokens).map_err(|error| {
+            format!("cannot classify attributes in {}: {error}", path.display())
+        })?;
+        let value_bindings = target_value_bindings(tokens, &depths, &macro_ranges);
 
         for (index, token) in tokens.iter().enumerate() {
-            if token == "SessionPublicKeyId" {
+            if token != SESSION_PUBLIC_KEY_ID_NAME
+                || (source_index == primary_index && canonical_target_indices.contains(&index))
+            {
+                continue;
+            }
+            if let Some(reason) = target_use_reservation_reason(
+                tokens,
+                &depths,
+                &macro_ranges,
+                &attributes,
+                &value_bindings,
+                index,
+            ) {
                 let start = index.saturating_sub(5);
                 let end = usize::min(index + 6, tokens.len());
-                uses.push(format!(
-                    "{}: {}",
+                reserved_uses.push(format!(
+                    "{} ({reason}): {}",
                     path.display(),
                     tokens[start..end].join(" ")
                 ));
             }
         }
-        if path.ends_with("src/lib.rs") && primary_tokens.replace(tokens).is_some() {
-            return Err("model source inventory contains multiple src/lib.rs files".to_owned());
-        }
     }
-
-    if uses.len() != 3 || declaration_count != 1 || inherent_count != 1 || debug_count != 1 {
+    if !reserved_uses.is_empty() {
         return Err(format!(
-            "SessionPublicKeyId token inventory must contain exactly one private declaration, one inherent impl, and one Debug impl; found {} use(s), {declaration_count} declaration(s), {inherent_count} inherent impl(s), and {debug_count} Debug impl(s): {uses:?}",
-            uses.len()
+            "SessionPublicKeyId token inventory permits only the three canonical type anchors, harmless value-namespace roles, macro declaration names, and macro metavariables; reserved use(s): {reserved_uses:?}"
         ));
     }
 
-    let primary_tokens = match primary_tokens {
-        Some(tokens) => tokens,
-        None => return Err("model source inventory omitted src/lib.rs".to_owned()),
-    };
-
-    let declaration_start = match token_sequence_start(&primary_tokens, &declaration) {
-        Some(start) => attached_attributes_start(&primary_tokens, start),
-        None => return Err("struct exact token sequence has no declaration anchor".to_owned()),
-    };
-    let declaration_end = match semicolon_item_end(&primary_tokens, declaration_start) {
+    let declaration_start = attached_attributes_start(primary_tokens, declaration_roots[0]);
+    let declaration_end = match semicolon_item_end(primary_tokens, declaration_start) {
         Some(end) => end,
         None => return Err("struct exact token sequence has no valid item end".to_owned()),
     };
@@ -743,11 +1319,8 @@ fn validate_session_public_key_id_token_surface(
         ));
     }
 
-    let inherent_start = match token_sequence_start(&primary_tokens, &inherent_impl) {
-        Some(start) => start,
-        None => return Err("inherent impl exact token sequence has no anchor".to_owned()),
-    };
-    let inherent_end = match braced_item_end(&primary_tokens, inherent_start) {
+    let inherent_start = attached_attributes_start(primary_tokens, inherent_roots[0]);
+    let inherent_end = match braced_item_end(primary_tokens, inherent_start) {
         Some(end) => end,
         None => return Err("inherent impl exact token sequence has no valid item end".to_owned()),
     };
@@ -759,11 +1332,8 @@ fn validate_session_public_key_id_token_surface(
         ));
     }
 
-    let debug_start = match token_sequence_start(&primary_tokens, &debug_impl) {
-        Some(start) => start,
-        None => return Err("Debug impl exact token sequence has no anchor".to_owned()),
-    };
-    let debug_end = match braced_item_end(&primary_tokens, debug_start) {
+    let debug_start = attached_attributes_start(primary_tokens, debug_roots[0]);
+    let debug_end = match braced_item_end(primary_tokens, debug_start) {
         Some(end) => end,
         None => return Err("Debug impl exact token sequence has no valid item end".to_owned()),
     };
@@ -945,6 +1515,72 @@ impl/**/ SessionPublicKeyId {}
 }
 
 #[test]
+fn target_identifier_matching_follows_rust_nfc_without_compatibility_folding() {
+    assert_eq!(
+        rust_tokens("impl SessionPublicKeyId {}"),
+        ["impl", "SessionPublicKeyId", "{", "}"],
+        "U+212A KELVIN SIGN is canonically equivalent to ASCII K under Rust NFC"
+    );
+    assert_eq!(
+        rust_tokens("impl r#SessionPublicKeyId {}"),
+        ["impl", "SessionPublicKeyId", "{", "}"],
+        "raw identifiers obey the same NFC comparison"
+    );
+
+    for distinct in [
+        "SessionPublicＫeyId",
+        "SessionPublicKeyIdé",
+        "SessionPublicKeyIde\u{0301}",
+        "SessionPublicKeyIdé",
+    ] {
+        assert_ne!(
+            rust_tokens(distinct),
+            ["SessionPublicKeyId"],
+            "compatibility forms and Unicode suffixes must remain distinct: {distinct}"
+        );
+    }
+}
+
+#[test]
+fn rust_lexer_strips_the_optional_leading_source_bom() {
+    assert_eq!(
+        rust_tokens("\u{feff}include!(\"extra.inc\");"),
+        ["include", "!", "(", ")", ";"],
+        "rustc strips a leading UTF-8 BOM before tokenization"
+    );
+}
+
+#[test]
+fn valid_literal_suffixes_are_consumed_with_the_literal_token() {
+    let tokens = rust_tokens(
+        r####"
+macro_rules! discard_literals { ($($literal:literal),* $(,)?) => {}; }
+discard_literals!(
+    "normal"SessionPublicKeyId,
+    b"byte"SessionPublicKeyId,
+    c"c"SessionPublicKeyId,
+    r"raw"SessionPublicKeyId,
+    br"raw-byte"SessionPublicKeyId,
+    cr"raw-c"SessionPublicKeyId,
+    'x'SessionPublicKeyId,
+    b'x'SessionPublicKeyId,
+    1SessionPublicKeyId,
+    "kelvin"SessionPublicKeyId,
+);
+"####,
+    );
+
+    assert_eq!(
+        tokens
+            .iter()
+            .filter(|token| token.as_str() == "SessionPublicKeyId")
+            .count(),
+        0,
+        "a literal suffix is part of the literal token, not a target identifier: {tokens:?}"
+    );
+}
+
+#[test]
 fn rust_lexer_uses_exact_rust_pattern_white_space() {
     let pattern_white_space = [
         '\u{0009}', '\u{000a}', '\u{000b}', '\u{000c}', '\u{000d}', '\u{0020}', '\u{0085}',
@@ -973,9 +1609,14 @@ fn rust_lexer_uses_exact_rust_pattern_white_space() {
 #[test]
 fn rust_lexer_distinguishes_ordinary_and_raw_lifetimes_and_labels() {
     assert_eq!(
-        rust_tokens("r#SessionPublicKeyId r#include r#path"),
-        ["SessionPublicKeyId", "include", "path"],
+        rust_tokens("r#SessionPublicKeyId r#cfg_attr r#include r#path"),
+        ["SessionPublicKeyId", "cfg_attr", "include", "path"],
         "raw identifiers must normalize before surface and source-injection checks"
+    );
+    assert_eq!(
+        rust_tokens("fn r#trait() {}"),
+        ["fn", "r#trait", "(", ")", "{", "}"],
+        "unrelated raw keywords must retain raw-identifier identity"
     );
 
     let tokens = rust_tokens(
@@ -1077,6 +1718,10 @@ fn unscanned_item_source_mechanisms_fail_closed_across_token_forms() {
             "nested cfg_attr raw path",
             "#[cfg_attr(all(), r#path = \"extra.inc\")] mod injected_cfg_raw_path;",
         ),
+        (
+            "raw cfg_attr and raw path",
+            "#[r#cfg_attr(all(), r#path = \"extra.inc\")] mod injected_raw_cfg_attr_path;",
+        ),
     ] {
         let mut sources = model_source_texts();
         sources.push((PathBuf::from("extra.rs"), extra_source.to_owned()));
@@ -1090,6 +1735,101 @@ fn unscanned_item_source_mechanisms_fail_closed_across_token_forms() {
             "{label} failed for an unrelated reason: {error}"
         );
     }
+}
+
+#[test]
+fn macro_source_selection_is_rejected_before_expansion() {
+    for (label, extra_source) in [
+        (
+            "macro passes path meta-item",
+            "macro_rules! select_source { ($attribute:meta) => { #[$attribute] mod injected; }; }\n\
+             select_source!(path = \"extra.inc\");",
+        ),
+        (
+            "macro hardcodes path attribute",
+            "macro_rules! select_source { () => { #[path = \"extra.inc\"] mod injected; }; }\n\
+             select_source!();",
+        ),
+        (
+            "macro metavariable reserves path spelling",
+            "macro_rules! forward { ($path:meta) => {}; } forward!(doc = \"safe\");",
+        ),
+        (
+            "macro forwards include identity",
+            "macro_rules! invoke { ($name:ident) => { $name!(\"extra.inc\"); }; }\n\
+             invoke!(include);",
+        ),
+        (
+            "nested imported include alias",
+            "use std::{include as inject_items}; inject_items!(\"extra.inc\");",
+        ),
+        (
+            "chained imported include alias",
+            "use std::include as first; use first as second; second!(\"extra.inc\");",
+        ),
+        ("leading BOM include", "\u{feff}include!(\"extra.inc\");"),
+    ] {
+        let mut sources = model_source_texts();
+        sources.push((PathBuf::from("extra.rs"), extra_source.to_owned()));
+
+        let error = match validate_session_public_key_id_token_surface(&sources) {
+            Ok(()) => panic!("{label} bypassed the source-selection policy"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("unscanned item-source mechanism"),
+            "{label} failed for an unrelated reason: {error}"
+        );
+    }
+}
+
+#[test]
+fn local_trait_declarations_are_forbidden_but_trait_decoys_are_ignored() {
+    let mut blanket_sources = model_source_texts();
+    blanket_sources.push((
+        PathBuf::from("blanket.rs"),
+        "pub trait AdmitExt { fn admit(&self) {} } impl<T> AdmitExt for T {}".to_owned(),
+    ));
+    let error = match validate_session_public_key_id_token_surface(&blanket_sources) {
+        Ok(()) => panic!("a local blanket extension trait bypassed the exact surface proof"),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("local trait declarations are forbidden"),
+        "blanket extension trait failed for an unrelated reason: {error}"
+    );
+
+    let mut decoy_sources = model_source_texts();
+    decoy_sources.push((
+        PathBuf::from("trait_decoys.rs"),
+        r####"
+// pub trait CommentDecoy {}
+const _NORMAL: &str = "pub trait NormalStringDecoy {}";
+const _RAW: &str = r#"pub trait RawStringDecoy {}"#;
+fn r#trait() {}
+macro_rules! keyword_metavariable { ($trait:ident) => {}; }
+keyword_metavariable!(ordinary_name);
+"####
+            .to_owned(),
+    ));
+    assert_eq!(
+        validate_session_public_key_id_token_surface(&decoy_sources),
+        Ok(())
+    );
+
+    let mut concrete_keyword_sources = model_source_texts();
+    concrete_keyword_sources.push((
+        PathBuf::from("trait_macro_input.rs"),
+        "macro_rules! discard { ($token:ident) => {}; } discard!(trait);".to_owned(),
+    ));
+    let error = match validate_session_public_key_id_token_surface(&concrete_keyword_sources) {
+        Ok(()) => panic!("a concrete trait keyword in macro input bypassed the trait policy"),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("local trait declarations are forbidden"),
+        "concrete trait macro input failed for an unrelated reason: {error}"
+    );
 }
 
 #[test]
@@ -1114,6 +1854,115 @@ struct Ordinary;
         validate_session_public_key_id_token_surface(&sources),
         Ok(())
     );
+}
+
+#[test]
+fn ordinary_include_path_and_target_value_roles_do_not_trigger_surface_guards() {
+    let mut sources = model_source_texts();
+    sources.push((
+        PathBuf::from("ordinary_roles.rs"),
+        r####"
+#[allow(dead_code, non_snake_case)]
+mod ordinary_roles {
+    fn include(path: usize) -> usize { path }
+    fn path(include: usize) -> usize { include }
+    fn SessionPublicKeyId(path: usize) -> usize { path }
+
+    fn use_names() {
+        let include = include(1);
+        let path = path(include);
+        let SessionPublicKeyId = SessionPublicKeyId(path);
+        let _ = SessionPublicKeyId;
+        let _not_path = !(path == 0);
+    }
+}
+
+#[cfg_attr(any(), path = "missing.inc")]
+struct InertPathMetadata;
+
+#[cfg_attr(any(), doc(path = "not-a-source-path"))]
+mod NestedNonLoadingPathMetadata {}
+"####
+            .to_owned(),
+    ));
+
+    assert_eq!(
+        validate_session_public_key_id_token_surface(&sources),
+        Ok(())
+    );
+}
+
+#[test]
+fn macro_metavariables_and_macro_namespace_names_are_not_target_type_uses() {
+    let mut sources = model_source_texts();
+    sources.push((
+        PathBuf::from("macro_roles.rs"),
+        r####"
+macro_rules! SessionPublicKeyId { () => {}; }
+macro_rules! harmless_metavariable {
+    ($SessionPublicKeyId:ident) => {
+        const _: &str = stringify!($SessionPublicKeyId);
+    };
+}
+harmless_metavariable!(ordinary_name);
+"####
+            .to_owned(),
+    ));
+
+    assert_eq!(
+        validate_session_public_key_id_token_surface(&sources),
+        Ok(())
+    );
+
+    let mut concrete_sources = model_source_texts();
+    concrete_sources.push((
+        PathBuf::from("concrete_macro.rs"),
+        "macro_rules! observe { ($value:ident) => {}; } observe!(SessionPublicKeyId);".to_owned(),
+    ));
+    let error = match validate_session_public_key_id_token_surface(&concrete_sources) {
+        Ok(()) => panic!("concrete target spelling in macro input bypassed the reservation"),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("SessionPublicKeyId token inventory"),
+        "concrete macro spelling failed for an unrelated reason: {error}"
+    );
+}
+
+#[test]
+fn concrete_constructor_and_associated_path_uses_are_reserved() {
+    for (label, extra_source) in [
+        (
+            "associated constructor",
+            "pub fn make(bytes: [u8; 32]) -> impl Copy { \
+             SessionPublicKeyId::from_bytes(bytes) }",
+        ),
+        (
+            "tuple constructor",
+            "pub fn make(bytes: [u8; 32]) -> impl Copy { SessionPublicKeyId(bytes) }",
+        ),
+        (
+            "bare tuple constructor value",
+            "pub fn constructor_value() { let _ = SessionPublicKeyId; }",
+        ),
+        (
+            "tuple constructor pattern",
+            "pub fn destructure(value: SessionPublicKeyId) { \
+             let SessionPublicKeyId(_bytes) = value; }",
+        ),
+    ] {
+        let mut sources = model_source_texts();
+        sources.push((PathBuf::from("constructor_use.rs"), extra_source.to_owned()));
+
+        let error = match validate_session_public_key_id_token_surface(&sources) {
+            Ok(()) => panic!("{label} bypassed the concrete target-use reservation"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("SessionPublicKeyId token inventory"),
+            "{label} failed for an unrelated reason: {error}"
+        );
+    }
 }
 
 #[test]
@@ -1144,19 +1993,31 @@ const _BYTE_CHAR: u8 = b'i';
 
 #[test]
 fn global_token_surface_rejects_noncanonical_type_uses() {
-    for (label, extra_source) in [
+    for (label, extra_source, expected_diagnostic) in [
         (
             "comment-separated inherent impl",
             "impl/**/ SessionPublicKeyId { pub fn mystery_power(&self) {} }",
+            "SessionPublicKeyId token inventory",
         ),
         (
             "generic trait impl",
             "trait Extra<T> {} impl<T> Extra<T> for crate::SessionPublicKeyId {}",
+            "local trait declarations are forbidden",
         ),
-        ("type alias", "type Handle = crate::SessionPublicKeyId;"),
+        (
+            "type alias",
+            "type Handle = crate::SessionPublicKeyId;",
+            "SessionPublicKeyId token inventory",
+        ),
         (
             "macro integration",
             "macro_rules! integrate { ($type:ty) => {} } integrate!(SessionPublicKeyId);",
+            "SessionPublicKeyId token inventory",
+        ),
+        (
+            "NFC-equivalent Kelvin-sign inherent impl",
+            "impl SessionPublicKeyId { pub fn kelvin_extra(&self) {} }",
+            "SessionPublicKeyId token inventory",
         ),
     ] {
         let mut sources = model_source_texts();
@@ -1167,7 +2028,7 @@ fn global_token_surface_rejects_noncanonical_type_uses() {
             Err(error) => error,
         };
         assert!(
-            error.contains("SessionPublicKeyId token inventory"),
+            error.contains(expected_diagnostic),
             "{label} failed for an unrelated reason: {error}"
         );
     }
@@ -1183,6 +2044,12 @@ fn exact_token_regions_reject_extra_attributes_items_and_macros() {
             "struct exact token sequence",
         ),
         (
+            "target-specific attribute on struct",
+            "#[derive(Clone, Copy, PartialEq, Eq, Hash)]\npub struct SessionPublicKeyId",
+            "#[cfg(target_pointer_width = \"64\")]\n#[derive(Clone, Copy, PartialEq, Eq, Hash)]\npub struct SessionPublicKeyId",
+            "struct exact token sequence",
+        ),
+        (
             "associated const",
             "        &self.0\n    }\n}\n\nimpl fmt::Debug for SessionPublicKeyId",
             "        &self.0\n    }\n\n    pub const ZERO: Self = Self([0; SESSION_PUBLIC_KEY_ID_LENGTH]);\n}\n\nimpl fmt::Debug for SessionPublicKeyId",
@@ -1193,6 +2060,18 @@ fn exact_token_regions_reject_extra_attributes_items_and_macros() {
             "        &self.0\n    }\n}\n\nimpl fmt::Debug for SessionPublicKeyId",
             "        &self.0\n    }\n\n    extra_surface!();\n}\n\nimpl fmt::Debug for SessionPublicKeyId",
             "inherent impl exact token sequence",
+        ),
+        (
+            "target-specific attribute on inherent impl",
+            "impl SessionPublicKeyId {",
+            "#[cfg(target_pointer_width = \"64\")]\nimpl SessionPublicKeyId {",
+            "inherent impl exact token sequence",
+        ),
+        (
+            "target-specific cfg_attr on Debug impl",
+            "impl fmt::Debug for SessionPublicKeyId {",
+            "#[cfg_attr(target_os = \"linux\", allow(dead_code))]\nimpl fmt::Debug for SessionPublicKeyId {",
+            "Debug impl exact token sequence",
         ),
     ] {
         let mut sources = model_source_texts();
@@ -1216,6 +2095,89 @@ fn exact_token_regions_reject_extra_attributes_items_and_macros() {
             "{label} failed for an unrelated reason: {error}"
         );
     }
+}
+
+#[test]
+fn canonical_items_must_be_direct_root_items_and_crate_inner_attrs_are_pinned() {
+    let mut nested_sources = model_source_texts();
+    let (_, nested_lib) = nested_sources
+        .iter_mut()
+        .find(|(path, _)| path.ends_with("src/lib.rs"))
+        .unwrap_or_else(|| panic!("model source inventory omitted src/lib.rs"));
+    let start = nested_lib
+        .find("#[derive(Clone, Copy, PartialEq, Eq, Hash)]\npub struct SessionPublicKeyId")
+        .unwrap_or_else(|| panic!("approved declaration marker is missing"));
+    let end = nested_lib[start..]
+        .find("/// A versioned protocol identifier.")
+        .map(|offset| start + offset)
+        .unwrap_or_else(|| panic!("approved declaration end marker is missing"));
+    let canonical_block = nested_lib[start..end].to_owned();
+    nested_lib.replace_range(
+        start..end,
+        &format!("mod nested {{\nuse super::*;\n{canonical_block}\n}}\n\n"),
+    );
+    let error = match validate_session_public_key_id_token_surface(&nested_sources) {
+        Ok(()) => panic!("canonical items nested in a module bypassed the root-item rule"),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("direct root production item"),
+        "nested canonical items failed for an unrelated reason: {error}"
+    );
+
+    let mut macro_sources = model_source_texts();
+    let (_, macro_lib) = macro_sources
+        .iter_mut()
+        .find(|(path, _)| path.ends_with("src/lib.rs"))
+        .unwrap_or_else(|| panic!("model source inventory omitted src/lib.rs"));
+    let start = macro_lib
+        .find("#[derive(Clone, Copy, PartialEq, Eq, Hash)]\npub struct SessionPublicKeyId")
+        .unwrap_or_else(|| panic!("approved declaration marker is missing"));
+    let end = macro_lib[start..]
+        .find("/// A versioned protocol identifier.")
+        .map(|offset| start + offset)
+        .unwrap_or_else(|| panic!("approved declaration end marker is missing"));
+    let canonical_block = macro_lib[start..end].to_owned();
+    macro_lib.replace_range(
+        start..end,
+        &format!(
+            "macro_rules! define_session_key {{ () => {{ {canonical_block} }}; }}\n\
+             define_session_key!();\n\n"
+        ),
+    );
+    let error = match validate_session_public_key_id_token_surface(&macro_sources) {
+        Ok(()) => panic!("canonical items in a macro token tree bypassed the root-item rule"),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("direct root production item")
+            || error.contains("SessionPublicKeyId token inventory"),
+        "macro-nested canonical items failed for an unrelated reason: {error}"
+    );
+
+    let mut cfg_sources = model_source_texts();
+    let (_, cfg_lib) = cfg_sources
+        .iter_mut()
+        .find(|(path, _)| path.ends_with("src/lib.rs"))
+        .unwrap_or_else(|| panic!("model source inventory omitted src/lib.rs"));
+    let mutated = cfg_lib.replacen(
+        "#![forbid(unsafe_code)]",
+        "#![forbid(unsafe_code)]\n#![cfg(target_pointer_width = \"64\")]",
+        1,
+    );
+    assert_ne!(
+        mutated, *cfg_lib,
+        "crate inner-attribute needle did not match"
+    );
+    *cfg_lib = mutated;
+    let error = match validate_session_public_key_id_token_surface(&cfg_sources) {
+        Ok(()) => panic!("an extra crate-wide cfg attribute bypassed the source proof"),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("crate inner attribute"),
+        "crate-wide cfg failed for an unrelated reason: {error}"
+    );
 }
 
 #[test]
