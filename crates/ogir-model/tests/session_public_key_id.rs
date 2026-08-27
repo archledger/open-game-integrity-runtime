@@ -124,8 +124,7 @@ const EXPECTED_SESSION_PUBLIC_KEY_ID_DEBUG_TOKENS: &[&str] = &[
     ":",
     "Formatter",
     "<",
-    "'",
-    "_",
+    "'_",
     ">",
     ")",
     "-",
@@ -338,12 +337,70 @@ fn char_literal_end(source: &str, quote: usize) -> Option<usize> {
     (bytes.get(cursor) == Some(&b'\'')).then_some(cursor + 1)
 }
 
+fn is_rust_pattern_white_space(character: char) -> bool {
+    matches!(
+        character,
+        '\u{0009}'
+            ..='\u{000d}'
+                | '\u{0020}'
+                | '\u{0085}'
+                | '\u{200e}'
+                | '\u{200f}'
+                | '\u{2028}'
+                | '\u{2029}'
+    )
+}
+
 fn is_identifier_start(character: char) -> bool {
-    character == '_' || character.is_ascii_alphabetic() || !character.is_ascii()
+    !is_rust_pattern_white_space(character)
+        && (character == '_' || character.is_ascii_alphabetic() || !character.is_ascii())
 }
 
 fn is_identifier_continue(character: char) -> bool {
-    character == '_' || character.is_ascii_alphanumeric() || !character.is_ascii()
+    !is_rust_pattern_white_space(character)
+        && (character == '_' || character.is_ascii_alphanumeric() || !character.is_ascii())
+}
+
+fn identifier_end(source: &str, start: usize) -> Option<usize> {
+    let character = source.get(start..)?.chars().next()?;
+    if !is_identifier_start(character) {
+        return None;
+    }
+
+    let mut cursor = start + character.len_utf8();
+    while cursor < source.len() {
+        let next = source[cursor..].chars().next()?;
+        if !is_identifier_continue(next) {
+            break;
+        }
+        cursor += next.len_utf8();
+    }
+    Some(cursor)
+}
+
+fn raw_identifier(source: &str, start: usize) -> Option<(usize, String)> {
+    if !source.as_bytes().get(start..)?.starts_with(b"r#") {
+        return None;
+    }
+    let identifier_start = start + 2;
+    let end = identifier_end(source, identifier_start)?;
+    Some((end, source[identifier_start..end].to_owned()))
+}
+
+fn lifetime_or_label(source: &str, quote: usize) -> Option<(usize, String)> {
+    let identifier_start = quote + 1;
+    if source
+        .as_bytes()
+        .get(identifier_start..)?
+        .starts_with(b"r#")
+    {
+        let raw_start = identifier_start + 2;
+        let end = identifier_end(source, raw_start)?;
+        return Some((end, source[quote..end].to_owned()));
+    }
+
+    let end = identifier_end(source, identifier_start)?;
+    Some((end, source[quote..end].to_owned()))
 }
 
 fn rust_tokens(source: &str) -> Vec<String> {
@@ -352,8 +409,12 @@ fn rust_tokens(source: &str) -> Vec<String> {
     let mut cursor = 0;
 
     while cursor < bytes.len() {
-        if bytes[cursor].is_ascii_whitespace() {
-            cursor += 1;
+        let character = source[cursor..]
+            .chars()
+            .next()
+            .unwrap_or_else(|| panic!("token cursor {cursor} is not on a character boundary"));
+        if is_rust_pattern_white_space(character) {
+            cursor += character.len_utf8();
             continue;
         }
         if bytes[cursor..].starts_with(b"//") {
@@ -402,29 +463,25 @@ fn rust_tokens(source: &str) -> Vec<String> {
         if bytes[cursor] == b'\'' {
             if let Some(end) = char_literal_end(source, cursor) {
                 cursor = end;
+            } else if let Some((end, lifetime)) = lifetime_or_label(source, cursor) {
+                tokens.push(lifetime);
+                cursor = end;
             } else {
                 tokens.push("'".to_owned());
                 cursor += 1;
             }
             continue;
         }
-        let character = source[cursor..]
-            .chars()
-            .next()
-            .unwrap_or_else(|| panic!("token cursor {cursor} is not on a character boundary"));
+        if let Some((end, identifier)) = raw_identifier(source, cursor) {
+            tokens.push(identifier);
+            cursor = end;
+            continue;
+        }
         if is_identifier_start(character) {
-            let start = cursor;
-            cursor += character.len_utf8();
-            while cursor < bytes.len() {
-                let next = source[cursor..].chars().next().unwrap_or_else(|| {
-                    panic!("identifier cursor {cursor} is not on a character boundary")
-                });
-                if !is_identifier_continue(next) {
-                    break;
-                }
-                cursor += next.len_utf8();
-            }
-            tokens.push(source[start..cursor].to_owned());
+            let end = identifier_end(source, cursor)
+                .unwrap_or_else(|| panic!("identifier at byte {cursor} has no end"));
+            tokens.push(source[cursor..end].to_owned());
+            cursor = end;
             continue;
         }
         if bytes[cursor].is_ascii_digit() {
@@ -444,6 +501,72 @@ fn rust_tokens(source: &str) -> Vec<String> {
     }
 
     tokens
+}
+
+fn matching_square_bracket(tokens: &[String], open: usize) -> Option<usize> {
+    if tokens.get(open).map(String::as_str) != Some("[") {
+        return None;
+    }
+
+    let mut depth = 0_usize;
+    for (index, token) in tokens.iter().enumerate().skip(open) {
+        match token.as_str() {
+            "[" => depth += 1,
+            "]" => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn validate_no_unscanned_item_sources(path: &Path, tokens: &[String]) -> Result<(), String> {
+    if tokens.iter().any(|token| token == "include") {
+        return Err(format!(
+            "unscanned item-source mechanism include identity is forbidden in {}",
+            path.display()
+        ));
+    }
+
+    let mut cursor = 0;
+    while cursor < tokens.len() {
+        if tokens[cursor] != "#" {
+            cursor += 1;
+            continue;
+        }
+
+        let mut open = cursor + 1;
+        if tokens.get(open).map(String::as_str) == Some("!") {
+            open += 1;
+        }
+        if tokens.get(open).map(String::as_str) != Some("[") {
+            cursor += 1;
+            continue;
+        }
+
+        let close = matching_square_bracket(tokens, open).ok_or_else(|| {
+            format!(
+                "unbalanced attribute while checking item-source mechanisms in {}",
+                path.display()
+            )
+        })?;
+        if tokens[open + 1..close]
+            .windows(2)
+            .any(|window| window[0] == "path" && window[1] == "=")
+        {
+            return Err(format!(
+                "unscanned item-source mechanism path meta-item is forbidden in {}",
+                path.display()
+            ));
+        }
+        cursor = close + 1;
+    }
+
+    Ok(())
 }
 
 fn token_sequence_count(tokens: &[String], sequence: &[&str]) -> usize {
@@ -568,6 +691,7 @@ fn validate_session_public_key_id_token_surface(
 
     for (path, source) in sources {
         let tokens = rust_tokens(source);
+        validate_no_unscanned_item_sources(path, &tokens)?;
         declaration_count += token_sequence_count(&tokens, &declaration);
         inherent_count += token_sequence_count(&tokens, &inherent_impl);
         debug_count += token_sequence_count(&tokens, &debug_impl);
@@ -763,6 +887,7 @@ fn rust_source_inventory_recurses_into_future_nested_modules() {
     tree.write("lib.rs");
     tree.write("flat.rs");
     tree.write("nested/deeper/module.rs");
+    tree.write("nested/deeper/extra.inc");
     tree.write("nested/ignored.txt");
 
     let relative_paths = rust_source_paths(tree.path())
@@ -810,13 +935,184 @@ impl/**/ SessionPublicKeyId {}
     assert_eq!(
         rust_tokens("fn borrow<'a>(value: &'a str) {}"),
         [
-            "fn", "borrow", "<", "'", "a", ">", "(", "value", ":", "&", "'", "a", "str", ")", "{",
-            "}",
+            "fn", "borrow", "<", "'a", ">", "(", "value", ":", "&", "'a", "str", ")", "{", "}",
         ]
     );
     assert_eq!(
         rust_tokens("struct SessionPublicKeyIdé;"),
         ["struct", "SessionPublicKeyIdé", ";"]
+    );
+}
+
+#[test]
+fn rust_lexer_uses_exact_rust_pattern_white_space() {
+    let pattern_white_space = [
+        '\u{0009}', '\u{000a}', '\u{000b}', '\u{000c}', '\u{000d}', '\u{0020}', '\u{0085}',
+        '\u{200e}', '\u{200f}', '\u{2028}', '\u{2029}',
+    ];
+
+    for separator in pattern_white_space {
+        assert_eq!(
+            rust_tokens(&format!("impl{separator}SessionPublicKeyId {{}}")),
+            ["impl", "SessionPublicKeyId", "{", "}"],
+            "Rust Pattern_White_Space U+{:04X} did not separate tokens",
+            u32::from(separator)
+        );
+    }
+
+    for non_separator in ['\u{0008}', '\u{000e}', '\u{00a0}', '\u{200b}', '\u{202a}'] {
+        assert_ne!(
+            rust_tokens(&format!("impl{non_separator}SessionPublicKeyId {{}}")),
+            ["impl", "SessionPublicKeyId", "{", "}"],
+            "non-Pattern_White_Space U+{:04X} separated tokens",
+            u32::from(non_separator)
+        );
+    }
+}
+
+#[test]
+fn rust_lexer_distinguishes_ordinary_and_raw_lifetimes_and_labels() {
+    assert_eq!(
+        rust_tokens("r#SessionPublicKeyId r#include r#path"),
+        ["SessionPublicKeyId", "include", "path"],
+        "raw identifiers must normalize before surface and source-injection checks"
+    );
+
+    let tokens = rust_tokens(
+        "fn borrow<'SessionPublicKeyId, 'r#SessionPublicKeyId>(\
+         first: &'SessionPublicKeyId str, second: &'r#SessionPublicKeyId str) {\
+         'SessionPublicKeyId: loop { break 'SessionPublicKeyId; }\
+         'r#SessionPublicKeyId: loop { break 'r#SessionPublicKeyId; } }",
+    );
+
+    assert_eq!(
+        tokens
+            .iter()
+            .filter(|token| token.as_str() == "SessionPublicKeyId")
+            .count(),
+        0,
+        "lifetime or label names must not count as type-identifier uses: {tokens:?}"
+    );
+    assert_eq!(
+        tokens
+            .iter()
+            .filter(|token| token.as_str() == "'SessionPublicKeyId")
+            .count(),
+        4
+    );
+    assert_eq!(
+        tokens
+            .iter()
+            .filter(|token| token.as_str() == "'r#SessionPublicKeyId")
+            .count(),
+        4
+    );
+}
+
+#[test]
+fn pattern_white_space_cannot_hide_session_key_surface() {
+    for (label, extra_source, expected_diagnostic) in [
+        (
+            "U+200E-separated inherent impl",
+            "impl\u{200e}SessionPublicKeyId { pub const fn hidden(&self) {} }",
+            "SessionPublicKeyId token inventory",
+        ),
+        (
+            "U+200E-separated extra derive",
+            "#[derive(PartialOrd, Ord)]\u{200e}\n\
+             #[derive(Clone, Copy, PartialEq, Eq, Hash)]\n\
+             pub struct SessionPublicKeyId([u8; SESSION_PUBLIC_KEY_ID_LENGTH]);",
+            "struct exact token sequence",
+        ),
+    ] {
+        let mut sources = model_source_texts();
+        if label.contains("derive") {
+            let (_, lib_source) = sources
+                .iter_mut()
+                .find(|(path, _)| path.ends_with("src/lib.rs"))
+                .unwrap_or_else(|| panic!("{label}: model source inventory omitted src/lib.rs"));
+            let canonical = "#[derive(Clone, Copy, PartialEq, Eq, Hash)]\n\
+                             pub struct SessionPublicKeyId([u8; SESSION_PUBLIC_KEY_ID_LENGTH]);";
+            let mutated = lib_source.replacen(canonical, extra_source, 1);
+            assert_ne!(
+                mutated, *lib_source,
+                "{label}: mutation needle did not match the current source"
+            );
+            *lib_source = mutated;
+        } else {
+            sources.push((PathBuf::from("extra.rs"), extra_source.to_owned()));
+        }
+
+        let error = match validate_session_public_key_id_token_surface(&sources) {
+            Ok(()) => panic!("{label} bypassed the source-token proof"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains(expected_diagnostic),
+            "{label} failed for an unrelated reason: {error}"
+        );
+    }
+}
+
+#[test]
+fn unscanned_item_source_mechanisms_fail_closed_across_token_forms() {
+    for (label, extra_source) in [
+        ("direct include", "include!(\"extra.inc\");"),
+        ("qualified include", "std::include!(\"extra.inc\");"),
+        ("raw include", "r#include!(\"extra.inc\");"),
+        (
+            "aliased include",
+            "use std::include as inject_items; inject_items!(\"extra.inc\");",
+        ),
+        ("direct path", "#[path = \"extra.inc\"] mod injected_path;"),
+        (
+            "raw path",
+            "#[r#path = \"extra.inc\"] mod injected_raw_path;",
+        ),
+        (
+            "nested cfg_attr path",
+            "#[cfg_attr(all(), path = \"extra.inc\")] mod injected_cfg_path;",
+        ),
+        (
+            "nested cfg_attr raw path",
+            "#[cfg_attr(all(), r#path = \"extra.inc\")] mod injected_cfg_raw_path;",
+        ),
+    ] {
+        let mut sources = model_source_texts();
+        sources.push((PathBuf::from("extra.rs"), extra_source.to_owned()));
+
+        let error = match validate_session_public_key_id_token_surface(&sources) {
+            Ok(()) => panic!("{label} bypassed the unscanned item-source guard"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("unscanned item-source mechanism"),
+            "{label} failed for an unrelated reason: {error}"
+        );
+    }
+}
+
+#[test]
+fn ordinary_modules_and_similar_tokens_do_not_trigger_item_source_guard() {
+    let mut sources = model_source_texts();
+    sources.push((
+        PathBuf::from("ordinary.rs"),
+        r####"
+mod ordinary;
+const _INCLUDE_TEXT: &str = "include!(\"extra.inc\")";
+const _PATH_TEXT: &str = "#[path = \"extra.inc\"]";
+const INCLUDE_EXTRA: &str = include_str!("ordinary.rs");
+const INCLUDE_BYTES_EXTRA: &[u8] = include_bytes!("ordinary.rs");
+fn ordinary_path() { let path = "ordinary"; let _ = path; }
+#[doc = "path = ordinary"]
+struct Ordinary;
+"####
+            .to_owned(),
+    ));
+
+    assert_eq!(
+        validate_session_public_key_id_token_surface(&sources),
+        Ok(())
     );
 }
 
