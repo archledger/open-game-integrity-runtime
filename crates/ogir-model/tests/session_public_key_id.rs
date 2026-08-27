@@ -14,6 +14,135 @@ const PRIVATE_SENTINEL: [u8; EXPECTED_SESSION_PUBLIC_KEY_ID_LENGTH] = [
     0x03, 0x17, 0x2b, 0x3f, 0x53, 0x67, 0x7b, 0x8f, 0xa3, 0xb7, 0xcb, 0xdf, 0xf3, 0x07, 0x1b, 0x2f,
     0x43, 0x57, 0x6b, 0x7f, 0x93, 0xa7, 0xbb, 0xcf, 0xe3, 0xf7, 0x0b, 0x1f, 0x33, 0x47, 0x5b, 0x6f,
 ];
+const EXPECTED_SESSION_PUBLIC_KEY_ID_STRUCT_TOKENS: &[&str] = &[
+    "#",
+    "[",
+    "derive",
+    "(",
+    "Clone",
+    ",",
+    "Copy",
+    ",",
+    "PartialEq",
+    ",",
+    "Eq",
+    ",",
+    "Hash",
+    ")",
+    "]",
+    "pub",
+    "struct",
+    "SessionPublicKeyId",
+    "(",
+    "[",
+    "u8",
+    ";",
+    "SESSION_PUBLIC_KEY_ID_LENGTH",
+    "]",
+    ")",
+    ";",
+];
+const EXPECTED_SESSION_PUBLIC_KEY_ID_IMPL_TOKENS: &[&str] = &[
+    "impl",
+    "SessionPublicKeyId",
+    "{",
+    "#",
+    "[",
+    "must_use",
+    "]",
+    "pub",
+    "const",
+    "fn",
+    "from_bytes",
+    "(",
+    "bytes",
+    ":",
+    "[",
+    "u8",
+    ";",
+    "SESSION_PUBLIC_KEY_ID_LENGTH",
+    "]",
+    ")",
+    "-",
+    ">",
+    "Self",
+    "{",
+    "Self",
+    "(",
+    "bytes",
+    ")",
+    "}",
+    "#",
+    "[",
+    "must_use",
+    "]",
+    "pub",
+    "const",
+    "fn",
+    "as_bytes",
+    "(",
+    "&",
+    "self",
+    ")",
+    "-",
+    ">",
+    "&",
+    "[",
+    "u8",
+    ";",
+    "SESSION_PUBLIC_KEY_ID_LENGTH",
+    "]",
+    "{",
+    "&",
+    "self",
+    ".",
+    "0",
+    "}",
+    "}",
+];
+const EXPECTED_SESSION_PUBLIC_KEY_ID_DEBUG_TOKENS: &[&str] = &[
+    "impl",
+    "fmt",
+    ":",
+    ":",
+    "Debug",
+    "for",
+    "SessionPublicKeyId",
+    "{",
+    "fn",
+    "fmt",
+    "(",
+    "&",
+    "self",
+    ",",
+    "formatter",
+    ":",
+    "&",
+    "mut",
+    "fmt",
+    ":",
+    ":",
+    "Formatter",
+    "<",
+    "'",
+    "_",
+    ">",
+    ")",
+    "-",
+    ">",
+    "fmt",
+    ":",
+    ":",
+    "Result",
+    "{",
+    "formatter",
+    ".",
+    "write_str",
+    "(",
+    ")",
+    "}",
+    "}",
+];
 
 static NEXT_SOURCE_TREE_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -209,6 +338,14 @@ fn char_literal_end(source: &str, quote: usize) -> Option<usize> {
     (bytes.get(cursor) == Some(&b'\'')).then_some(cursor + 1)
 }
 
+fn is_identifier_start(character: char) -> bool {
+    character == '_' || character.is_ascii_alphabetic() || !character.is_ascii()
+}
+
+fn is_identifier_continue(character: char) -> bool {
+    character == '_' || character.is_ascii_alphanumeric() || !character.is_ascii()
+}
+
 fn rust_tokens(source: &str) -> Vec<String> {
     let bytes = source.as_bytes();
     let mut tokens = Vec::new();
@@ -271,13 +408,21 @@ fn rust_tokens(source: &str) -> Vec<String> {
             }
             continue;
         }
-        if bytes[cursor].is_ascii_alphabetic() || bytes[cursor] == b'_' {
+        let character = source[cursor..]
+            .chars()
+            .next()
+            .unwrap_or_else(|| panic!("token cursor {cursor} is not on a character boundary"));
+        if is_identifier_start(character) {
             let start = cursor;
-            cursor += 1;
-            while cursor < bytes.len()
-                && (bytes[cursor].is_ascii_alphanumeric() || bytes[cursor] == b'_')
-            {
-                cursor += 1;
+            cursor += character.len_utf8();
+            while cursor < bytes.len() {
+                let next = source[cursor..].chars().next().unwrap_or_else(|| {
+                    panic!("identifier cursor {cursor} is not on a character boundary")
+                });
+                if !is_identifier_continue(next) {
+                    break;
+                }
+                cursor += next.len_utf8();
             }
             tokens.push(source[start..cursor].to_owned());
             continue;
@@ -294,12 +439,8 @@ fn rust_tokens(source: &str) -> Vec<String> {
             continue;
         }
 
-        let punctuation = source[cursor..]
-            .chars()
-            .next()
-            .unwrap_or_else(|| panic!("token cursor {cursor} is not on a character boundary"));
-        tokens.push(punctuation.to_string());
-        cursor += punctuation.len_utf8();
+        tokens.push(character.to_string());
+        cursor += character.len_utf8();
     }
 
     tokens
@@ -315,6 +456,93 @@ fn token_sequence_count(tokens: &[String], sequence: &[&str]) -> usize {
                 .all(|(actual, expected)| actual == expected)
         })
         .count()
+}
+
+fn token_sequence_start(tokens: &[String], sequence: &[&str]) -> Option<usize> {
+    tokens.windows(sequence.len()).position(|window| {
+        window
+            .iter()
+            .zip(sequence)
+            .all(|(actual, expected)| actual == expected)
+    })
+}
+
+fn attached_attributes_start(tokens: &[String], item_start: usize) -> usize {
+    let mut start = item_start;
+    while start > 0 && tokens[start - 1] == "]" {
+        let mut cursor = start - 1;
+        let mut depth = 1_usize;
+        while cursor > 0 && depth > 0 {
+            cursor -= 1;
+            match tokens[cursor].as_str() {
+                "]" => depth += 1,
+                "[" => depth -= 1,
+                _ => {}
+            }
+        }
+        if depth != 0 || cursor == 0 || tokens[cursor - 1] != "#" {
+            break;
+        }
+        start = cursor - 1;
+    }
+    start
+}
+
+fn semicolon_item_end(tokens: &[String], start: usize) -> Option<usize> {
+    let mut delimiters = Vec::new();
+    for (index, token) in tokens.iter().enumerate().skip(start) {
+        match token.as_str() {
+            "(" | "[" | "{" => delimiters.push(token.as_str()),
+            ")" => {
+                if delimiters.pop() != Some("(") {
+                    return None;
+                }
+            }
+            "]" => {
+                if delimiters.pop() != Some("[") {
+                    return None;
+                }
+            }
+            "}" => {
+                if delimiters.pop() != Some("{") {
+                    return None;
+                }
+            }
+            ";" if delimiters.is_empty() => return Some(index + 1),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn braced_item_end(tokens: &[String], start: usize) -> Option<usize> {
+    let brace = tokens
+        .iter()
+        .enumerate()
+        .skip(start)
+        .find_map(|(index, token)| (token == "{").then_some(index))?;
+    let mut depth = 0_usize;
+    for (index, token) in tokens.iter().enumerate().skip(brace) {
+        match token.as_str() {
+            "{" => depth += 1,
+            "}" => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(index + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn exact_tokens_match(actual: &[String], expected: &[&str]) -> bool {
+    actual.len() == expected.len()
+        && actual
+            .iter()
+            .zip(expected)
+            .all(|(actual, expected)| actual == expected)
 }
 
 fn validate_session_public_key_id_token_surface(
@@ -336,6 +564,7 @@ fn validate_session_public_key_id_token_surface(
     let mut declaration_count = 0;
     let mut inherent_count = 0;
     let mut debug_count = 0;
+    let mut primary_tokens = None;
 
     for (path, source) in sources {
         let tokens = rust_tokens(source);
@@ -354,12 +583,71 @@ fn validate_session_public_key_id_token_surface(
                 ));
             }
         }
+        if path.ends_with("src/lib.rs") && primary_tokens.replace(tokens).is_some() {
+            return Err("model source inventory contains multiple src/lib.rs files".to_owned());
+        }
     }
 
     if uses.len() != 3 || declaration_count != 1 || inherent_count != 1 || debug_count != 1 {
         return Err(format!(
             "SessionPublicKeyId token inventory must contain exactly one private declaration, one inherent impl, and one Debug impl; found {} use(s), {declaration_count} declaration(s), {inherent_count} inherent impl(s), and {debug_count} Debug impl(s): {uses:?}",
             uses.len()
+        ));
+    }
+
+    let primary_tokens = match primary_tokens {
+        Some(tokens) => tokens,
+        None => return Err("model source inventory omitted src/lib.rs".to_owned()),
+    };
+
+    let declaration_start = match token_sequence_start(&primary_tokens, &declaration) {
+        Some(start) => attached_attributes_start(&primary_tokens, start),
+        None => return Err("struct exact token sequence has no declaration anchor".to_owned()),
+    };
+    let declaration_end = match semicolon_item_end(&primary_tokens, declaration_start) {
+        Some(end) => end,
+        None => return Err("struct exact token sequence has no valid item end".to_owned()),
+    };
+    let actual_declaration = &primary_tokens[declaration_start..declaration_end];
+    if !exact_tokens_match(
+        actual_declaration,
+        EXPECTED_SESSION_PUBLIC_KEY_ID_STRUCT_TOKENS,
+    ) {
+        return Err(format!(
+            "struct exact token sequence mismatch; expected {:?}, found {actual_declaration:?}",
+            EXPECTED_SESSION_PUBLIC_KEY_ID_STRUCT_TOKENS
+        ));
+    }
+
+    let inherent_start = match token_sequence_start(&primary_tokens, &inherent_impl) {
+        Some(start) => start,
+        None => return Err("inherent impl exact token sequence has no anchor".to_owned()),
+    };
+    let inherent_end = match braced_item_end(&primary_tokens, inherent_start) {
+        Some(end) => end,
+        None => return Err("inherent impl exact token sequence has no valid item end".to_owned()),
+    };
+    let actual_inherent = &primary_tokens[inherent_start..inherent_end];
+    if !exact_tokens_match(actual_inherent, EXPECTED_SESSION_PUBLIC_KEY_ID_IMPL_TOKENS) {
+        return Err(format!(
+            "inherent impl exact token sequence mismatch; expected {:?}, found {actual_inherent:?}",
+            EXPECTED_SESSION_PUBLIC_KEY_ID_IMPL_TOKENS
+        ));
+    }
+
+    let debug_start = match token_sequence_start(&primary_tokens, &debug_impl) {
+        Some(start) => start,
+        None => return Err("Debug impl exact token sequence has no anchor".to_owned()),
+    };
+    let debug_end = match braced_item_end(&primary_tokens, debug_start) {
+        Some(end) => end,
+        None => return Err("Debug impl exact token sequence has no valid item end".to_owned()),
+    };
+    let actual_debug = &primary_tokens[debug_start..debug_end];
+    if !exact_tokens_match(actual_debug, EXPECTED_SESSION_PUBLIC_KEY_ID_DEBUG_TOKENS) {
+        return Err(format!(
+            "Debug impl exact token sequence mismatch; expected {:?}, found {actual_debug:?}",
+            EXPECTED_SESSION_PUBLIC_KEY_ID_DEBUG_TOKENS
         ));
     }
 
@@ -526,6 +814,10 @@ impl/**/ SessionPublicKeyId {}
             "}",
         ]
     );
+    assert_eq!(
+        rust_tokens("struct SessionPublicKeyIdé;"),
+        ["struct", "SessionPublicKeyIdé", ";"]
+    );
 }
 
 #[test]
@@ -580,6 +872,51 @@ fn global_token_surface_rejects_noncanonical_type_uses() {
         };
         assert!(
             error.contains("SessionPublicKeyId token inventory"),
+            "{label} failed for an unrelated reason: {error}"
+        );
+    }
+}
+
+#[test]
+fn exact_token_regions_reject_extra_attributes_items_and_macros() {
+    for (label, needle, replacement, expected_diagnostic) in [
+        (
+            "extra derive attribute",
+            "#[derive(Clone, Copy, PartialEq, Eq, Hash)]\npub struct SessionPublicKeyId",
+            "#[derive(PartialOrd, Ord)]\n#[derive(Clone, Copy, PartialEq, Eq, Hash)]\npub struct SessionPublicKeyId",
+            "struct exact token sequence",
+        ),
+        (
+            "associated const",
+            "        &self.0\n    }\n}\n\nimpl fmt::Debug for SessionPublicKeyId",
+            "        &self.0\n    }\n\n    pub const ZERO: Self = Self([0; SESSION_PUBLIC_KEY_ID_LENGTH]);\n}\n\nimpl fmt::Debug for SessionPublicKeyId",
+            "inherent impl exact token sequence",
+        ),
+        (
+            "surface-generating macro",
+            "        &self.0\n    }\n}\n\nimpl fmt::Debug for SessionPublicKeyId",
+            "        &self.0\n    }\n\n    extra_surface!();\n}\n\nimpl fmt::Debug for SessionPublicKeyId",
+            "inherent impl exact token sequence",
+        ),
+    ] {
+        let mut sources = model_source_texts();
+        let (_, lib_source) = sources
+            .iter_mut()
+            .find(|(path, _)| path.ends_with("src/lib.rs"))
+            .unwrap_or_else(|| panic!("{label}: model source inventory omitted src/lib.rs"));
+        let mutated = lib_source.replacen(needle, replacement, 1);
+        assert_ne!(
+            mutated, *lib_source,
+            "{label}: mutation needle did not match the current source"
+        );
+        *lib_source = mutated;
+
+        let error = match validate_session_public_key_id_token_surface(&sources) {
+            Ok(()) => panic!("{label} bypassed the exact token proof"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains(expected_diagnostic),
             "{label} failed for an unrelated reason: {error}"
         );
     }
