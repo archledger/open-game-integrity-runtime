@@ -183,6 +183,16 @@ impl TemporarySourceTree {
                     .all(|component| matches!(component, Component::Normal(_))),
             "temporary source path must contain only normal relative components"
         );
+        let root_metadata = fs::symlink_metadata(&self.root)
+            .unwrap_or_else(|error| panic!("cannot inspect temporary source root: {error}"));
+        assert!(
+            !root_metadata.file_type().is_symlink(),
+            "temporary source root must not be a symlink"
+        );
+        assert!(
+            root_metadata.is_dir(),
+            "temporary source root must be a directory"
+        );
 
         let (file_name, parent_components) = components
             .split_last()
@@ -237,13 +247,11 @@ impl Drop for TemporarySourceTree {
     }
 }
 
-fn canonical_descendant(root: &Path, candidate: &Path) -> PathBuf {
-    let canonical_root = fs::canonicalize(root)
-        .unwrap_or_else(|error| panic!("cannot canonicalize approved source root: {error}"));
+fn canonical_descendant(canonical_root: &Path, candidate: &Path) -> PathBuf {
     let canonical_candidate = fs::canonicalize(candidate)
         .unwrap_or_else(|error| panic!("cannot canonicalize source candidate: {error}"));
     assert!(
-        canonical_candidate.starts_with(&canonical_root),
+        canonical_candidate.starts_with(canonical_root),
         "canonical source candidate is outside the approved root"
     );
     canonical_candidate
@@ -1699,6 +1707,26 @@ fn temporary_source_tree_rejects_final_symlink_before_modifying_outside_file() {
         "final symlink was not rejected before write: rejected={}, outside_modified={}",
         rejection.is_err(),
         outside_contents != original
+    );
+}
+
+#[test]
+fn temporary_source_tree_rejects_replaced_root_symlink_before_writing_outside_tree() {
+    let tree = TemporarySourceTree::new();
+    let outside_tree = TemporarySourceTree::new();
+    fs::remove_dir(tree.path())
+        .unwrap_or_else(|error| panic!("cannot remove owned-root fixture: {error}"));
+    std::os::unix::fs::symlink(outside_tree.path(), tree.path())
+        .unwrap_or_else(|error| panic!("cannot create root-symlink fixture: {error}"));
+    let outside_file = outside_tree.path().join("new/file.rs");
+
+    let rejection = std::panic::catch_unwind(|| tree.write("new/file.rs"));
+
+    assert!(
+        rejection.is_err() && !outside_file.exists(),
+        "replaced root symlink was not rejected before outside write: rejected={}, outside_exists={}",
+        rejection.is_err(),
+        outside_file.exists()
     );
 }
 
