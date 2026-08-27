@@ -111,37 +111,259 @@ fn normalized_source(path: &Path) -> String {
         .replace("\r\n", "\n")
 }
 
-fn non_doc_source(source: &str) -> String {
-    source
-        .lines()
-        .filter(|line| {
-            let trimmed = line.trim_start();
-            !trimmed.starts_with("///") && !trimmed.starts_with("//!")
+fn model_source_texts() -> Vec<(PathBuf, String)> {
+    let source_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    rust_source_paths(&source_root)
+        .into_iter()
+        .map(|path| {
+            let source = normalized_source(&path);
+            (path, source)
         })
-        .collect::<Vec<_>>()
-        .join("\n")
+        .collect()
 }
 
-fn session_public_key_id_impl_headers(source: &str) -> Vec<String> {
-    let compact = source.split_whitespace().collect::<Vec<_>>().join(" ");
-    let mut headers = Vec::new();
-    let mut offset = 0;
+fn raw_string_end(source: &str, start: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut cursor = start;
+    if matches!(bytes.get(cursor), Some(b'b' | b'c')) {
+        cursor += 1;
+    }
+    if bytes.get(cursor) != Some(&b'r') {
+        return None;
+    }
+    cursor += 1;
 
-    while let Some(relative_start) = compact[offset..].find("impl ") {
-        let start = offset + relative_start;
-        let tail = &compact[start..];
-        let relative_end = tail
-            .find('{')
-            .unwrap_or_else(|| panic!("impl header has no body: {tail}"));
-        let end = start + relative_end + 1;
-        let header = &compact[start..end];
-        if header.contains("SessionPublicKeyId") {
-            headers.push(header.to_owned());
+    let mut hashes = 0;
+    while bytes.get(cursor) == Some(&b'#') {
+        hashes += 1;
+        cursor += 1;
+    }
+    if bytes.get(cursor) != Some(&b'"') {
+        return None;
+    }
+    cursor += 1;
+
+    while cursor < bytes.len() {
+        if bytes[cursor] == b'"' {
+            let hashes_end = cursor + 1 + hashes;
+            if hashes_end <= bytes.len()
+                && bytes[cursor + 1..hashes_end]
+                    .iter()
+                    .all(|byte| *byte == b'#')
+            {
+                return Some(hashes_end);
+            }
         }
-        offset = end;
+        cursor += 1;
     }
 
-    headers
+    panic!("unterminated raw string beginning at byte {start}")
+}
+
+fn quoted_string_end(source: &str, quote: usize) -> usize {
+    let bytes = source.as_bytes();
+    let mut cursor = quote + 1;
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'\\' => cursor += 2,
+            b'"' => return cursor + 1,
+            _ => cursor += 1,
+        }
+    }
+    panic!("unterminated string beginning at byte {quote}")
+}
+
+fn char_literal_end(source: &str, quote: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut cursor = quote + 1;
+    let first = *bytes.get(cursor)?;
+
+    if first == b'\\' {
+        cursor += 1;
+        match *bytes.get(cursor)? {
+            b'x' => cursor += 3,
+            b'u' => {
+                cursor += 1;
+                if bytes.get(cursor) != Some(&b'{') {
+                    return None;
+                }
+                cursor += 1;
+                while bytes.get(cursor) != Some(&b'}') {
+                    cursor += 1;
+                    if cursor >= bytes.len() {
+                        return None;
+                    }
+                }
+                cursor += 1;
+            }
+            _ => cursor += 1,
+        }
+    } else {
+        let character = source[cursor..].chars().next()?;
+        if matches!(character, '\'' | '\n' | '\r') {
+            return None;
+        }
+        cursor += character.len_utf8();
+    }
+
+    (bytes.get(cursor) == Some(&b'\'')).then_some(cursor + 1)
+}
+
+fn rust_tokens(source: &str) -> Vec<String> {
+    let bytes = source.as_bytes();
+    let mut tokens = Vec::new();
+    let mut cursor = 0;
+
+    while cursor < bytes.len() {
+        if bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+            continue;
+        }
+        if bytes[cursor..].starts_with(b"//") {
+            cursor += 2;
+            while cursor < bytes.len() && bytes[cursor] != b'\n' {
+                cursor += 1;
+            }
+            continue;
+        }
+        if bytes[cursor..].starts_with(b"/*") {
+            cursor += 2;
+            let mut depth = 1_usize;
+            while depth > 0 {
+                if cursor >= bytes.len() {
+                    panic!("unterminated block comment")
+                }
+                if bytes[cursor..].starts_with(b"/*") {
+                    depth += 1;
+                    cursor += 2;
+                } else if bytes[cursor..].starts_with(b"*/") {
+                    depth -= 1;
+                    cursor += 2;
+                } else {
+                    cursor += 1;
+                }
+            }
+            continue;
+        }
+        if let Some(end) = raw_string_end(source, cursor) {
+            cursor = end;
+            continue;
+        }
+        if bytes[cursor] == b'"' {
+            cursor = quoted_string_end(source, cursor);
+            continue;
+        }
+        if matches!(bytes.get(cursor), Some(b'b' | b'c')) && bytes.get(cursor + 1) == Some(&b'"') {
+            cursor = quoted_string_end(source, cursor + 1);
+            continue;
+        }
+        if bytes[cursor] == b'b' && bytes.get(cursor + 1) == Some(&b'\'') {
+            cursor = char_literal_end(source, cursor + 1)
+                .unwrap_or_else(|| panic!("invalid byte character at byte {cursor}"));
+            continue;
+        }
+        if bytes[cursor] == b'\'' {
+            if let Some(end) = char_literal_end(source, cursor) {
+                cursor = end;
+            } else {
+                tokens.push("'".to_owned());
+                cursor += 1;
+            }
+            continue;
+        }
+        if bytes[cursor].is_ascii_alphabetic() || bytes[cursor] == b'_' {
+            let start = cursor;
+            cursor += 1;
+            while cursor < bytes.len()
+                && (bytes[cursor].is_ascii_alphanumeric() || bytes[cursor] == b'_')
+            {
+                cursor += 1;
+            }
+            tokens.push(source[start..cursor].to_owned());
+            continue;
+        }
+        if bytes[cursor].is_ascii_digit() {
+            let start = cursor;
+            cursor += 1;
+            while cursor < bytes.len()
+                && (bytes[cursor].is_ascii_alphanumeric() || matches!(bytes[cursor], b'_' | b'.'))
+            {
+                cursor += 1;
+            }
+            tokens.push(source[start..cursor].to_owned());
+            continue;
+        }
+
+        let punctuation = source[cursor..]
+            .chars()
+            .next()
+            .unwrap_or_else(|| panic!("token cursor {cursor} is not on a character boundary"));
+        tokens.push(punctuation.to_string());
+        cursor += punctuation.len_utf8();
+    }
+
+    tokens
+}
+
+fn token_sequence_count(tokens: &[String], sequence: &[&str]) -> usize {
+    tokens
+        .windows(sequence.len())
+        .filter(|window| {
+            window
+                .iter()
+                .zip(sequence)
+                .all(|(actual, expected)| actual == expected)
+        })
+        .count()
+}
+
+fn validate_session_public_key_id_token_surface(
+    sources: &[(PathBuf, String)],
+) -> Result<(), String> {
+    let declaration = ["pub", "struct", "SessionPublicKeyId", "("];
+    let inherent_impl = ["impl", "SessionPublicKeyId", "{"];
+    let debug_impl = [
+        "impl",
+        "fmt",
+        ":",
+        ":",
+        "Debug",
+        "for",
+        "SessionPublicKeyId",
+        "{",
+    ];
+    let mut uses = Vec::new();
+    let mut declaration_count = 0;
+    let mut inherent_count = 0;
+    let mut debug_count = 0;
+
+    for (path, source) in sources {
+        let tokens = rust_tokens(source);
+        declaration_count += token_sequence_count(&tokens, &declaration);
+        inherent_count += token_sequence_count(&tokens, &inherent_impl);
+        debug_count += token_sequence_count(&tokens, &debug_impl);
+
+        for (index, token) in tokens.iter().enumerate() {
+            if token == "SessionPublicKeyId" {
+                let start = index.saturating_sub(5);
+                let end = usize::min(index + 6, tokens.len());
+                uses.push(format!(
+                    "{}: {}",
+                    path.display(),
+                    tokens[start..end].join(" ")
+                ));
+            }
+        }
+    }
+
+    if uses.len() != 3 || declaration_count != 1 || inherent_count != 1 || debug_count != 1 {
+        return Err(format!(
+            "SessionPublicKeyId token inventory must contain exactly one private declaration, one inherent impl, and one Debug impl; found {} use(s), {declaration_count} declaration(s), {inherent_count} inherent impl(s), and {debug_count} Debug impl(s): {uses:?}",
+            uses.len()
+        ));
+    }
+
+    Ok(())
 }
 
 fn value_hash(value: SessionPublicKeyId) -> u64 {
@@ -278,6 +500,92 @@ fn rust_source_inventory_recurses_into_future_nested_modules() {
 }
 
 #[test]
+fn rust_lexer_ignores_comments_and_literals_but_preserves_real_tokens() {
+    let source = r####"
+// impl SessionPublicKeyId { line comment decoy }
+/* outer impl SessionPublicKeyId {
+   /* nested impl SessionPublicKeyId { block comment decoy } */
+} */
+"impl SessionPublicKeyId { normal string decoy }"
+b"impl SessionPublicKeyId { byte string decoy }"
+r###"impl SessionPublicKeyId { raw string decoy }"###
+br##"impl SessionPublicKeyId { raw byte string decoy }"##
+'i'
+b'i'
+impl/**/ SessionPublicKeyId {}
+"####;
+
+    assert_eq!(
+        rust_tokens(source),
+        ["impl", "SessionPublicKeyId", "{", "}"]
+    );
+    assert_eq!(
+        rust_tokens("fn borrow<'a>(value: &'a str) {}"),
+        [
+            "fn", "borrow", "<", "'", "a", ">", "(", "value", ":", "&", "'", "a", "str", ")", "{",
+            "}",
+        ]
+    );
+}
+
+#[test]
+fn global_token_surface_ignores_comment_and_literal_decoys() {
+    let mut sources = model_source_texts();
+    sources.push((
+        PathBuf::from("decoys.rs"),
+        r####"
+// impl SessionPublicKeyId { line comment decoy }
+/*! outer block doc with impl SessionPublicKeyId {
+    /* nested block with impl SessionPublicKeyId { } */
+} */
+const _NORMAL: &str = "impl SessionPublicKeyId { normal string decoy }";
+const _RAW: &str = r###"impl SessionPublicKeyId { raw string decoy }"###;
+const _BYTES: &[u8] = b"impl SessionPublicKeyId { byte string decoy }";
+const _RAW_BYTES: &[u8] = br##"impl SessionPublicKeyId { raw bytes decoy }"##;
+const _CHAR: char = 'i';
+const _BYTE_CHAR: u8 = b'i';
+"####
+            .to_owned(),
+    ));
+
+    assert_eq!(
+        validate_session_public_key_id_token_surface(&sources),
+        Ok(())
+    );
+}
+
+#[test]
+fn global_token_surface_rejects_noncanonical_type_uses() {
+    for (label, extra_source) in [
+        (
+            "comment-separated inherent impl",
+            "impl/**/ SessionPublicKeyId { pub fn mystery_power(&self) {} }",
+        ),
+        (
+            "generic trait impl",
+            "trait Extra<T> {} impl<T> Extra<T> for crate::SessionPublicKeyId {}",
+        ),
+        ("type alias", "type Handle = crate::SessionPublicKeyId;"),
+        (
+            "macro integration",
+            "macro_rules! integrate { ($type:ty) => {} } integrate!(SessionPublicKeyId);",
+        ),
+    ] {
+        let mut sources = model_source_texts();
+        sources.push((PathBuf::from("extra.rs"), extra_source.to_owned()));
+
+        let error = match validate_session_public_key_id_token_surface(&sources) {
+            Ok(()) => panic!("{label} bypassed the global token proof"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("SessionPublicKeyId token inventory"),
+            "{label} failed for an unrelated reason: {error}"
+        );
+    }
+}
+
+#[test]
 fn public_api_surface_is_pinned_to_the_approved_non_authority_contract() {
     let source_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
     let source_paths = rust_source_paths(&source_root);
@@ -322,100 +630,26 @@ fn public_api_surface_is_pinned_to_the_approved_non_authority_contract() {
     assert!(
         production.contains("pub const fn as_bytes(&self) -> &[u8; SESSION_PUBLIC_KEY_ID_LENGTH]")
     );
-    assert_eq!(production.matches("pub const fn ").count(), 2);
-    assert_eq!(production.matches("pub fn ").count(), 0);
     assert!(production.contains("formatter.write_str(\"SessionPublicKeyId([REDACTED; 32])\")"));
 
-    for forbidden in [
-        "pub struct SessionPublicKeyId(pub ",
-        "pub type SessionPublicKeyId",
-        "impl Default for SessionPublicKeyId",
-        "impl fmt::Display for SessionPublicKeyId",
-        "impl From<",
-        "impl Into<",
-        "impl TryFrom<",
-        "impl TryInto<",
-        "impl std::convert::From<",
-        "impl std::convert::Into<",
-        "impl std::convert::TryFrom<",
-        "impl std::convert::TryInto<",
-        "impl AsRef<",
-        "impl std::str::FromStr",
-        "Serialize",
-        "Deserialize",
-        "as_bytes_mut",
-        "serialize",
-        "generate",
-        "is_valid",
-        "authorize",
-        "verified_attestation",
-        "validated_permit",
-        "proof_of_possession",
-        "admit",
-        "impl PartialOrd",
-        "impl Ord",
-        "Decision",
-        "ReasonCode",
-        "VerifiedAttestation",
-        "Permit",
-        "Proof",
-    ] {
-        assert!(
-            !production.contains(forbidden),
-            "forbidden public surface appeared: {forbidden:?}"
-        );
-    }
-
-    let all_production = source_paths
-        .iter()
-        .map(|path| non_doc_source(&normalized_source(path)))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let production_tokens = rust_tokens(&production);
+    let function_names = production_tokens
+        .windows(2)
+        .filter(|window| window[0] == "fn")
+        .map(|window| window[1].as_str())
+        .collect::<Vec<_>>();
     assert_eq!(
-        all_production
-            .matches("pub struct SessionPublicKeyId([u8; SESSION_PUBLIC_KEY_ID_LENGTH]);")
-            .count(),
-        1,
-        "the private SessionPublicKeyId declaration must appear exactly once across model sources"
+        function_names,
+        ["from_bytes", "as_bytes", "fmt"],
+        "the primary SessionPublicKeyId block must contain exactly its two methods and Debug::fmt"
     );
-    assert_eq!(
-        session_public_key_id_impl_headers(&all_production),
-        [
-            "impl SessionPublicKeyId {",
-            "impl fmt::Debug for SessionPublicKeyId {",
-        ],
-        "SessionPublicKeyId must have exactly one inherent impl and its one allowed Debug impl"
+    assert!(
+        !production_tokens.iter().any(|token| token == "!"),
+        "the primary SessionPublicKeyId block must not invoke a surface-generating macro"
     );
 
-    for line in all_production.lines() {
-        assert!(
-            !(line.contains("type ") && line.contains("SessionPublicKeyId")),
-            "SessionPublicKeyId type alias appeared outside documentation: {line:?}"
-        );
-        assert!(
-            !line.contains("SessionPublicKeyId as "),
-            "SessionPublicKeyId alias import appeared outside documentation: {line:?}"
-        );
-    }
-
-    let compact_all_production = all_production
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    for forbidden_method in [
-        "fn as_bytes_mut",
-        "fn serialize",
-        "fn generate",
-        "fn is_valid",
-        "fn authorize",
-        "fn verified_attestation",
-        "fn validated_permit",
-        "fn proof_of_possession",
-        "fn admit",
-    ] {
-        assert!(
-            !compact_all_production.contains(forbidden_method),
-            "forbidden global SessionPublicKeyId authority surface appeared: {forbidden_method:?}"
-        );
+    let sources = model_source_texts();
+    if let Err(error) = validate_session_public_key_id_token_surface(&sources) {
+        panic!("{error}");
     }
 }
