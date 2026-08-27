@@ -1093,8 +1093,17 @@ fn validate_crate_inner_attribute_surface(
     Ok(())
 }
 
-fn token_is_macro_definition_name(tokens: &[String], index: usize) -> bool {
-    index >= 2 && tokens[index - 2] == "macro_rules" && tokens[index - 1] == "!"
+fn token_is_macro_definition_name(
+    tokens: &[String],
+    index: usize,
+    macro_definition_ranges: &[(usize, usize)],
+) -> bool {
+    index >= 2
+        && tokens[index - 2] == "macro_rules"
+        && tokens[index - 1] == "!"
+        && macro_definition_ranges
+            .iter()
+            .any(|(open, _)| index + 1 == *open)
 }
 
 fn token_is_in_braced_item_header(
@@ -1251,7 +1260,7 @@ fn target_use_reservation_reason(
     // concrete macro use and every ambiguous unshadowed spelling stays
     // reserved: it might be the tuple constructor, a constructor pattern, or
     // a type/associated-item path even when inference hides the return type.
-    if token_is_macro_definition_name(tokens, index) {
+    if token_is_macro_definition_name(tokens, index, macro_definition_ranges) {
         return None;
     }
     if token_is_macro_definition_metavariable(tokens, index, macro_definition_ranges) {
@@ -2209,6 +2218,43 @@ stringify_definition_metavariables!(ordinary_target, ordinary_include, ordinary_
     assert_eq!(
         validate_session_public_key_id_token_surface(&sources),
         Ok(())
+    );
+}
+
+#[test]
+fn macro_definition_name_exemption_requires_a_genuine_definition_range() {
+    let mut genuine_sources = model_source_texts();
+    genuine_sources.push((
+        PathBuf::from("genuine_definition_names.rs"),
+        "macro_rules! SessionPublicKeyId { () => {}; } \
+         mod nested { macro_rules! SessionPublicKeyId { () => {}; } }"
+            .to_owned(),
+    ));
+    assert_eq!(
+        validate_session_public_key_id_token_surface(&genuine_sources),
+        Ok(())
+    );
+
+    let mut concrete_sources = model_source_texts();
+    concrete_sources.push((
+        PathBuf::from("concrete_nested_definition_tokens.rs"),
+        "macro_rules! outer { \
+             (macro_rules ! $name:ident { $($rest:tt)* }) => { \
+                 impl $name { fn added(&self) -> bool { true } } \
+             }; \
+         } \
+         outer!(macro_rules! SessionPublicKeyId {});"
+            .to_owned(),
+    ));
+    let error = match validate_session_public_key_id_token_surface(&concrete_sources) {
+        Ok(()) => panic!(
+            "a concrete macro invocation token sequence received the definition-name exemption"
+        ),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("SessionPublicKeyId token inventory"),
+        "concrete macro definition-like input failed for an unrelated reason: {error}"
     );
 }
 
