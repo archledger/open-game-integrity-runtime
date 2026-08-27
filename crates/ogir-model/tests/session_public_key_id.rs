@@ -175,25 +175,54 @@ impl TemporarySourceTree {
 
     fn write(&self, relative: &str) {
         let relative = Path::new(relative);
-        let mut components = relative.components().peekable();
+        let components = relative.components().collect::<Vec<_>>();
         assert!(
-            components.peek().is_some()
-                && components.all(|component| matches!(component, Component::Normal(_))),
+            !components.is_empty()
+                && components
+                    .iter()
+                    .all(|component| matches!(component, Component::Normal(_))),
             "temporary source path must contain only normal relative components"
         );
 
-        let path = self.root.join(relative);
-        let parent = path
-            .parent()
-            .unwrap_or_else(|| panic!("temporary source path has no parent"));
-        if let Err(error) = fs::create_dir_all(parent) {
-            panic!("cannot create temporary source parent: {error}");
-        }
-        let parent = canonical_descendant(&self.root, parent);
-        let file_name = path
-            .file_name()
+        let (file_name, parent_components) = components
+            .split_last()
             .unwrap_or_else(|| panic!("temporary source path has no file name"));
-        let path = parent.join(file_name);
+        let mut parent = self.root.clone();
+        for component in parent_components {
+            let candidate = parent.join(component.as_os_str());
+            match fs::symlink_metadata(&candidate) {
+                Ok(metadata) => {
+                    assert!(
+                        !metadata.file_type().is_symlink(),
+                        "temporary source parent must not be a symlink"
+                    );
+                    assert!(
+                        metadata.is_dir(),
+                        "temporary source parent must be a directory"
+                    );
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    if let Err(error) = fs::create_dir(&candidate) {
+                        panic!("cannot create temporary source parent: {error}");
+                    }
+                }
+                Err(error) => panic!("cannot inspect temporary source parent: {error}"),
+            }
+            parent = canonical_descendant(&self.root, &candidate);
+        }
+
+        let path = parent.join(file_name.as_os_str());
+        let path = match fs::symlink_metadata(&path) {
+            Ok(metadata) => {
+                assert!(
+                    !metadata.file_type().is_symlink(),
+                    "temporary source file must not be a symlink"
+                );
+                canonical_descendant(&self.root, &path)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => path,
+            Err(error) => panic!("cannot inspect temporary source file: {error}"),
+        };
         if let Err(error) = fs::write(&path, "// test fixture\n") {
             panic!("cannot write temporary source: {error}");
         }
@@ -1629,6 +1658,47 @@ fn temporary_source_tree_rejects_non_normal_write_before_access() {
         "non-normal source path was not rejected before write access: rejected={}, outside_exists={}",
         rejection.is_err(),
         escaped_path.exists()
+    );
+}
+
+#[test]
+fn temporary_source_tree_rejects_parent_symlink_before_creating_outside_directory() {
+    let tree = TemporarySourceTree::new();
+    let outside_tree = TemporarySourceTree::new();
+    std::os::unix::fs::symlink(outside_tree.path(), tree.path().join("nested"))
+        .unwrap_or_else(|error| panic!("cannot create parent-symlink fixture: {error}"));
+    let outside_directory = outside_tree.path().join("new");
+
+    let rejection = std::panic::catch_unwind(|| tree.write("nested/new/file.rs"));
+
+    assert!(
+        rejection.is_err() && !outside_directory.exists(),
+        "parent symlink was not rejected before directory creation: rejected={}, outside_exists={}",
+        rejection.is_err(),
+        outside_directory.exists()
+    );
+}
+
+#[test]
+fn temporary_source_tree_rejects_final_symlink_before_modifying_outside_file() {
+    let tree = TemporarySourceTree::new();
+    let outside_tree = TemporarySourceTree::new();
+    let outside_file = outside_tree.path().join("outside.rs");
+    let original = "outside sentinel\n";
+    fs::write(&outside_file, original)
+        .unwrap_or_else(|error| panic!("cannot create outside-file fixture: {error}"));
+    std::os::unix::fs::symlink(&outside_file, tree.path().join("file.rs"))
+        .unwrap_or_else(|error| panic!("cannot create final-symlink fixture: {error}"));
+
+    let rejection = std::panic::catch_unwind(|| tree.write("file.rs"));
+    let outside_contents = fs::read_to_string(&outside_file)
+        .unwrap_or_else(|error| panic!("cannot read outside-file fixture: {error}"));
+
+    assert!(
+        rejection.is_err() && outside_contents == original,
+        "final symlink was not rejected before write: rejected={}, outside_modified={}",
+        rejection.is_err(),
+        outside_contents != original
     );
 }
 
