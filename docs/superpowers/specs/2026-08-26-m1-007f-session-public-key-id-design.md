@@ -1,6 +1,6 @@
 # M1-007F session public-key lookup handle design
 
-- Status: Proposed; conversational design approved, written-spec review pending
+- Status: Approved for implementation planning
 - Date: 2026-08-26
 - Base: `9269b570ce83be01c1309469ff85fb79d4fa0c3d`
 - Issue source: `planning/issues/007f-session-public-key-id.md`
@@ -22,6 +22,13 @@ This issue closes a missing M1-007 identifier deliverable without consuming the
 roadmap's M1-011 identifier. The roadmap explicitly reserves task 11 for result
 and reason-code taxonomy; that later task can consume `SessionPublicKeyId` under
 the complete signed context.
+
+The decision owner reviewed exact written-spec commit
+`22e1181fd9fe6180cb162392655161971fb97f74` and explicitly approved it on
+2026-08-26 with no requested change. This status follow-up records that
+approval; it changes no approved design requirement and authorizes
+implementation planning only. It does not authorize runtime implementation,
+DCO certification, GitHub publication, or merge.
 
 ## 2. Context
 
