@@ -114,3 +114,85 @@ fn runtime_type_identity_is_distinct_from_nonce_and_session_id() {
     assert_ne!(identifier_type, TypeId::of::<Nonce>());
     assert_ne!(identifier_type, TypeId::of::<SessionId>());
 }
+
+#[test]
+fn public_api_surface_is_pinned_to_the_approved_non_authority_contract() {
+    let source = include_str!("../src/lib.rs").replace("\r\n", "\n");
+    assert_eq!(
+        source
+            .matches("pub const SESSION_PUBLIC_KEY_ID_LENGTH: usize = 32;")
+            .count(),
+        1
+    );
+
+    let start_marker = "#[derive(Clone, Copy, PartialEq, Eq, Hash)]\npub struct SessionPublicKeyId";
+    let start = match source.find(start_marker) {
+        Some(index) => index,
+        None => panic!("approved SessionPublicKeyId declaration is missing"),
+    };
+    let tail = &source[start..];
+    let end = match tail.find("/// A versioned protocol identifier.") {
+        Some(index) => index,
+        None => panic!("SessionPublicKeyId block has no stable end marker"),
+    };
+    let production = tail[..end]
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("///"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(production.contains(
+        "#[derive(Clone, Copy, PartialEq, Eq, Hash)]\n\
+         pub struct SessionPublicKeyId([u8; SESSION_PUBLIC_KEY_ID_LENGTH]);"
+    ));
+    assert!(
+        production
+            .contains("pub const fn from_bytes(bytes: [u8; SESSION_PUBLIC_KEY_ID_LENGTH]) -> Self")
+    );
+    assert!(
+        production.contains("pub const fn as_bytes(&self) -> &[u8; SESSION_PUBLIC_KEY_ID_LENGTH]")
+    );
+    assert_eq!(production.matches("pub const fn ").count(), 2);
+    assert_eq!(production.matches("pub fn ").count(), 0);
+    assert!(production.contains("formatter.write_str(\"SessionPublicKeyId([REDACTED; 32])\")"));
+
+    for forbidden in [
+        "pub struct SessionPublicKeyId(pub ",
+        "pub type SessionPublicKeyId",
+        "impl Default for SessionPublicKeyId",
+        "impl fmt::Display for SessionPublicKeyId",
+        "impl From<",
+        "impl Into<",
+        "impl TryFrom<",
+        "impl TryInto<",
+        "impl std::convert::From<",
+        "impl std::convert::Into<",
+        "impl std::convert::TryFrom<",
+        "impl std::convert::TryInto<",
+        "impl AsRef<",
+        "impl std::str::FromStr",
+        "Serialize",
+        "Deserialize",
+        "as_bytes_mut",
+        "serialize",
+        "generate",
+        "is_valid",
+        "authorize",
+        "verified_attestation",
+        "validated_permit",
+        "proof_of_possession",
+        "admit",
+        "impl PartialOrd",
+        "impl Ord",
+        "Decision",
+        "ReasonCode",
+        "VerifiedAttestation",
+        "Permit",
+        "Proof",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "forbidden public surface appeared: {forbidden:?}"
+        );
+    }
+}

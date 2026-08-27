@@ -302,6 +302,167 @@ impl fmt::Debug for Nonce {
 /// let identifier = SessionPublicKeyId::from_bytes(bytes);
 /// assert_eq!(identifier.as_bytes(), &bytes);
 /// ```
+///
+/// # Compile-time boundaries
+///
+/// The private tuple field cannot be constructed directly:
+///
+/// ```compile_fail
+/// use ogir_model::{SessionPublicKeyId, SESSION_PUBLIC_KEY_ID_LENGTH};
+///
+/// let _identifier = SessionPublicKeyId([0; SESSION_PUBLIC_KEY_ID_LENGTH]);
+/// ```
+///
+/// Arrays shorter than 32 bytes are rejected by the type system:
+///
+/// ```compile_fail
+/// use ogir_model::SessionPublicKeyId;
+///
+/// let _identifier = SessionPublicKeyId::from_bytes([0; 31]);
+/// ```
+///
+/// Arrays longer than 32 bytes are rejected independently:
+///
+/// ```compile_fail
+/// use ogir_model::SessionPublicKeyId;
+///
+/// let _identifier = SessionPublicKeyId::from_bytes([0; 33]);
+/// ```
+///
+/// A lookup handle cannot substitute for a challenge nonce:
+///
+/// ```compile_fail
+/// use ogir_model::{Nonce, SessionPublicKeyId, SESSION_PUBLIC_KEY_ID_LENGTH};
+///
+/// fn needs_nonce(_: Nonce) {}
+/// let identifier = SessionPublicKeyId::from_bytes([0; SESSION_PUBLIC_KEY_ID_LENGTH]);
+/// needs_nonce(identifier);
+/// ```
+///
+/// A lookup handle cannot substitute for a trusted local session identity:
+///
+/// ```compile_fail
+/// use ogir_model::{SessionId, SessionPublicKeyId, SESSION_PUBLIC_KEY_ID_LENGTH};
+///
+/// fn needs_session_id(_: SessionId) {}
+/// let identifier = SessionPublicKeyId::from_bytes([0; SESSION_PUBLIC_KEY_ID_LENGTH]);
+/// needs_session_id(identifier);
+/// ```
+///
+/// No `Default` value implies a generated or reserved handle:
+///
+/// ```compile_fail
+/// use ogir_model::SessionPublicKeyId;
+///
+/// let _identifier = SessionPublicKeyId::default();
+/// ```
+///
+/// `Display` is intentionally absent:
+///
+/// ```compile_fail
+/// use ogir_model::{SessionPublicKeyId, SESSION_PUBLIC_KEY_ID_LENGTH};
+///
+/// let identifier = SessionPublicKeyId::from_bytes([0; SESSION_PUBLIC_KEY_ID_LENGTH]);
+/// let _display = format!("{identifier}");
+/// ```
+///
+/// String parsing is intentionally absent:
+///
+/// ```compile_fail
+/// use ogir_model::SessionPublicKeyId;
+///
+/// let _identifier = "not-a-wire-format".parse::<SessionPublicKeyId>();
+/// ```
+///
+/// Raw arrays do not convert implicitly into the distinct type:
+///
+/// ```compile_fail
+/// use ogir_model::{SessionPublicKeyId, SESSION_PUBLIC_KEY_ID_LENGTH};
+///
+/// let _identifier: SessionPublicKeyId = [0; SESSION_PUBLIC_KEY_ID_LENGTH].into();
+/// ```
+///
+/// Generic byte-reference conversion is intentionally absent:
+///
+/// ```compile_fail
+/// use ogir_model::{SessionPublicKeyId, SESSION_PUBLIC_KEY_ID_LENGTH};
+///
+/// fn needs_implicit_bytes<T: AsRef<[u8; SESSION_PUBLIC_KEY_ID_LENGTH]>>(_: T) {}
+/// let identifier = SessionPublicKeyId::from_bytes([0; SESSION_PUBLIC_KEY_ID_LENGTH]);
+/// needs_implicit_bytes(identifier);
+/// ```
+///
+/// Callers cannot mutate the stored bytes through an accessor:
+///
+/// ```compile_fail
+/// use ogir_model::{SessionPublicKeyId, SESSION_PUBLIC_KEY_ID_LENGTH};
+///
+/// let mut identifier = SessionPublicKeyId::from_bytes([0; SESSION_PUBLIC_KEY_ID_LENGTH]);
+/// identifier.as_bytes_mut()[0] = 1;
+/// ```
+///
+/// Serialization remains outside this pure vocabulary slice:
+///
+/// ```compile_fail
+/// use ogir_model::{SessionPublicKeyId, SESSION_PUBLIC_KEY_ID_LENGTH};
+///
+/// let identifier = SessionPublicKeyId::from_bytes([0; SESSION_PUBLIC_KEY_ID_LENGTH]);
+/// let _wire = identifier.serialize();
+/// ```
+///
+/// The value has no authority-like validity predicate:
+///
+/// ```compile_fail
+/// use ogir_model::{SessionPublicKeyId, SESSION_PUBLIC_KEY_ID_LENGTH};
+///
+/// let identifier = SessionPublicKeyId::from_bytes([0; SESSION_PUBLIC_KEY_ID_LENGTH]);
+/// let _valid = identifier.is_valid();
+/// ```
+///
+/// A lookup handle cannot convert into a verifier decision:
+///
+/// ```compile_fail
+/// use ogir_model::{Decision, SessionPublicKeyId, SESSION_PUBLIC_KEY_ID_LENGTH};
+///
+/// let identifier = SessionPublicKeyId::from_bytes([0; SESSION_PUBLIC_KEY_ID_LENGTH]);
+/// let _decision: Decision = identifier.into();
+/// ```
+///
+/// The handle cannot fabricate a verified-attestation capability:
+///
+/// ```compile_fail
+/// use ogir_model::{SessionPublicKeyId, SESSION_PUBLIC_KEY_ID_LENGTH};
+///
+/// let identifier = SessionPublicKeyId::from_bytes([0; SESSION_PUBLIC_KEY_ID_LENGTH]);
+/// let _verified = identifier.verified_attestation();
+/// ```
+///
+/// The handle cannot fabricate a validated permit:
+///
+/// ```compile_fail
+/// use ogir_model::{SessionPublicKeyId, SESSION_PUBLIC_KEY_ID_LENGTH};
+///
+/// let identifier = SessionPublicKeyId::from_bytes([0; SESSION_PUBLIC_KEY_ID_LENGTH]);
+/// let _permit = identifier.validated_permit();
+/// ```
+///
+/// The handle cannot claim proof of possession:
+///
+/// ```compile_fail
+/// use ogir_model::{SessionPublicKeyId, SESSION_PUBLIC_KEY_ID_LENGTH};
+///
+/// let identifier = SessionPublicKeyId::from_bytes([0; SESSION_PUBLIC_KEY_ID_LENGTH]);
+/// let _proof = identifier.proof_of_possession();
+/// ```
+///
+/// The handle cannot authorize admission:
+///
+/// ```compile_fail
+/// use ogir_model::{SessionPublicKeyId, SESSION_PUBLIC_KEY_ID_LENGTH};
+///
+/// let identifier = SessionPublicKeyId::from_bytes([0; SESSION_PUBLIC_KEY_ID_LENGTH]);
+/// identifier.admit();
+/// ```
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SessionPublicKeyId([u8; SESSION_PUBLIC_KEY_ID_LENGTH]);
 
