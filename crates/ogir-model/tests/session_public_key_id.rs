@@ -4,7 +4,7 @@ use std::any::TypeId;
 use std::collections::{HashSet, hash_map::DefaultHasher};
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use ogir_model::{Nonce, SESSION_PUBLIC_KEY_ID_LENGTH, SessionId, SessionPublicKeyId};
@@ -155,17 +155,18 @@ struct TemporarySourceTree {
 impl TemporarySourceTree {
     fn new() -> Self {
         let sequence = NEXT_SOURCE_TREE_ID.fetch_add(1, Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!(
+        let cargo_temp_root = fs::canonicalize(env!("CARGO_TARGET_TMPDIR"))
+            .unwrap_or_else(|error| panic!("cannot canonicalize Cargo test directory: {error}"));
+        let root = cargo_temp_root.join(format!(
             "ogir-model-source-inventory-{}-{sequence}",
             std::process::id()
         ));
         if let Err(error) = fs::create_dir(&root) {
-            panic!(
-                "cannot create temporary source root {}: {error}",
-                root.display()
-            );
+            panic!("cannot create temporary source root: {error}");
         }
-        Self { root }
+        let mut tree = Self { root };
+        tree.root = canonical_descendant(&cargo_temp_root, &tree.root);
+        tree
     }
 
     fn path(&self) -> &Path {
@@ -173,17 +174,28 @@ impl TemporarySourceTree {
     }
 
     fn write(&self, relative: &str) {
+        let relative = Path::new(relative);
+        let mut components = relative.components().peekable();
+        assert!(
+            components.peek().is_some()
+                && components.all(|component| matches!(component, Component::Normal(_))),
+            "temporary source path must contain only normal relative components"
+        );
+
         let path = self.root.join(relative);
-        if let Some(parent) = path.parent()
-            && let Err(error) = fs::create_dir_all(parent)
-        {
-            panic!(
-                "cannot create temporary source parent {}: {error}",
-                parent.display()
-            );
+        let parent = path
+            .parent()
+            .unwrap_or_else(|| panic!("temporary source path has no parent"));
+        if let Err(error) = fs::create_dir_all(parent) {
+            panic!("cannot create temporary source parent: {error}");
         }
+        let parent = canonical_descendant(&self.root, parent);
+        let file_name = path
+            .file_name()
+            .unwrap_or_else(|| panic!("temporary source path has no file name"));
+        let path = parent.join(file_name);
         if let Err(error) = fs::write(&path, "// test fixture\n") {
-            panic!("cannot write temporary source {}: {error}", path.display());
+            panic!("cannot write temporary source: {error}");
         }
     }
 }
@@ -191,47 +203,56 @@ impl TemporarySourceTree {
 impl Drop for TemporarySourceTree {
     fn drop(&mut self) {
         if let Err(error) = fs::remove_dir_all(&self.root) {
-            panic!(
-                "cannot remove temporary source tree {}: {error}",
-                self.root.display()
-            );
+            panic!("cannot remove temporary source tree: {error}");
         }
     }
 }
 
+fn canonical_descendant(root: &Path, candidate: &Path) -> PathBuf {
+    let canonical_root = fs::canonicalize(root)
+        .unwrap_or_else(|error| panic!("cannot canonicalize approved source root: {error}"));
+    let canonical_candidate = fs::canonicalize(candidate)
+        .unwrap_or_else(|error| panic!("cannot canonicalize source candidate: {error}"));
+    assert!(
+        canonical_candidate.starts_with(&canonical_root),
+        "canonical source candidate is outside the approved root"
+    );
+    canonical_candidate
+}
+
 fn rust_source_paths(root: &Path) -> Vec<PathBuf> {
-    fn visit(directory: &Path, paths: &mut Vec<PathBuf>) {
-        let entries = fs::read_dir(directory)
-            .unwrap_or_else(|error| panic!("cannot read {}: {error}", directory.display()));
+    fn visit(root: &Path, directory: &Path, paths: &mut Vec<PathBuf>) {
+        let directory = canonical_descendant(root, directory);
+        let entries = fs::read_dir(&directory)
+            .unwrap_or_else(|error| panic!("cannot read approved source directory: {error}"));
 
         for entry in entries {
-            let entry = entry.unwrap_or_else(|error| {
-                panic!(
-                    "cannot read an entry below {}: {error}",
-                    directory.display()
-                )
-            });
-            let file_type = entry.file_type().unwrap_or_else(|error| {
-                panic!("cannot inspect {}: {error}", entry.path().display())
-            });
+            let entry =
+                entry.unwrap_or_else(|error| panic!("cannot read source directory entry: {error}"));
+            let file_type = entry
+                .file_type()
+                .unwrap_or_else(|error| panic!("cannot inspect source directory entry: {error}"));
             assert!(
                 !file_type.is_symlink(),
-                "model source inventory must not follow symlink: {}",
-                entry.path().display()
+                "model source inventory must not follow symlinks"
             );
+            let entry_path = entry.path();
 
             if file_type.is_dir() {
-                visit(&entry.path(), paths);
+                let directory = canonical_descendant(root, &entry_path);
+                visit(root, &directory, paths);
             } else if file_type.is_file()
-                && entry.path().extension().and_then(|value| value.to_str()) == Some("rs")
+                && entry_path.extension().and_then(|value| value.to_str()) == Some("rs")
             {
-                paths.push(entry.path());
+                paths.push(canonical_descendant(root, &entry_path));
             }
         }
     }
 
+    let root = fs::canonicalize(root)
+        .unwrap_or_else(|error| panic!("cannot canonicalize source inventory root: {error}"));
     let mut paths = Vec::new();
-    visit(root, &mut paths);
+    visit(&root, &root, &mut paths);
     paths.sort();
     paths
 }
@@ -1586,6 +1607,42 @@ fn rust_source_inventory_recurses_into_future_nested_modules() {
             PathBuf::from("lib.rs"),
             PathBuf::from("nested/deeper/module.rs"),
         ]
+    );
+}
+
+#[test]
+fn temporary_source_tree_rejects_non_normal_write_before_access() {
+    let tree = TemporarySourceTree::new();
+    let outside_tree = TemporarySourceTree::new();
+    let outside_name = outside_tree
+        .path()
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_else(|| panic!("temporary source tree name is not valid UTF-8"));
+    let escaped_path = outside_tree.path().join("escaped.rs");
+    let relative = format!("../{outside_name}/escaped.rs");
+
+    let rejection = std::panic::catch_unwind(|| tree.write(&relative));
+
+    assert!(
+        rejection.is_err() && !escaped_path.exists(),
+        "non-normal source path was not rejected before write access: rejected={}, outside_exists={}",
+        rejection.is_err(),
+        escaped_path.exists()
+    );
+}
+
+#[test]
+fn canonical_descendant_rejects_path_from_another_owned_tree() {
+    let tree = TemporarySourceTree::new();
+    let outside_tree = TemporarySourceTree::new();
+
+    let rejection =
+        std::panic::catch_unwind(|| canonical_descendant(tree.path(), outside_tree.path()));
+
+    assert!(
+        rejection.is_err(),
+        "canonical source path outside the approved root was accepted"
     );
 }
 
