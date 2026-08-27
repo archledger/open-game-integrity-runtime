@@ -163,9 +163,10 @@ At the recorded pre-DCO review checkpoint:
 
 - Exact base is merged `main` commit
   `0d541bbd5b6732f5f59f3cc9ad76a58ac9fcc65c`.
-- Issue-only commit `71d4d79ba3f9c42c1602e6231e5bb0a7453b6026`
-  and implementation commit `7f0a96f4af3128b811b69f259fb73952867df5d0`
-  are intentionally unsigned; review-remediation changes are not yet committed.
+- Issue-only `71d4d79ba3f9c42c1602e6231e5bb0a7453b6026`,
+  implementation `7f0a96f4af3128b811b69f259fb73952867df5d0`, and
+  review-remediation `6aaad5a2e1ce523c6888711143ee8d204e3d3079`
+  are intentionally unsigned; this evidence update is not yet committed.
 - RED: the 256-seed test failed compilation twice with E0308 because the old
   helper returned `[u8; 32]` instead of `Nonce`.
 - GREEN: `test_nonce` is the sole typed nonce constructor; four challenge
@@ -187,5 +188,8 @@ At the recorded pre-DCO review checkpoint:
   7 ADRs.
 - No dependency, production source, runtime behavior, crypto, RNG, workflow,
   alert configuration, dismissal, or attack scenario changes.
-- Fresh clean re-review, DCO certification/rewrite, publication, PR checks, and
-  final full-`main` CodeQL closure remain pending.
+- Fresh independent spec and standards re-review found no Critical, Important,
+  or Minor findings; both axes report every prior finding Addressed and
+  Readiness Yes.
+- DCO certification/rewrite, publication, PR checks, and final full-`main`
+  CodeQL closure remain pending.
