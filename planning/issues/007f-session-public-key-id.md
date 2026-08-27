@@ -210,32 +210,32 @@ existing Apache-2.0 `ogir-model` crate.
 
 ## Implementation evidence
 
-This evidence is time-bounded to `2026-08-27T06:19:49-04:00` and the exact
-unsigned pre-evidence tree named below. The separate Step 7 evidence commit
+This evidence is time-bounded to `2026-08-27T08:57:40-04:00` and the exact
+unsigned pre-evidence tree named below. The separate evidence-refresh commit
 follows that tree and changes only this issue source.
 
 ### Exact checkpoint and scope
 
 - Base: `9269b570ce83be01c1309469ff85fb79d4fa0c3d`.
 - Unsigned pre-evidence head:
-  `a63dbfbbb2b4931915c67ba107871fd757f38ad4`.
-- Pre-evidence tree: `8307b3f4f510e098dc0b859908461443a436c9bf`.
-- Base-to-head feature range: 12 commits, derived by
-  `git rev-list --count 9269b570ce83be01c1309469ff85fb79d4fa0c3d..a63dbfbbb2b4931915c67ba107871fd757f38ad4`.
-- All 12 feature commits were unsigned at this checkpoint: signature state
+  `64e4a5d36f73398a98ff4d6ca8cea4d6bea0ee7c`.
+- Pre-evidence tree: `22e28afb66a9c2cddfd4651066ba47a5ec5202ac`.
+- Base-to-head feature range: 15 commits, derived by
+  `git rev-list --count 9269b570ce83be01c1309469ff85fb79d4fa0c3d..64e4a5d36f73398a98ff4d6ca8cea4d6bea0ee7c`.
+- All 15 feature commits were unsigned at this checkpoint: signature state
   `N`, zero `gpgsig` headers, and zero `Signed-off-by` trailers. DCO
   certification/rewrite, publication, and human line-by-line review remain
   pending.
 
 ### Executed tests and gates
 
-- `./scripts/check.sh`: exit 0 with 115 runtime/integration tests, 80 doctests,
+- `./scripts/check.sh`: exit 0 with 118 runtime/integration tests, 80 doctests,
   14 unchanged attack scenarios, and 8 ADRs; repository metadata, ADR,
   bootstrap, DCO fixtures, scenario validation, rustfmt, workspace Clippy,
   rustdoc, and cargo-deny passed.
-- `cargo test --workspace --all-features --release`: exit 0 with 115
+- `cargo test --workspace --all-features --release`: exit 0 with 118
   runtime/integration tests and 80 doctests.
-- `cargo test -p ogir-model --test session_public_key_id`: 29/29 passed,
+- `cargo test -p ogir-model --test session_public_key_id`: 32/32 passed,
   including exactly 8,192 byte-position/value matrix cases.
 - `cargo test -p ogir-model --doc`: one positive doctest and 19 compile-fail
   doctests passed.
@@ -262,7 +262,18 @@ follows that tree and changes only this issue source.
   exponents, fractions, trailing-dot floats, `..`/`..=` ranges, field access,
   and non-ASCII identifier starts. Real Rust macro forms prove numeric ranges
   cannot hide target, `path`, `include`, or `trait` policy tokens.
-- Round 8 restarted all 19 mutations from zero at the exact pre-evidence head:
+- Definition-vs-invocation regressions reject concrete `$ SessionPublicKeyId`,
+  `$ include`, and `$ trait` macro input while preserving genuine
+  `$SessionPublicKeyId`, `$include`, and `$trait` matcher/transcriber uses
+  inside real `macro_rules!` definitions; the conservative `$path` source
+  policy remains reserved. Genuine root and nested-scope macro definitions
+  named `SessionPublicKeyId` remain harmless.
+- Controller-adjacent RED compiled and ran a stable Rust outer-macro form whose
+  concrete input was `macro_rules! SessionPublicKeyId {}` and which emitted an
+  inherent method. Transparent unsigned test-only commits `eb72c82` and
+  `64e4a5d` respectively bind metavariable and definition-name exemptions to
+  genuine macro-definition ranges; neither commit was amended or signed.
+- Round 9 restarted all 19 mutations from zero at the exact pre-evidence head:
   `L01 L02 F01 A01 A02 D01 D02 T01 T02 T03 T04 T05 T06 K01 K02 K03 K04
   K05 N01`. Result: 19/19 intended-cause kills, zero survivor, and zero
   wrong-cause row. Every probe used a detached worktree with a real non-symlink
@@ -275,11 +286,11 @@ follows that tree and changes only this issue source.
   `sdk`, `.github/workflows`, all Cargo manifests, `Cargo.lock`,
   `rust-toolchain.toml`, `docs/THREAT_MODEL.md`, `docs/PROTOCOL.md`, and the
   14-file scenario corpus remained byte-identical where required.
-- The fresh scoped model/API review reports the numeric finding Addressed, no
-  new Critical/Important breakage, equivalence Yes, and readiness Yes. The
-  independent privacy/standards review reports the same Addressed/no-new-
-  breakage/equivalence-Yes/readiness-Yes verdict. AI review is evidence for the
-  human reviewer, never human approval.
+- The latest scoped model/API and privacy/standards reviews each report the
+  task-review macro-context finding and adjacent definition-name finding
+  Addressed, no new Critical/Important breakage or out-of-scope observation,
+  equivalence Yes, and readiness Yes. AI review is evidence for the human
+  reviewer, never human approval.
 - This slice added no runtime threat control or attack scenario and no key
   generation, key resolution, proof of possession, result, permit, admission,
   cryptography, wire format, I/O, dependency, or `unsafe` behavior.
@@ -287,3 +298,6 @@ follows that tree and changes only this issue source.
   secure-erasure, or cheating-detection claim. The handle remains plain,
   non-authoritative lookup data whose future lifecycle and relying-party checks
   are deferred.
+- The evidence-refresh commit follows the named pre-evidence head. Fresh Task 5
+  task-scoped re-review, DCO certification/rewrite, publication, and human
+  line-by-line review remain pending.
