@@ -528,3 +528,28 @@ Do not use this document to expose embargoed vulnerability details before coordi
   attack scenario is added because the issue accepts no new runtime/protocol
   threat. Process-quality failures remain traceable through the issue, finite
   regression, independent review, and full-main scanner gate.
+
+## 2026-08-26 — Make shell evidence fail closed before printing success
+
+- **Context:** M1-007F live-issue body reconciliation after intermittent GitHub
+  API failures.
+- **Mistaken assumption:** A shell command that ran an equality `test` and then
+  printed `body_bytes_equal=yes` established equality without explicit
+  fail-fast shell options.
+- **Observed failure:** The final `printf` could execute and return success even
+  if an earlier equality `test` failed, so the printed success line was not
+  valid evidence. Review also found that the durable report omitted the live
+  body's SHA-256.
+- **Security or quality impact:** A live issue body could be reported as
+  byte-identical to the reviewed local source without a fail-closed comparison,
+  weakening provenance for the authorized implementation scope.
+- **Permanent regression test:** External byte-equality evidence uses
+  `set -euo pipefail`, computes and records both local and live SHA-256 values,
+  requires the equality check to pass, and only then emits success evidence.
+- **New prevention rule:** Never treat a command's final successful print as
+  proof that earlier checks succeeded. Make multi-step evidence commands fail
+  closed and preserve the compared values or hashes in the durable report.
+- **Documentation or agent-policy updates:** The corrected Task 1 report
+  explicitly invalidates the earlier apparent success and records the matching
+  fail-closed hashes; this ledger preserves the rule for future external-state
+  reconciliation.

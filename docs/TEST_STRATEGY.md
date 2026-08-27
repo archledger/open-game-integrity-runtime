@@ -10,6 +10,25 @@ freshness includes checked window construction and literal before/exact issue,
 last-second, exact/after expiry, excessive lifetime, and near-`u64::MAX`
 boundaries.
 
+#### Session public-key lookup handle
+
+M1-007F runs seven dedicated runtime/structural tests. Six value/privacy tests
+cover exact 32-byte round trip, all-zero/all-`0xff`/alternating/ascending/
+descending controls, copy/equality/inequality/hash behavior, a non-vacuous
+private diagnostic sentinel, and runtime type distinction from `Nonce` and
+`SessionId`. The finite matrix executes exactly 32 positions × 256 byte values
+= 8,192 cases without normalization or rejection. A CRLF-normalized structural
+test pins the exact private tuple field, derive list, two public methods, fixed
+Debug implementation, and absence of convenience or authority interfaces.
+
+One positive rustdoc and eighteen separate compile-fail doctests added by this
+slice cover direct field construction, 31/33-byte arrays, `Nonce`/`SessionId`
+substitution, `Default`, `Display`, string parsing, implicit array conversion,
+`AsRef`, mutable access, serialization, validity, decision conversion, and
+independent verified-attestation, validated-permit, proof-of-possession, and
+admission shortcuts.
+Each block imports a real public type before its one intended failure.
+
 Local-session tests exhaust the 12 reachable state configurations × 10 actions
 = 120 pairs against an independent literal model: exactly 26 succeed and 94
 reject without state mutation. The cleanup query returns a request for exactly
@@ -136,6 +155,25 @@ named assertion or compiler boundary. A nonzero command that executes zero
 tests, fails syntax, or stops on an unrelated compiler error is not mutation
 evidence. M1-010 adds no parser or fuzzer because it adds no untrusted byte or
 wire surface; the finite typed action domain is exhausted directly.
+
+The M1-007F minimum mutation contract is expanded to 19 isolated probes so no
+combined convenience-interface or diagnostic mutation can mask another:
+
+| Group | Probe IDs | Exact mutation | Required detector |
+| --- | --- | --- | --- |
+| Width (2) | `L01`, `L02` | Change the public length constant to 31 or 33. | Exact constant/runtime compile contract |
+| Field privacy (1) | `F01` | Make the tuple field public. | Structural test plus private-constructor doctest |
+| Byte preservation (2) | `A01`, `A02` | Normalize one constructor byte; return a promoted zero array from `as_bytes`. | Round-trip and 8,192-case matrix |
+| Diagnostics (2) | `D01`, `D02` | Format all raw bytes; append one real byte to the redaction marker. | Exact sentinel Debug tests and matrix |
+| Convenience interfaces (6) | `T01`-`T06` | Add `Default`, `Display`, `From<[u8; 32]>`, `FromStr`, `AsRef<[u8; 32]>`, or `serialize`. | Matching single-cause doctest plus structural test |
+| Authority shortcuts (5) | `K01`-`K05` | Add `is_valid`, `verified_attestation`, `validated_permit`, `proof_of_possession`, or `admit`. | Matching single-cause doctest plus structural test |
+| Type distinction (1) | `N01` | Replace the newtype with a `Nonce` alias while preserving compilation. | TypeId, Debug, and structural tests |
+
+Every probe runs from one frozen exact head in a disposable worktree, executes
+the named detector, and fails for the intended cause. Syntax failure, zero-test
+success, an unrelated compiler failure, or a grouped mutation is not evidence.
+No parser fuzz target or attack scenario is added because this type accepts one
+compile-time fixed array and implements no runtime threat control.
 
 ### Security-scanning regressions
 
