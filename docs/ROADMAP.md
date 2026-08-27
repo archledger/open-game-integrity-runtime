@@ -106,6 +106,11 @@ Define what OGIR means before deciding how bytes are encoded or which libraries 
 - `ReasonCode`
 - `RevocationTarget`
 
+`SessionPublicKeyId` is completed as M1-007F, a bounded identifier follow-up to
+task 7. It is a non-authoritative lookup handle only. Task 11 remains the
+separate result/reason-code taxonomy that later consumes a key reference under
+the complete signed context.
+
 ### State machines
 
 Local session:
@@ -169,6 +174,9 @@ require all seven gates.
 
 - invalid or empty identifiers rejected;
 - nonce length exact;
+- session public-key handle length/type distinction and all 8,192 byte-position/value cases are exact;
+- constructible/copyable key handles expose no result, permit, proof, or admission authority;
+- session public-key handle diagnostics fully redact the complete value;
 - expiry ordering enforced;
 - state transitions cannot skip security gates;
 - freely constructible `Decision`/`ReasonCode` reports grant no authority;
@@ -715,7 +723,7 @@ Starts in M0. Owns GitHub controls, dependency policy, releases, provenance, upd
 
 ## Domain and protocol
 
-7. Define identifier validation rules.
+7. Define identifier validation rules; use M1-007F for the missing fixed-width session public-key handle.
 8. Define challenge time/freshness model.
 9. Define local session state machine.
 10. Define verifier state machine.

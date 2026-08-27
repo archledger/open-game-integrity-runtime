@@ -277,6 +277,7 @@ Unicode normalization or confusable handling for protocol identifiers.
 | Challenge publisher, game, build, account, match, policy, and policy version | Publisher challenge | Untrusted until publisher authentication succeeds and every value matches independently supplied relying-party context. |
 | `ExpectedContext` identifiers and policy version | Publisher relying party or game server | Authoritative input for exact challenge binding; never copied from client evidence. |
 | `SessionId` | Trusted local portal/agent | Authoritative only for the local protected-session lifecycle; never accepted from the game process. |
+| `SessionPublicKeyId` | Future trusted local key owner; later verifier/result and relying-party consumers | A fixed representation-only lookup handle. The client is never authoritative; byte equality is not key commitment, proof, permit, or admission. |
 | `EvidenceProfile` | Selected attestation backend and evidence envelope | A typed profile claim; verifier support policy decides whether the profile is acceptable. |
 
 `PublisherId`, `GameId`, `BuildId`, `AccountScope`, `MatchId`, `PolicyId`, and
@@ -286,6 +287,22 @@ Unicode normalization or confusable handling for protocol identifiers.
 timing. Trusted verification/storage code obtains needed values only through
 explicit accessors; those accessors are functional interfaces, not approved
 diagnostic sinks.
+
+### Session public-key lookup handle
+
+`SessionPublicKeyId` is exactly 32 opaque bytes with private storage, explicit
+byte access, copy/equality/hash data semantics, and fixed redacted diagnostics.
+Every 32-byte value is representable. Its width selects no public-key encoding,
+hash, signature algorithm, RNG, or uniqueness guarantee.
+
+A future trusted local key owner creates one ephemeral key and handle for one
+publisher and protected `SessionId`, retains it only through renewal of that
+session, and invalidates/releases key state at terminal end. A new session or
+publisher receives a new key/handle. The verifier must appraise the actual key
+under the same complete attempt, and the relying party must resolve that key
+and validate fresh transcript-bound proof before admission. The bare handle
+cannot enforce lifetime and never substitutes for `VerifiedAttestation`, a
+signed result, permit, or proof-of-possession capability.
 
 ### Challenge freshness authority
 

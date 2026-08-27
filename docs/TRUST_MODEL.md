@@ -7,6 +7,7 @@
 - accepted local agent and platform measurements;
 - signed reference values and revocations;
 - its own matchmaking permit validation.
+- session-key binding only after verifier appraisal and relying-party validation of the actual key and fresh proof;
 
 ## Publisher does not trust
 
@@ -16,6 +17,7 @@
 - stale evidence;
 - software TPM evidence presented as hardware assurance;
 - a TPM signature over unverified caller-supplied claims.
+- a client-supplied or byte-equal `SessionPublicKeyId` as key commitment, proof of possession, permit, or admission authority;
 
 ## Player trusts
 
@@ -25,6 +27,7 @@
 - session-scoped controls;
 - explicit disclosure and fallback behavior;
 - separation between attestation failure and discipline.
+- a future session key and lookup handle are scoped to one publisher/protected session, with reuse only for that session's renewal;
 
 ## Player does not grant
 
@@ -42,3 +45,4 @@
 - one global device-tracking identity;
 - every release, policy, reference, and verifier key through one credential;
 - a hidden bypass or private policy weakening.
+- a stable session-key handle reused as a cross-session or cross-publisher correlation identity;
