@@ -717,8 +717,33 @@ fn token_is_inside_ranges(index: usize, ranges: &[(usize, usize)]) -> bool {
         .any(|(open, close)| *open < index && index < *close)
 }
 
-fn token_is_macro_metavariable(tokens: &[String], index: usize) -> bool {
-    index > 0 && tokens[index - 1] == "$"
+fn macro_definition_token_tree_ranges(
+    tokens: &[String],
+    macro_ranges: &[(usize, usize)],
+) -> Vec<(usize, usize)> {
+    macro_ranges
+        .iter()
+        .copied()
+        .filter(|(open, _)| {
+            let Some(definition_start) = open.checked_sub(3) else {
+                return false;
+            };
+            tokens.get(definition_start).map(String::as_str) == Some("macro_rules")
+                && tokens.get(definition_start + 1).map(String::as_str) == Some("!")
+                && tokens
+                    .get(definition_start + 2)
+                    .is_some_and(|name| name.chars().next().is_some_and(is_identifier_start))
+                && !token_is_inside_ranges(definition_start, macro_ranges)
+        })
+        .collect()
+}
+
+fn token_is_macro_definition_metavariable(
+    tokens: &[String],
+    index: usize,
+    macro_definition_ranges: &[(usize, usize)],
+) -> bool {
+    index > 0 && tokens[index - 1] == "$" && token_is_inside_ranges(index, macro_definition_ranges)
 }
 
 fn use_item_ranges(
@@ -839,12 +864,12 @@ fn validate_no_unscanned_item_sources(path: &Path, tokens: &[String]) -> Result<
         .map_err(|error| format!("cannot classify tokens in {}: {error}", path.display()))?;
     let macro_ranges = macro_token_tree_ranges(tokens)
         .map_err(|error| format!("cannot classify macros in {}: {error}", path.display()))?;
+    let macro_definition_ranges = macro_definition_token_tree_ranges(tokens, &macro_ranges);
     let use_ranges = use_item_ranges(tokens, &depths, &macro_ranges);
 
     for (index, token) in tokens.iter().enumerate() {
         if token == "trait"
-            && !(token_is_inside_ranges(index, &macro_ranges)
-                && token_is_macro_metavariable(tokens, index))
+            && !token_is_macro_definition_metavariable(tokens, index, &macro_definition_ranges)
         {
             return Err(format!(
                 "local trait declarations are forbidden by the exact SessionPublicKeyId surface policy in {}",
@@ -856,7 +881,11 @@ fn validate_no_unscanned_item_sources(path: &Path, tokens: &[String]) -> Result<
             && (tokens.get(index + 1).map(String::as_str) == Some("!")
                 || token_is_inside_or_at_ranges(index, &use_ranges)
                 || (token_is_inside_ranges(index, &macro_ranges)
-                    && !token_is_macro_metavariable(tokens, index)))
+                    && !token_is_macro_definition_metavariable(
+                        tokens,
+                        index,
+                        &macro_definition_ranges,
+                    )))
         {
             return Err(format!(
                 "unscanned item-source mechanism include macro/import identity is forbidden in {}",
@@ -1212,6 +1241,7 @@ fn target_use_reservation_reason(
     tokens: &[String],
     depths: &[usize],
     macro_ranges: &[(usize, usize)],
+    macro_definition_ranges: &[(usize, usize)],
     attribute_ranges: &[(usize, usize)],
     value_bindings: &[TargetValueBinding],
     index: usize,
@@ -1224,7 +1254,7 @@ fn target_use_reservation_reason(
     if token_is_macro_definition_name(tokens, index) {
         return None;
     }
-    if token_is_inside_ranges(index, macro_ranges) && token_is_macro_metavariable(tokens, index) {
+    if token_is_macro_definition_metavariable(tokens, index, macro_definition_ranges) {
         return None;
     }
     if token_is_inside_ranges(index, macro_ranges)
@@ -1334,6 +1364,7 @@ fn validate_session_public_key_id_token_surface(
             .map_err(|error| format!("cannot classify {}: {error}", path.display()))?;
         let macro_ranges = macro_token_tree_ranges(tokens)
             .map_err(|error| format!("cannot classify macros in {}: {error}", path.display()))?;
+        let macro_definition_ranges = macro_definition_token_tree_ranges(tokens, &macro_ranges);
         let attributes = attribute_ranges(tokens).map_err(|error| {
             format!("cannot classify attributes in {}: {error}", path.display())
         })?;
@@ -1349,6 +1380,7 @@ fn validate_session_public_key_id_token_surface(
                 tokens,
                 &depths,
                 &macro_ranges,
+                &macro_definition_ranges,
                 &attributes,
                 &value_bindings,
                 index,
@@ -2104,6 +2136,79 @@ harmless_metavariable!(ordinary_name);
     assert!(
         error.contains("SessionPublicKeyId token inventory"),
         "concrete macro spelling failed for an unrelated reason: {error}"
+    );
+}
+
+#[test]
+fn dollar_prefixed_macro_invocation_tokens_remain_concrete_source() {
+    let mut bypasses = Vec::new();
+    for (label, invocation, expected_diagnostic) in [
+        (
+            "target type",
+            "macro_rules! discard { ($dollar:tt $value:ty) => {}; } \
+             discard!($ SessionPublicKeyId);",
+            "SessionPublicKeyId token inventory",
+        ),
+        (
+            "include identity",
+            "macro_rules! discard { ($dollar:tt $value:ident) => {}; } \
+             discard!($ include);",
+            "unscanned item-source mechanism",
+        ),
+        (
+            "trait keyword",
+            "macro_rules! discard { ($dollar:tt $value:ident) => {}; } \
+             discard!($ trait);",
+            "local trait declarations are forbidden",
+        ),
+        (
+            "path spelling control",
+            "macro_rules! discard { ($dollar:tt $value:ident) => {}; } \
+             discard!($ path);",
+            "unscanned item-source mechanism",
+        ),
+    ] {
+        let mut sources = model_source_texts();
+        sources.push((PathBuf::from("dollar_invocation.rs"), invocation.to_owned()));
+
+        match validate_session_public_key_id_token_surface(&sources) {
+            Ok(()) => bypasses.push(label),
+            Err(error) => assert!(
+                error.contains(expected_diagnostic),
+                "{label} failed for an unrelated reason: {error}"
+            ),
+        }
+    }
+
+    assert!(
+        bypasses.is_empty(),
+        "dollar-prefixed concrete macro invocation tokens bypassed source policy: {bypasses:?}"
+    );
+}
+
+#[test]
+fn genuine_macro_definition_metavariables_remain_exempt() {
+    let mut sources = model_source_texts();
+    sources.push((
+        PathBuf::from("definition_metavariables.rs"),
+        r####"
+macro_rules! stringify_definition_metavariables {
+    ($SessionPublicKeyId:ident, $include:ident, $trait:ident) => {
+        const _: &str = concat!(
+            stringify!($SessionPublicKeyId),
+            stringify!($include),
+            stringify!($trait),
+        );
+    };
+}
+stringify_definition_metavariables!(ordinary_target, ordinary_include, ordinary_trait);
+"####
+            .to_owned(),
+    ));
+
+    assert_eq!(
+        validate_session_public_key_id_token_surface(&sources),
+        Ok(())
     );
 }
 
