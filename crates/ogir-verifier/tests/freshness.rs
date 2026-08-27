@@ -80,6 +80,9 @@ fn synthetic_nonce_fixtures_cover_every_seed_without_collision() {
         let second: Nonce = test_nonce(seed);
 
         assert_eq!(first, second);
+        for (index, byte) in first.as_bytes().iter().copied().enumerate() {
+            assert_eq!(byte, seed ^ index as u8);
+        }
         assert!(seen.insert(first));
     }
 
@@ -805,6 +808,7 @@ fn replay_debug_and_errors_redact_every_binding_and_timestamp() {
         format!("{guard:?}"),
         format!("{:?}", snapshot(&store)),
     ];
+    let nonce_bytes = format!("{:?}", challenge.nonce.as_bytes());
     let sensitive_values = [
         "private.publisher",
         "private.game",
@@ -815,7 +819,7 @@ fn replay_debug_and_errors_redact_every_binding_and_timestamp() {
         "424242",
         "4242400",
         "4242499",
-        "39, 39",
+        nonce_bytes.as_str(),
     ];
 
     for debug in debug_surfaces {

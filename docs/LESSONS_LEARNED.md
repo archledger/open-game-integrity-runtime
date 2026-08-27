@@ -525,4 +525,6 @@ Do not use this document to expose embargoed vulnerability details before coordi
   Never infer full-repository closure from one pull-request-selected result.
 - **Documentation or agent-policy updates:** Issue #14, the test strategy, and
   this ledger record the root cause and full-branch closure requirement; no
-  attack scenario is added because runtime and protocol behavior are unchanged.
+  attack scenario is added because the issue accepts no new runtime/protocol
+  threat. Process-quality failures remain traceable through the issue, finite
+  regression, independent review, and full-main scanner gate.

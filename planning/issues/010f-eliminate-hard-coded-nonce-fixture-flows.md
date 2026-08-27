@@ -1,5 +1,5 @@
 # M1-010F: Eliminate hard-coded nonce fixture flows
-<!-- labels: type: security-hardening,area: verifier,risk: trusted-computing-base,risk: cryptography,status: ready -->
+<!-- labels: type: security-hardening,area: verifier,risk: trusted-computing-base,risk: cryptography,status: needs-review -->
 <!-- milestone: M1 Domain Model -->
 
 ## Problem
@@ -22,12 +22,17 @@ repository's full-branch security signal.
 - Preserve invariant 8: identical publisher/nonce fixture values still model
   one exact replay identity, while different fixture values remain distinct.
 - Preserve invariant 37: fixture bytes remain absent from default diagnostics.
-- Enforce invariants 45 and 47: security automation remains actionable and a
-  confirmed defect receives a permanent regression.
+- Enforce invariant 47: the confirmed defect receives a permanent regression.
 - Enforce invariant 48: the AI-assisted correction receives the same source,
   test, review, and DCO scrutiny as production-facing work.
 
 ## Threats addressed
+
+None. This test-only correction changes no runtime trust boundary, attacker
+capability, protected asset, or protocol response. Existing freshness, privacy,
+and supply-chain threats retain their existing scenarios.
+
+## Quality failures addressed
 
 - A symptom-only patch removes one reported source while equivalent literal
   nonce flows remain behind the same helper boundary.
@@ -139,8 +144,9 @@ existing model types.
 - PR and post-merge CodeQL checks pass; alert #38 is fixed, no next equivalent
   main alert is open, and no alert is dismissed.
 - `docs/TEST_STRATEGY.md` and `docs/LESSONS_LEARNED.md` record the durable
-  prevention rule; an attack scenario is explicitly not added because no
-  runtime or protocol threat behavior changes.
+  prevention rule. No attack scenario is added because this issue accepts no
+  new runtime/protocol threat; the process-quality failures map to the finite
+  regression, issue, review evidence, and full-main scanner gate.
 
 ## Primary sources
 
@@ -150,3 +156,36 @@ existing model types.
   https://github.com/github/codeql/blob/codeql-cli/v2.26.3/rust/ql/lib/codeql/rust/security/HardcodedCryptographicValueExtensions.qll
 - GitHub code-scanning alert #38:
   https://github.com/archledger/open-game-integrity-runtime/security/code-scanning/38
+
+## Implementation evidence
+
+At the recorded pre-DCO review checkpoint:
+
+- Exact base is merged `main` commit
+  `0d541bbd5b6732f5f59f3cc9ad76a58ac9fcc65c`.
+- Issue-only commit `71d4d79ba3f9c42c1602e6231e5bb0a7453b6026`
+  and implementation commit `7f0a96f4af3128b811b69f259fb73952867df5d0`
+  are intentionally unsigned; review-remediation changes are not yet committed.
+- RED: the 256-seed test failed compilation twice with E0308 because the old
+  helper returned `[u8; 32]` instead of `Nonce`.
+- GREEN: `test_nonce` is the sole typed nonce constructor; four challenge
+  builders and two property helpers accept `nonce_seed`; 44 compiler-identified
+  raw-array callers were migrated; whole-repository scans find zero exact
+  `nonce` function-parameter sinks and zero raw repeated-array freshness calls.
+- The complete 256-seed domain is deterministic, pairwise distinct, and matches
+  the exact `seed ^ index` byte mapping. All 31 freshness tests preserve replay,
+  cross-publisher, capacity, rollback, GC, privacy, race, and arbitrary-history
+  behavior.
+- Initial independent review returned No: a stale privacy sentinel survived a
+  real-byte diagnostic mutant, quality failures were mislabeled as accepted
+  threats while waiving scenario traceability, invariant 45 was inapplicable,
+  and issue status remained ready. Each finding is corrected. The same mutant
+  now fails on the exact derived 32-byte representation.
+- `./scripts/check.sh`, `cargo test --workspace --all-features --release`,
+  rustfmt, Clippy, diff checks, and the production-source immutability check
+  pass. Totals are 86 runtime/integration tests, 61 doctests, 14 scenarios, and
+  7 ADRs.
+- No dependency, production source, runtime behavior, crypto, RNG, workflow,
+  alert configuration, dismissal, or attack scenario changes.
+- Fresh clean re-review, DCO certification/rewrite, publication, PR checks, and
+  final full-`main` CodeQL closure remain pending.
