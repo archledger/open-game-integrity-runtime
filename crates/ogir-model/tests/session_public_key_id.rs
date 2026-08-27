@@ -402,6 +402,86 @@ fn literal_suffix_end(source: &str, literal_end: usize) -> usize {
     identifier_end(source, literal_end).unwrap_or(literal_end)
 }
 
+fn numeric_digit_run_end(bytes: &[u8], start: usize, radix: u8) -> usize {
+    let mut cursor = start;
+    while let Some(byte) = bytes.get(cursor) {
+        let is_digit = match radix {
+            2 => matches!(byte, b'0' | b'1'),
+            8 => matches!(byte, b'0'..=b'7'),
+            10 => byte.is_ascii_digit(),
+            16 => byte.is_ascii_hexdigit(),
+            _ => panic!("unsupported numeric literal radix {radix}"),
+        };
+        if !is_digit && *byte != b'_' {
+            break;
+        }
+        cursor += 1;
+    }
+    cursor
+}
+
+fn decimal_exponent_end(bytes: &[u8], start: usize) -> Option<usize> {
+    if !matches!(bytes.get(start), Some(b'e' | b'E')) {
+        return None;
+    }
+
+    let mut cursor = start + 1;
+    if matches!(bytes.get(cursor), Some(b'+' | b'-')) {
+        cursor += 1;
+    }
+    let digits_start = cursor;
+    cursor = numeric_digit_run_end(bytes, cursor, 10);
+    bytes[digits_start..cursor]
+        .iter()
+        .any(u8::is_ascii_digit)
+        .then_some(cursor)
+}
+
+fn trailing_float_dot_is_literal(source: &str, dot: usize) -> bool {
+    source
+        .get(dot + 1..)
+        .and_then(|tail| tail.chars().next())
+        .is_none_or(|next| next != '.' && next != '_' && !is_identifier_start(next))
+}
+
+fn numeric_literal_end(source: &str, start: usize) -> usize {
+    let bytes = source.as_bytes();
+    let radix = if bytes.get(start) == Some(&b'0') {
+        match bytes.get(start + 1) {
+            Some(b'b') => Some(2),
+            Some(b'o') => Some(8),
+            Some(b'x') => Some(16),
+            _ => None,
+        }
+    } else {
+        None
+    };
+
+    if let Some(radix) = radix {
+        let digits_end = numeric_digit_run_end(bytes, start + 2, radix);
+        return literal_suffix_end(source, digits_end);
+    }
+
+    let mut cursor = numeric_digit_run_end(bytes, start, 10);
+    if bytes.get(cursor) == Some(&b'.') {
+        if bytes.get(cursor + 1).is_some_and(u8::is_ascii_digit) {
+            cursor = numeric_digit_run_end(bytes, cursor + 1, 10);
+            if let Some(exponent_end) = decimal_exponent_end(bytes, cursor) {
+                cursor = exponent_end;
+            }
+            return literal_suffix_end(source, cursor);
+        }
+        if trailing_float_dot_is_literal(source, cursor) {
+            return cursor + 1;
+        }
+    }
+
+    if let Some(exponent_end) = decimal_exponent_end(bytes, cursor) {
+        cursor = exponent_end;
+    }
+    literal_suffix_end(source, cursor)
+}
+
 fn raw_identifier(source: &str, start: usize) -> Option<(usize, String)> {
     if !source.as_bytes().get(start..)?.starts_with(b"r#") {
         return None;
@@ -523,21 +603,7 @@ fn rust_tokens(source: &str) -> Vec<String> {
         }
         if bytes[cursor].is_ascii_digit() {
             let start = cursor;
-            cursor += 1;
-            while cursor < bytes.len()
-                && (bytes[cursor].is_ascii_alphanumeric() || matches!(bytes[cursor], b'_' | b'.'))
-            {
-                cursor += 1;
-            }
-            if cursor < bytes.len()
-                && source[cursor..]
-                    .chars()
-                    .next()
-                    .is_some_and(is_identifier_start)
-            {
-                cursor = identifier_end(source, cursor)
-                    .unwrap_or_else(|| panic!("literal suffix at byte {cursor} has no end"));
-            }
+            cursor = numeric_literal_end(source, cursor);
             tokens.push(source[start..cursor].to_owned());
             continue;
         }
@@ -1577,6 +1643,118 @@ discard_literals!(
             .count(),
         0,
         "a literal suffix is part of the literal token, not a target identifier: {tokens:?}"
+    );
+}
+
+#[test]
+fn numeric_literal_tokens_stop_before_ranges_and_field_access() {
+    for (source, expected) in [
+        (
+            "1..SessionPublicKeyId",
+            vec!["1", ".", ".", "SessionPublicKeyId"],
+        ),
+        (
+            "1..=SessionPublicKeyId",
+            vec!["1", ".", ".", "=", "SessionPublicKeyId"],
+        ),
+        ("1.SessionPublicKeyId", vec!["1", ".", "SessionPublicKeyId"]),
+        ("1._field", vec!["1", ".", "_field"]),
+        (
+            "1.0..SessionPublicKeyId",
+            vec!["1.0", ".", ".", "SessionPublicKeyId"],
+        ),
+        (
+            "1.0e+2f64..SessionPublicKeyId",
+            vec!["1.0e+2f64", ".", ".", "SessionPublicKeyId"],
+        ),
+        (
+            "1e2..SessionPublicKeyId",
+            vec!["1e2", ".", ".", "SessionPublicKeyId"],
+        ),
+        (
+            "1E+2..SessionPublicKeyId",
+            vec!["1E+2", ".", ".", "SessionPublicKeyId"],
+        ),
+        (
+            "0b101..SessionPublicKeyId",
+            vec!["0b101", ".", ".", "SessionPublicKeyId"],
+        ),
+        (
+            "0o71..SessionPublicKeyId",
+            vec!["0o71", ".", ".", "SessionPublicKeyId"],
+        ),
+        (
+            "0x2f..SessionPublicKeyId",
+            vec!["0x2f", ".", ".", "SessionPublicKeyId"],
+        ),
+        (
+            "1u8..SessionPublicKeyId",
+            vec!["1u8", ".", ".", "SessionPublicKeyId"],
+        ),
+        (
+            "0x2fu8..SessionPublicKeyId",
+            vec!["0x2fu8", ".", ".", "SessionPublicKeyId"],
+        ),
+        ("1.éclair", vec!["1", ".", "éclair"]),
+    ] {
+        assert_eq!(rust_tokens(source), expected, "numeric boundary: {source}");
+    }
+}
+
+#[test]
+fn numeric_literal_tokens_preserve_suffixes_and_float_dot_rules() {
+    assert_eq!(
+        rust_tokens("1u8 1_0usize 0b101u8 0o71i16 0x2fu32 1.0f64 1e2f32 1E+2f64"),
+        [
+            "1u8", "1_0usize", "0b101u8", "0o71i16", "0x2fu32", "1.0f64", "1e2f32", "1E+2f64",
+        ]
+    );
+    assert_eq!(rust_tokens("2."), ["2."]);
+    assert_eq!(rust_tokens("2.f64"), ["2", ".", "f64"]);
+    assert_eq!(rust_tokens("2.0f64"), ["2.0f64"]);
+}
+
+#[test]
+fn numeric_range_macros_cannot_hide_source_policy_tokens() {
+    let mut bypasses = Vec::new();
+    for (label, extra_source, expected_diagnostic) in [
+        (
+            "target type",
+            "macro_rules! attach { ($number:literal .. $target:ty) => { impl $target { fn hidden(&self) {} } }; } attach!(1..SessionPublicKeyId);",
+            "SessionPublicKeyId token inventory",
+        ),
+        (
+            "path meta-item",
+            "macro_rules! load { ($number:literal .. $attribute:ident) => { #[$attribute = \"extra.inc\"] mod injected; }; } load!(1..path);",
+            "unscanned item-source mechanism",
+        ),
+        (
+            "include identity",
+            "macro_rules! load { ($number:literal .. $name:ident) => { $name!(\"extra.inc\"); }; } load!(1..include);",
+            "unscanned item-source mechanism",
+        ),
+        (
+            "trait keyword",
+            "macro_rules! declare { ($number:literal .. $keyword:ident) => { $keyword AdmitExt { fn admit(&self) {} } impl<T> AdmitExt for T {} }; } declare!(1..trait);",
+            "local trait declarations are forbidden",
+        ),
+    ] {
+        let mut sources = model_source_texts();
+        sources.push((
+            PathBuf::from("numeric_range_macro.rs"),
+            extra_source.to_owned(),
+        ));
+        match validate_session_public_key_id_token_surface(&sources) {
+            Ok(()) => bypasses.push(label),
+            Err(error) => assert!(
+                error.contains(expected_diagnostic),
+                "{label} failed for an unrelated reason: {error}"
+            ),
+        }
+    }
+    assert!(
+        bypasses.is_empty(),
+        "numeric-range macro inputs bypassed source policy: {bypasses:?}"
     );
 }
 
