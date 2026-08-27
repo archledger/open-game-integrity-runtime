@@ -501,3 +501,30 @@ Do not use this document to expose embargoed vulnerability details before coordi
 - **Documentation or agent-policy updates:** ADR-0007, architecture, threat
   model, roadmap wording, approved design/plan amendment, test strategy,
   mutation report, and this ledger record the expanded proof.
+
+## 2026-08-26 — Fix scanner dataflow boundaries, not one reported source
+
+- **Context:** M1-010 pull-request and post-merge CodeQL analysis of synthetic
+  freshness nonce fixtures.
+- **Mistaken assumption:** Replacing the one newly reported hard-coded nonce
+  literal meant the underlying test-fixture dataflow was closed.
+- **Observed failure:** The pull-request scan became green, but the subsequent
+  full `main` scan opened alert #38 on another existing literal passed through
+  the same raw `[u8; 32]` `nonce` helper boundary. Dozens of equivalent callers
+  remained.
+- **Security or quality impact:** A symptom-only fix let a critical-severity
+  scanner alert move to another line after merge and weakened confidence that a
+  green pull-request delta represented the complete repository state.
+- **Permanent regression test:** Freshness fixture builders accept only scalar
+  seeds, one helper derives the typed nonce behind the reviewed bitwise barrier,
+  and the complete 256-seed domain is deterministic and pairwise distinct. The
+  final evidence requires a full default-branch scan with no equivalent open
+  alert and no dismissal.
+- **New prevention rule:** Trace a security-scanner result to the shared
+  source/sink API, inventory every equivalent caller, and fix that boundary.
+  Never infer full-repository closure from one pull-request-selected result.
+- **Documentation or agent-policy updates:** Issue #14, the test strategy, and
+  this ledger record the root cause and full-branch closure requirement; no
+  attack scenario is added because the issue accepts no new runtime/protocol
+  threat. Process-quality failures remain traceable through the issue, finite
+  regression, independent review, and full-main scanner gate.

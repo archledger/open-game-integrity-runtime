@@ -137,6 +137,26 @@ tests, fails syntax, or stops on an unrelated compiler error is not mutation
 evidence. M1-010 adds no parser or fuzzer because it adds no untrusted byte or
 wire surface; the finite typed action domain is exhausted directly.
 
+### Security-scanning regressions
+
+Repository-owned security fixtures must remove a reported dataflow at its
+shared source/sink boundary rather than only editing the line selected by one
+pull-request scan. Freshness challenge builders accept scalar synthetic seeds,
+construct one typed nonce through the reviewed per-index transformation, and
+do not accept raw repeated-byte arrays. The complete 256-seed domain proves
+determinism and pairwise distinction while the existing replay tests preserve
+same-seed and different-seed behavior.
+
+A green pull-request delta scan is not closure for a confirmed shared fixture
+pattern. The correction must also pass the full default-branch CodeQL scan with
+no next equivalent alert, and no alert may be dismissed or excluded to obtain
+that result. This scanner-only fixture issue accepts no new runtime or protocol
+threat, so the threat-to-test rule does not require a new attack-lab scenario.
+Its process-quality failures instead map to the issue, finite regression, full
+repository checks, independent review, and this durable rule. Any scanner
+finding that does represent an accepted threat still requires the complete
+scenario/owner/profile/residual-risk mapping.
+
 ### Integration tests
 
 - mock attester -> verifier -> permit;

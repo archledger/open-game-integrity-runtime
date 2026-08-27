@@ -67,11 +67,29 @@ fn valid_window(issued_at: u64, expires_at: u64) -> ChallengeWindow {
     }
 }
 
-fn test_nonce(seed: u8) -> [u8; 32] {
-    std::array::from_fn(|index| seed ^ index as u8)
+fn test_nonce(seed: u8) -> Nonce {
+    Nonce::from_bytes(std::array::from_fn(|index| seed ^ index as u8))
 }
 
-fn challenge_for_publisher(publisher: &str, nonce: [u8; 32]) -> PublisherChallenge {
+#[test]
+fn synthetic_nonce_fixtures_cover_every_seed_without_collision() {
+    let mut seen = HashSet::new();
+
+    for seed in u8::MIN..=u8::MAX {
+        let first: Nonce = test_nonce(seed);
+        let second: Nonce = test_nonce(seed);
+
+        assert_eq!(first, second);
+        for (index, byte) in first.as_bytes().iter().copied().enumerate() {
+            assert_eq!(byte, seed ^ index as u8);
+        }
+        assert!(seen.insert(first));
+    }
+
+    assert_eq!(seen.len(), 256);
+}
+
+fn challenge_for_publisher(publisher: &str, nonce_seed: u8) -> PublisherChallenge {
     PublisherChallenge {
         version: ProtocolVersion { major: 0, minor: 1 },
         publisher_id: identifier::<PublisherId>(publisher),
@@ -81,30 +99,30 @@ fn challenge_for_publisher(publisher: &str, nonce: [u8; 32]) -> PublisherChallen
         match_id: identifier::<MatchId>("match-1"),
         policy_id: identifier::<PolicyId>("research-v0"),
         policy_version: PolicyVersion::new(1),
-        nonce: Nonce::from_bytes(nonce),
+        nonce: test_nonce(nonce_seed),
         window: valid_window(100, 200),
     }
 }
 
-fn challenge(game: &str, nonce: [u8; 32]) -> PublisherChallenge {
-    let mut challenge = challenge_for_publisher("example.publisher", nonce);
+fn challenge(game: &str, nonce_seed: u8) -> PublisherChallenge {
+    let mut challenge = challenge_for_publisher("example.publisher", nonce_seed);
     challenge.game_id = identifier::<GameId>(game);
     challenge
 }
 
-fn challenge_for_account(publisher: &str, account: &str, nonce: [u8; 32]) -> PublisherChallenge {
-    let mut challenge = challenge_for_publisher(publisher, nonce);
+fn challenge_for_account(publisher: &str, account: &str, nonce_seed: u8) -> PublisherChallenge {
+    let mut challenge = challenge_for_publisher(publisher, nonce_seed);
     challenge.account_scope = identifier::<AccountScope>(account);
     challenge
 }
 
 fn challenge_with_window(
     publisher: &str,
-    nonce: [u8; 32],
+    nonce_seed: u8,
     issued_at: u64,
     expires_at: u64,
 ) -> PublisherChallenge {
-    let mut challenge = challenge_for_publisher(publisher, nonce);
+    let mut challenge = challenge_for_publisher(publisher, nonce_seed);
     challenge.window = valid_window(issued_at, expires_at);
     challenge
 }
@@ -180,8 +198,8 @@ fn request(challenge: PublisherChallenge, now: u64) -> VerificationRequest {
 fn same_publisher_nonce_is_single_use_across_bindings() {
     let store = ReferenceReplayStore::available();
     let guard = FreshnessGuard::new(&store, limits());
-    let first = challenge("example.game", [7; 32]);
-    let changed = challenge("other.game", [7; 32]);
+    let first = challenge("example.game", 7);
+    let changed = challenge("other.game", 7);
 
     assert_eq!(guard.register(UnixTime::new(100), &first), Ok(()));
     assert_eq!(
@@ -199,8 +217,8 @@ fn same_publisher_nonce_is_single_use_across_bindings() {
 fn identical_nonce_bytes_are_independent_across_publishers() {
     let store = ReferenceReplayStore::available();
     let guard = FreshnessGuard::new(&store, limits());
-    let first = challenge_for_publisher("publisher-one", [9; 32]);
-    let second = challenge_for_publisher("publisher-two", [9; 32]);
+    let first = challenge_for_publisher("publisher-one", 9);
+    let second = challenge_for_publisher("publisher-two", 9);
 
     assert_eq!(guard.register(UnixTime::new(100), &first), Ok(()));
     assert_eq!(guard.register(UnixTime::new(100), &second), Ok(()));
@@ -213,7 +231,7 @@ fn unavailable_store_never_returns_freshness_capability() {
     let store = ReferenceReplayStore::unavailable();
     let guard = FreshnessGuard::new(&store, limits());
     assert_eq!(
-        guard.register(UnixTime::new(100), &challenge("example.game", [3; 32])),
+        guard.register(UnixTime::new(100), &challenge("example.game", 3)),
         Err(FreshnessError::StateUnavailable)
     );
 }
@@ -223,7 +241,7 @@ fn first_fresh_request_reaches_fail_closed_evidence_result() {
     for now in [100, 199] {
         let store = ReferenceReplayStore::available();
         let guard = FreshnessGuard::new(&store, limits());
-        let challenge = challenge("example.game", [1; 32]);
+        let challenge = challenge("example.game", 1);
         assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
         let outcome = verify_research_structure(&request(challenge, now), &guard);
         assert_eq!(outcome.decision(), Decision::Deny);
@@ -235,7 +253,7 @@ fn first_fresh_request_reaches_fail_closed_evidence_result() {
 fn research_scaffold_reports_without_authority() {
     let store = ReferenceReplayStore::available();
     let guard = FreshnessGuard::new(&store, limits());
-    let challenge = challenge("example.game", test_nonce(91));
+    let challenge = challenge("example.game", 91);
     assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
 
     let outcome = verify_research_structure(&request(challenge, 100), &guard);
@@ -247,10 +265,8 @@ fn research_scaffold_reports_without_authority() {
 fn verifier_maps_strict_window_failures_before_claim() {
     let not_yet_store = ReferenceReplayStore::available();
     let not_yet_guard = FreshnessGuard::new(&not_yet_store, limits());
-    let not_yet = verify_research_structure(
-        &request(challenge("example.game", [12; 32]), 99),
-        &not_yet_guard,
-    );
+    let not_yet =
+        verify_research_structure(&request(challenge("example.game", 12), 99), &not_yet_guard);
     assert_eq!(not_yet.decision(), Decision::Deny);
     assert_eq!(not_yet.reason(), ReasonCode::NotYetValid);
     assert_eq!(not_yet_store.high_water(), Ok(Some(UnixTime::new(99))));
@@ -258,7 +274,7 @@ fn verifier_maps_strict_window_failures_before_claim() {
     for now in [200, 201] {
         let store = ReferenceReplayStore::available();
         let guard = FreshnessGuard::new(&store, limits());
-        let challenge = challenge("example.game", [12; 32]);
+        let challenge = challenge("example.game", 12);
         assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
         let outcome = verify_research_structure(&request(challenge, now), &guard);
         assert_eq!(outcome.decision(), Decision::Deny);
@@ -271,7 +287,7 @@ fn verifier_maps_strict_window_failures_before_claim() {
 fn second_request_with_same_nonce_is_replay() {
     let store = ReferenceReplayStore::available();
     let guard = FreshnessGuard::new(&store, limits());
-    let challenge = challenge("example.game", [2; 32]);
+    let challenge = challenge("example.game", 2);
     assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
     let first = verify_research_structure(&request(challenge.clone(), 100), &guard);
     let second = verify_research_structure(&request(challenge, 100), &guard);
@@ -307,7 +323,7 @@ fn every_context_mismatch_rejects_without_consuming_registered_nonce() {
     for (nonce, mismatch) in (3_u8..).zip(mismatches) {
         let store = ReferenceReplayStore::available();
         let guard = FreshnessGuard::new(&store, limits());
-        let challenge = challenge("example.game", [nonce; 32]);
+        let challenge = challenge("example.game", nonce);
         assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
         assert_eq!(
             verify_research_structure(
@@ -327,7 +343,7 @@ fn every_context_mismatch_rejects_without_consuming_registered_nonce() {
 #[test]
 fn context_mismatch_observes_time_before_rejection_and_preserves_issued_state() {
     let store = ReferenceReplayStore::available();
-    let challenge = challenge("example.game", [45; 32]);
+    let challenge = challenge("example.game", 45);
     let guard = FreshnessGuard::new(&store, limits());
     assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
 
@@ -356,8 +372,7 @@ fn context_mismatch_observes_time_before_rejection_and_preserves_issued_state() 
 fn unavailable_state_returns_retry_without_allow() {
     let store = ReferenceReplayStore::unavailable();
     let guard = FreshnessGuard::new(&store, limits());
-    let outcome =
-        verify_research_structure(&request(challenge("example.game", [10; 32]), 100), &guard);
+    let outcome = verify_research_structure(&request(challenge("example.game", 10), 100), &guard);
     assert_eq!(outcome.decision(), Decision::Retry);
     assert_eq!(outcome.reason(), ReasonCode::AttestationUnavailable);
 }
@@ -366,7 +381,7 @@ fn unavailable_state_returns_retry_without_allow() {
 fn clock_rollback_returns_retry_without_allow() {
     let store = ReferenceReplayStore::available();
     let guard = FreshnessGuard::new(&store, limits());
-    let challenge = challenge("example.game", [11; 32]);
+    let challenge = challenge("example.game", 11);
     assert_eq!(guard.register(UnixTime::new(150), &challenge), Ok(()));
     let outcome = verify_research_structure(&request(challenge, 140), &guard);
     assert_eq!(outcome.decision(), Decision::Retry);
@@ -376,7 +391,7 @@ fn clock_rollback_returns_retry_without_allow() {
 #[test]
 fn rejected_future_time_persists_floor_across_restart() {
     let store = ReferenceReplayStore::available();
-    let challenge = challenge("example.game", [13; 32]);
+    let challenge = challenge("example.game", 13);
     let guard = FreshnessGuard::new(&store, limits());
     assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
 
@@ -395,7 +410,7 @@ fn rejected_future_time_persists_floor_across_restart() {
 #[test]
 fn clock_rollback_and_restart_never_reset_security_state() {
     let store = ReferenceReplayStore::available();
-    let challenge = challenge("example.game", [20; 32]);
+    let challenge = challenge("example.game", 20);
     let guard = FreshnessGuard::new(&store, limits());
     assert_eq!(guard.register(UnixTime::new(150), &challenge), Ok(()));
 
@@ -411,7 +426,7 @@ fn clock_rollback_and_restart_never_reset_security_state() {
 #[test]
 fn consumed_state_survives_snapshot_and_reopen() {
     let store = ReferenceReplayStore::available();
-    let challenge = challenge("example.game", [21; 32]);
+    let challenge = challenge("example.game", 21);
     let guard = FreshnessGuard::new(&store, limits());
     assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
     assert!(guard.claim(UnixTime::new(100), &challenge).is_ok());
@@ -431,7 +446,7 @@ fn issuance_rate_state_survives_snapshot_and_reopen() {
     let guard = FreshnessGuard::new(&store, rate_limits);
     for nonce in [42, 43] {
         assert_eq!(
-            guard.register(UnixTime::new(100), &challenge("example.game", [nonce; 32]),),
+            guard.register(UnixTime::new(100), &challenge("example.game", nonce),),
             Ok(())
         );
     }
@@ -439,14 +454,14 @@ fn issuance_rate_state_survives_snapshot_and_reopen() {
     let reopened = ReferenceReplayStore::reopen(snapshot(&store));
     let reopened_guard = FreshnessGuard::new(&reopened, rate_limits);
     assert_eq!(
-        reopened_guard.register(UnixTime::new(100), &challenge("example.game", [44; 32]),),
+        reopened_guard.register(UnixTime::new(100), &challenge("example.game", 44),),
         Err(FreshnessError::CapacityExceeded)
     );
 }
 
 #[test]
 fn missing_or_corrupt_snapshot_fails_closed() {
-    let challenge = challenge("example.game", [22; 32]);
+    let challenge = challenge("example.game", 22);
     for store in [
         ReferenceReplayStore::missing(),
         ReferenceReplayStore::corrupt(),
@@ -478,7 +493,7 @@ fn poisoned_replay_store_locks_fail_closed_without_allow() {
         .into_iter()
         .zip([availability_poisoned, state_poisoned])
     {
-        let challenge = challenge("example.game", [nonce; 32]);
+        let challenge = challenge("example.game", nonce);
         let guard = FreshnessGuard::new(&store, limits());
         assert_eq!(
             guard.register(UnixTime::new(100), &challenge),
@@ -507,9 +522,9 @@ fn poisoned_replay_store_locks_fail_closed_without_allow() {
 fn capacity_refuses_issuance_without_evicting_unexpired_records() {
     let store = ReferenceReplayStore::available();
     let guard = FreshnessGuard::new(&store, limits_for(2, 2, 1, 60, 2));
-    let first = challenge_for_publisher("publisher-one", [23; 32]);
-    let second = challenge_for_publisher("publisher-two", [24; 32]);
-    let rejected = challenge_for_publisher("publisher-three", [25; 32]);
+    let first = challenge_for_publisher("publisher-one", 23);
+    let second = challenge_for_publisher("publisher-two", 24);
+    let rejected = challenge_for_publisher("publisher-three", 25);
     let first_key = ReplayRegistration::from_challenge(&first).key().clone();
     let second_key = ReplayRegistration::from_challenge(&second).key().clone();
 
@@ -528,8 +543,8 @@ fn capacity_refuses_issuance_without_evicting_unexpired_records() {
 fn consumed_unexpired_records_still_count_toward_capacity() {
     let store = ReferenceReplayStore::available();
     let guard = FreshnessGuard::new(&store, limits_for(2, 2, 1, 60, 2));
-    let first = challenge("example.game", [45; 32]);
-    let second = challenge("example.game", [46; 32]);
+    let first = challenge("example.game", 45);
+    let second = challenge("example.game", 46);
     assert_eq!(guard.register(UnixTime::new(100), &first), Ok(()));
     assert!(guard.claim(UnixTime::new(100), &first).is_ok());
     assert_eq!(
@@ -542,8 +557,8 @@ fn consumed_unexpired_records_still_count_toward_capacity() {
 fn registration_reclaims_only_records_expired_at_the_time_floor() {
     let store = ReferenceReplayStore::available();
     let guard = FreshnessGuard::new(&store, limits_for(1, 1, 1, 60, 2));
-    let old = challenge("example.game", [47; 32]);
-    let replacement = challenge_with_window("example.publisher", [48; 32], 200, 300);
+    let old = challenge("example.game", 47);
+    let replacement = challenge_with_window("example.publisher", 48, 200, 300);
     let old_key = ReplayRegistration::from_challenge(&old).key().clone();
     let replacement_key = ReplayRegistration::from_challenge(&replacement)
         .key()
@@ -557,7 +572,7 @@ fn registration_reclaims_only_records_expired_at_the_time_floor() {
 
 #[test]
 fn registration_rechecks_active_lifetime_policy_atomically() {
-    let challenge = challenge("example.game", [41; 32]);
+    let challenge = challenge("example.game", 41);
 
     let exact_store = ReferenceReplayStore::available();
     let exact_guard = FreshnessGuard::new(&exact_store, limits_with_lifetime(100));
@@ -577,13 +592,13 @@ fn publisher_account_and_rate_limits_accept_limit_and_reject_one_over() {
     let publisher_store = ReferenceReplayStore::available();
     let publisher_guard = FreshnessGuard::new(&publisher_store, limits_for(4, 2, 2, 60, 4));
     for (account, nonce) in [("account-one", 26), ("account-two", 27)] {
-        let challenge = challenge_for_account("publisher-one", account, [nonce; 32]);
+        let challenge = challenge_for_account("publisher-one", account, nonce);
         assert_eq!(
             publisher_guard.register(UnixTime::new(100), &challenge),
             Ok(())
         );
     }
-    let publisher_over = challenge_for_account("publisher-one", "account-three", [28; 32]);
+    let publisher_over = challenge_for_account("publisher-one", "account-three", 28);
     assert_eq!(
         publisher_guard.register(UnixTime::new(100), &publisher_over),
         Err(FreshnessError::CapacityExceeded)
@@ -592,24 +607,24 @@ fn publisher_account_and_rate_limits_accept_limit_and_reject_one_over() {
     let account_store = ReferenceReplayStore::available();
     let account_guard = FreshnessGuard::new(&account_store, limits_for(4, 4, 2, 60, 4));
     for nonce in [29, 30] {
-        let challenge = challenge("example.game", [nonce; 32]);
+        let challenge = challenge("example.game", nonce);
         assert_eq!(
             account_guard.register(UnixTime::new(100), &challenge),
             Ok(())
         );
     }
     assert_eq!(
-        account_guard.register(UnixTime::new(100), &challenge("example.game", [31; 32]),),
+        account_guard.register(UnixTime::new(100), &challenge("example.game", 31),),
         Err(FreshnessError::CapacityExceeded)
     );
 
     let rate_store = ReferenceReplayStore::available();
     let rate_guard = FreshnessGuard::new(&rate_store, limits_for(4, 4, 4, 60, 2));
     for nonce in [32, 33] {
-        let challenge = challenge("example.game", [nonce; 32]);
+        let challenge = challenge("example.game", nonce);
         assert_eq!(rate_guard.register(UnixTime::new(100), &challenge), Ok(()));
     }
-    let after_limit = challenge("example.game", [34; 32]);
+    let after_limit = challenge("example.game", 34);
     assert_eq!(
         rate_guard.register(UnixTime::new(100), &after_limit),
         Err(FreshnessError::CapacityExceeded)
@@ -623,7 +638,7 @@ fn publisher_account_and_rate_limits_accept_limit_and_reject_one_over() {
 #[test]
 fn gc_keeps_record_before_expiry_and_removes_it_at_expiry() {
     let store = ReferenceReplayStore::available();
-    let challenge = challenge("example.game", [35; 32]);
+    let challenge = challenge("example.game", 35);
     let key = ReplayRegistration::from_challenge(&challenge).key().clone();
     let guard = FreshnessGuard::new(&store, limits());
     assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
@@ -641,7 +656,7 @@ fn gc_keeps_record_before_expiry_and_removes_it_at_expiry() {
 #[test]
 fn gc_bounds_rate_history_and_scrubs_every_durable_state_handle() {
     let store = ReferenceReplayStore::available();
-    let challenge = challenge("example.game", [46; 32]);
+    let challenge = challenge("example.game", 46);
     let key = ReplayRegistration::from_challenge(&challenge).key().clone();
     let guard = FreshnessGuard::new(&store, limits());
     assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
@@ -665,7 +680,7 @@ fn gc_bounds_rate_history_and_scrubs_every_durable_state_handle() {
 #[test]
 fn rollback_or_unavailable_state_blocks_gc() {
     let store = ReferenceReplayStore::available();
-    let challenge = challenge("example.game", [36; 32]);
+    let challenge = challenge("example.game", 36);
     let key = ReplayRegistration::from_challenge(&challenge).key().clone();
     let guard = FreshnessGuard::new(&store, limits());
     assert_eq!(guard.register(UnixTime::new(150), &challenge), Ok(()));
@@ -688,14 +703,14 @@ fn missing_registration_fails_closed() {
     let store = ReferenceReplayStore::available();
     let guard = FreshnessGuard::new(&store, limits());
     assert_eq!(
-        guard.claim(UnixTime::new(100), &challenge("example.game", [37; 32]),),
+        guard.claim(UnixTime::new(100), &challenge("example.game", 37),),
         Err(FreshnessError::StateUnavailable)
     );
 }
 
 #[test]
 fn replay_identity_ignores_every_context_and_window_field() {
-    let baseline = challenge("example.game", [38; 32]);
+    let baseline = challenge("example.game", 38);
     let mut variants = Vec::new();
 
     let mut changed = baseline.clone();
@@ -716,12 +731,7 @@ fn replay_identity_ignores_every_context_and_window_field() {
     let mut changed = baseline.clone();
     changed.policy_version = PolicyVersion::new(2);
     variants.push(changed);
-    variants.push(challenge_with_window(
-        "example.publisher",
-        [38; 32],
-        100,
-        199,
-    ));
+    variants.push(challenge_with_window("example.publisher", 38, 100, 199));
 
     for changed in variants {
         let store = ReferenceReplayStore::available();
@@ -741,7 +751,7 @@ fn replay_identity_ignores_every_context_and_window_field() {
 
 #[test]
 fn replay_debug_and_errors_redact_every_binding_and_timestamp() {
-    let mut challenge = challenge_for_publisher("private.publisher", [39; 32]);
+    let mut challenge = challenge_for_publisher("private.publisher", 39);
     challenge.game_id = identifier::<GameId>("private.game");
     challenge.build_id = identifier::<BuildId>("private-build-424242");
     challenge.account_scope = identifier::<AccountScope>("private-account-424242");
@@ -798,6 +808,7 @@ fn replay_debug_and_errors_redact_every_binding_and_timestamp() {
         format!("{guard:?}"),
         format!("{:?}", snapshot(&store)),
     ];
+    let nonce_bytes = format!("{:?}", challenge.nonce.as_bytes());
     let sensitive_values = [
         "private.publisher",
         "private.game",
@@ -808,7 +819,7 @@ fn replay_debug_and_errors_redact_every_binding_and_timestamp() {
         "424242",
         "4242400",
         "4242499",
-        "39, 39",
+        nonce_bytes.as_str(),
     ];
 
     for debug in debug_surfaces {
@@ -840,7 +851,7 @@ fn replay_debug_and_errors_redact_every_binding_and_timestamp() {
 #[test]
 fn two_concurrent_claims_produce_exactly_one_capability() {
     let store = ReferenceReplayStore::available();
-    let challenge = challenge("example.game", [40; 32]);
+    let challenge = challenge("example.game", 40);
     let guard = FreshnessGuard::new(&store, limits());
     assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
 
@@ -962,21 +973,21 @@ fn property_expiry(now: u64) -> u64 {
     }
 }
 
-fn property_challenge(publisher: u8, nonce: u8, now: u64) -> PublisherChallenge {
+fn property_challenge(publisher: u8, nonce_seed: u8, now: u64) -> PublisherChallenge {
     let publisher_id = format!("publisher-{publisher}");
     let account = format!("account-{publisher}");
     let expires_at = property_expiry(now);
-    let mut challenge = challenge_for_account(&publisher_id, &account, [nonce; 32]);
+    let mut challenge = challenge_for_account(&publisher_id, &account, nonce_seed);
     challenge.window = valid_window(now, expires_at);
     challenge
 }
 
 fn next_unused_property_key(
     publisher: u8,
-    nonce: u8,
+    nonce_seed: u8,
     ever_issued: &HashSet<OracleKey>,
 ) -> OracleKey {
-    let start = u16::from_be_bytes([publisher, nonce]);
+    let start = u16::from_be_bytes([publisher, nonce_seed]);
     let mut candidate = start;
     loop {
         let bytes = candidate.to_be_bytes();
