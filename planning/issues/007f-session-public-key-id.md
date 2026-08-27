@@ -1,5 +1,5 @@
 # M1-007F: Define the session public-key lookup handle
-<!-- labels: type: implementation,area: model,area: privacy,risk: trusted-computing-base,risk: privacy,status: ready -->
+<!-- labels: type: implementation,area: model,area: privacy,risk: trusted-computing-base,risk: privacy,status: needs-review -->
 <!-- milestone: M1 Domain Model -->
 
 ## Problem
@@ -207,3 +207,83 @@ existing Apache-2.0 `ogir-model` crate.
   https://doc.rust-lang.org/1.98.0/std/primitive.array.html
 - Rust API Guidelines, validated newtypes and static type distinctions:
   https://rust-lang.github.io/api-guidelines/
+
+## Implementation evidence
+
+This evidence is time-bounded to `2026-08-27T06:19:49-04:00` and the exact
+unsigned pre-evidence tree named below. The separate Step 7 evidence commit
+follows that tree and changes only this issue source.
+
+### Exact checkpoint and scope
+
+- Base: `9269b570ce83be01c1309469ff85fb79d4fa0c3d`.
+- Unsigned pre-evidence head:
+  `a63dbfbbb2b4931915c67ba107871fd757f38ad4`.
+- Pre-evidence tree: `8307b3f4f510e098dc0b859908461443a436c9bf`.
+- Base-to-head feature range: 12 commits, derived by
+  `git rev-list --count 9269b570ce83be01c1309469ff85fb79d4fa0c3d..a63dbfbbb2b4931915c67ba107871fd757f38ad4`.
+- All 12 feature commits were unsigned at this checkpoint: signature state
+  `N`, zero `gpgsig` headers, and zero `Signed-off-by` trailers. DCO
+  certification/rewrite, publication, and human line-by-line review remain
+  pending.
+
+### Executed tests and gates
+
+- `./scripts/check.sh`: exit 0 with 115 runtime/integration tests, 80 doctests,
+  14 unchanged attack scenarios, and 8 ADRs; repository metadata, ADR,
+  bootstrap, DCO fixtures, scenario validation, rustfmt, workspace Clippy,
+  rustdoc, and cargo-deny passed.
+- `cargo test --workspace --all-features --release`: exit 0 with 115
+  runtime/integration tests and 80 doctests.
+- `cargo test -p ogir-model --test session_public_key_id`: 29/29 passed,
+  including exactly 8,192 byte-position/value matrix cases.
+- `cargo test -p ogir-model --doc`: one positive doctest and 19 compile-fail
+  doctests passed.
+- The seven core runtime/structural tests were:
+  `exact_length_and_round_trip_are_fixed`,
+  `every_fixed_whole_value_control_is_representable`,
+  `copy_equality_inequality_and_hashing_are_plain_value_semantics`,
+  `all_8192_position_value_cases_round_trip_without_normalization`,
+  `debug_is_exact_fixed_redaction_for_real_sentinel_bytes`,
+  `runtime_type_identity_is_distinct_from_nonce_and_session_id`, and
+  `public_api_surface_is_pinned_to_the_approved_non_authority_contract`.
+
+### Boundary and mutation proof
+
+- Exact width is compiler-checked at 32 bytes; the private-field structural
+  assertion and private-constructor compile-fail proof reject public storage.
+- The 8,192-case matrix and fixed whole-value controls prove exact construction,
+  access, copy, equality, inequality, and hash value semantics without
+  normalization. Real sentinel bytes verify exact fixed `Debug` redaction.
+- Runtime `TypeId`, compile-fail blocks, recursive source inventory, and exact
+  token regions preserve distinction from `Nonce`/`SessionId` and the approved
+  derive, constructor, accessor, trait, conversion, and non-authority surface.
+- Numeric-literal grammar regressions cover decimal/base digits and suffixes,
+  exponents, fractions, trailing-dot floats, `..`/`..=` ranges, field access,
+  and non-ASCII identifier starts. Real Rust macro forms prove numeric ranges
+  cannot hide target, `path`, `include`, or `trait` policy tokens.
+- Round 8 restarted all 19 mutations from zero at the exact pre-evidence head:
+  `L01 L02 F01 A01 A02 D01 D02 T01 T02 T03 T04 T05 T06 K01 K02 K03 K04
+  K05 N01`. Result: 19/19 intended-cause kills, zero survivor, and zero
+  wrong-cause row. Every probe used a detached worktree with a real non-symlink
+  local Cargo target; every target, worktree, and temporary root was removed.
+
+### No-drift, review, and claim boundary
+
+- Fresh `git diff --exit-code` checks against the base prove
+  `crates/ogir-agent`, `crates/ogir-verifier`, `crates/ogir-protocol`, `apps`,
+  `sdk`, `.github/workflows`, all Cargo manifests, `Cargo.lock`,
+  `rust-toolchain.toml`, `docs/THREAT_MODEL.md`, `docs/PROTOCOL.md`, and the
+  14-file scenario corpus remained byte-identical where required.
+- The fresh scoped model/API review reports the numeric finding Addressed, no
+  new Critical/Important breakage, equivalence Yes, and readiness Yes. The
+  independent privacy/standards review reports the same Addressed/no-new-
+  breakage/equivalence-Yes/readiness-Yes verdict. AI review is evidence for the
+  human reviewer, never human approval.
+- This slice added no runtime threat control or attack scenario and no key
+  generation, key resolution, proof of possession, result, permit, admission,
+  cryptography, wire format, I/O, dependency, or `unsafe` behavior.
+- This evidence makes no production-readiness, identifier-uniqueness,
+  secure-erasure, or cheating-detection claim. The handle remains plain,
+  non-authoritative lookup data whose future lifecycle and relying-party checks
+  are deferred.
