@@ -195,13 +195,23 @@ fn policy_ready_flow_with_context_tag(
     flow
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ActionResult {
     NoResult,
-    Verified,
-    FailureResult {
+    Allow {
+        context: ExpectedContext,
         decision: Decision,
-        reason: ReasonCode,
+        reason: Option<ReasonCode>,
+        allowed: AllowedClass,
+        accepted_profile: EvidenceProfile,
+        session_public_key_id: SessionPublicKeyId,
+    },
+    Failure {
+        context: ExpectedContext,
+        decision: Decision,
+        reason: Option<ReasonCode>,
+        view_decision: Decision,
+        view_reason: ReasonCode,
     },
 }
 
@@ -973,12 +983,60 @@ fn model_report(state: ModelState) -> Option<(Decision, Option<ReasonCode>)> {
     }
 }
 
-fn model_action_result(state: ModelState) -> ActionResult {
-    match model_report(state) {
-        Some((Decision::Allow | Decision::AllowRestricted, None)) => ActionResult::Verified,
-        Some((decision, Some(reason))) => ActionResult::FailureResult { decision, reason },
-        Some((decision, None)) => panic!("failure model omitted its reason: {decision:?}"),
-        None => ActionResult::NoResult,
+fn expected_action_result(
+    before: &FlowSnapshot,
+    next: ModelState,
+    action: TestAction,
+) -> ActionResult {
+    match next {
+        ModelState::EvidenceReceived
+        | ModelState::ChallengeAuthenticated
+        | ModelState::FreshnessChecked
+        | ModelState::IdentityChecked
+        | ModelState::EvidenceAppraised
+        | ModelState::SessionBound
+        | ModelState::RevocationChecked
+        | ModelState::PolicySatisfied(_) => ActionResult::NoResult,
+        ModelState::Verified(allowed) => {
+            assert_eq!(action, TestAction::Complete);
+            ActionResult::Allow {
+                context: before
+                    .context
+                    .clone()
+                    .unwrap_or_else(|| panic!("completion lacked pre-action context")),
+                decision: match allowed {
+                    AllowedClass::Full => Decision::Allow,
+                    AllowedClass::Restricted => Decision::AllowRestricted,
+                },
+                reason: None,
+                allowed,
+                accepted_profile: before
+                    .accepted_profile
+                    .clone()
+                    .unwrap_or_else(|| panic!("completion lacked pre-action profile")),
+                session_public_key_id: before
+                    .session_public_key_id
+                    .unwrap_or_else(|| panic!("completion lacked pre-action session key")),
+            }
+        }
+        ModelState::Malformed
+        | ModelState::Unsupported(_)
+        | ModelState::Retryable(_)
+        | ModelState::Denied(_)
+        | ModelState::Revoked => {
+            let (terminal, decision, reason) = failure_mapping(action);
+            assert_eq!(terminal, model_phase(next));
+            ActionResult::Failure {
+                context: before
+                    .context
+                    .clone()
+                    .unwrap_or_else(|| panic!("failure lacked pre-action context")),
+                decision,
+                reason: Some(reason),
+                view_decision: decision,
+                view_reason: reason,
+            }
+        }
     }
 }
 
@@ -1010,13 +1068,38 @@ fn selected_binding(
     }
 }
 
-fn failure_action_result(result: AppraisalResult) -> ActionResult {
+fn appraisal_action_result(result: AppraisalResult) -> ActionResult {
+    let context = result.context().clone();
     let decision = result.decision();
-    let reason = match result.reason() {
-        Some(value) => value,
-        None => panic!("failure result omitted its reason"),
-    };
-    ActionResult::FailureResult { decision, reason }
+    let reason = result.reason();
+    match result.view() {
+        AppraisalResultView::Allow(claims) => ActionResult::Allow {
+            context,
+            decision,
+            reason,
+            allowed: AllowedClass::Full,
+            accepted_profile: claims.accepted_profile().clone(),
+            session_public_key_id: *claims.session_public_key_id(),
+        },
+        AppraisalResultView::AllowRestricted(claims) => ActionResult::Allow {
+            context,
+            decision,
+            reason,
+            allowed: AllowedClass::Restricted,
+            accepted_profile: claims.accepted_profile().clone(),
+            session_public_key_id: *claims.session_public_key_id(),
+        },
+        AppraisalResultView::Failure {
+            decision: view_decision,
+            reason: view_reason,
+        } => ActionResult::Failure {
+            context,
+            decision,
+            reason,
+            view_decision,
+            view_reason,
+        },
+    }
 }
 
 fn apply_action(
@@ -1076,28 +1159,27 @@ fn apply_action(
         }
         TestAction::Complete => {
             let verified = flow.complete()?;
-            drop(verified);
-            Ok(ActionResult::Verified)
+            Ok(appraisal_action_result(verified.into_appraisal_result()))
         }
         TestAction::MarkMalformed => {
             let result = flow.mark_malformed()?;
-            Ok(failure_action_result(result))
+            Ok(appraisal_action_result(result))
         }
         TestAction::MarkUnsupported(requirement) => {
             let result = flow.mark_unsupported(requirement)?;
-            Ok(failure_action_result(result))
+            Ok(appraisal_action_result(result))
         }
         TestAction::MarkRetryable(retry_reason) => {
             let result = flow.mark_retryable(retry_reason)?;
-            Ok(failure_action_result(result))
+            Ok(appraisal_action_result(result))
         }
         TestAction::Deny(reason) => {
             let result = flow.deny(reason)?;
-            Ok(failure_action_result(result))
+            Ok(appraisal_action_result(result))
         }
         TestAction::MarkRevoked => {
             let result = flow.mark_revoked()?;
-            Ok(failure_action_result(result))
+            Ok(appraisal_action_result(result))
         }
     }
 }
@@ -1224,9 +1306,14 @@ fn advance_flow_to_model_state(
         );
     }
     if should_complete {
+        let before = flow_snapshot(&flow);
         assert_eq!(
             apply_action(&mut flow, other_binding, TestAction::Complete),
-            Ok(ActionResult::Verified)
+            Ok(expected_action_result(
+                &before,
+                ModelState::Verified(allowed),
+                TestAction::Complete,
+            ))
         );
     }
     flow
@@ -1250,6 +1337,62 @@ fn assert_flow_matches_model(flow: &VerifierFlow, state: ModelState) {
     assert_eq!(snapshot.has_profile, model_has_profile(state));
     assert_eq!(snapshot.has_session_key, model_has_session_key(state));
     assert_eq!(snapshot.has_allowed_class, model_has_allowed_class(state));
+}
+
+fn expected_success_snapshot(
+    before: &FlowSnapshot,
+    next: ModelState,
+    action: TestAction,
+) -> FlowSnapshot {
+    let mut expected = before.clone();
+    expected.phase = model_phase(next);
+    expected.outcome =
+        model_report(next).map(|(decision, reason)| VerificationOutcome { decision, reason });
+
+    if model_is_terminal(next) {
+        expected.request = None;
+        expected.context = None;
+        expected.accepted_profile = None;
+        expected.session_public_key_id = None;
+        expected.allowed = None;
+    } else {
+        match action {
+            TestAction::Evidence(BindingMode::Matching) => {
+                expected.accepted_profile = Some(accepted_profile());
+            }
+            TestAction::Session(BindingMode::Matching) => {
+                expected.session_public_key_id = Some(session_key_id(7));
+            }
+            TestAction::Policy(allowed, BindingMode::Matching) => {
+                expected.allowed = Some(allowed);
+            }
+            TestAction::Challenge(BindingMode::Matching)
+            | TestAction::Freshness(BindingMode::Matching)
+            | TestAction::Identity(BindingMode::Matching)
+            | TestAction::Revocation(BindingMode::Matching) => {}
+            TestAction::Challenge(BindingMode::OtherFlow)
+            | TestAction::Freshness(BindingMode::OtherFlow)
+            | TestAction::Identity(BindingMode::OtherFlow)
+            | TestAction::Evidence(BindingMode::OtherFlow)
+            | TestAction::Session(BindingMode::OtherFlow)
+            | TestAction::Revocation(BindingMode::OtherFlow)
+            | TestAction::Policy(_, BindingMode::OtherFlow)
+            | TestAction::Complete
+            | TestAction::MarkMalformed
+            | TestAction::MarkUnsupported(_)
+            | TestAction::MarkRetryable(_)
+            | TestAction::Deny(_)
+            | TestAction::MarkRevoked => {
+                panic!("non-active-success action produced active state: {action:?} {next:?}")
+            }
+        }
+    }
+
+    expected.has_request = expected.request.is_some();
+    expected.has_profile = expected.accepted_profile.is_some();
+    expected.has_session_key = expected.session_public_key_id.is_some();
+    expected.has_allowed_class = expected.allowed.is_some();
+    expected
 }
 
 fn equal_flows_at_gate(gate: GateKind, seed: u8) -> (VerifierFlow, VerifierFlow) {
@@ -1595,6 +1738,9 @@ const EXTRA_COMPLETION_ACTIONS: usize = 312;
 const FILLER_ACTIONS: usize = 5;
 const MIN_FULL_COMPLETIONS: usize = 61;
 const MIN_RESTRICTED_COMPLETIONS: usize = 35;
+const ARBITRARY_MATCHING_GATES: usize = 175_120;
+const ARBITRARY_OTHER_FLOW_GATES: usize = 174_585;
+const ARBITRARY_ACTIVE_ADVANCES: usize = 21_965;
 
 struct Lcg(u64);
 
@@ -1619,7 +1765,8 @@ fn seed_for_index(index: usize) -> u8 {
 }
 
 fn arbitrary_action_from_index(index: usize, selector: u64) -> TestAction {
-    let mode = if selector & 1 == 0 {
+    // Bit 32 of the second draw is not parity-locked by the two-draw LCG cadence.
+    let mode = if selector & (1 << 32) == 0 {
         BindingMode::Matching
     } else {
         BindingMode::OtherFlow
@@ -2001,30 +2148,21 @@ struct Coverage {
 impl Coverage {
     fn observe(
         &mut self,
+        index: usize,
         before: ModelState,
         action: TestAction,
         expected: ExpectedAction,
+        snapshots: (&FlowSnapshot, &FlowSnapshot),
         actual: &Result<ActionResult, TransitionError>,
     ) {
-        let result_matches = match expected {
-            ExpectedAction::Allowed(next) => actual == &Ok(model_action_result(next)),
-            ExpectedAction::InvalidTransition => {
-                actual
-                    == &Err(TransitionError::InvalidTransition {
-                        phase: model_phase(before),
-                        action: action.public(),
-                    })
-            }
-            ExpectedAction::CapabilityRejected => {
-                actual
-                    == &Err(TransitionError::CapabilityRejected {
-                        action: action.public(),
-                    })
-            }
-        };
-        assert!(
-            result_matches,
-            "coverage observed a mismatched result for {before:?} {action:?}"
+        let (before_snapshot, after_snapshot) = snapshots;
+        assert_action_matches_model(
+            index,
+            action,
+            expected,
+            before_snapshot,
+            after_snapshot,
+            actual,
         );
 
         if let ExpectedAction::Allowed(next) = expected {
@@ -2108,19 +2246,23 @@ fn assert_action_matches_model(
     index: usize,
     action: TestAction,
     expected: ExpectedAction,
-    before: FlowSnapshot,
-    flow: &VerifierFlow,
+    before: &FlowSnapshot,
+    after: &FlowSnapshot,
     actual: &Result<ActionResult, TransitionError>,
 ) {
     match expected {
         ExpectedAction::Allowed(next) => {
-            let expected_result = model_action_result(next);
+            let expected_result = expected_action_result(before, next, action);
             assert_eq!(
                 actual,
                 &Ok(expected_result),
                 "allowed history action failed at index {index}: {action:?}"
             );
-            assert_flow_matches_model(flow, next);
+            assert_eq!(
+                after,
+                &expected_success_snapshot(before, next, action),
+                "allowed history state mismatch at index {index}: {action:?}"
+            );
         }
         ExpectedAction::InvalidTransition => {
             assert_eq!(
@@ -2131,7 +2273,7 @@ fn assert_action_matches_model(
                 }),
                 "invalid-transition mismatch at index {index}: {action:?}"
             );
-            assert_eq!(flow_snapshot(flow), before);
+            assert_eq!(after, before);
         }
         ExpectedAction::CapabilityRejected => {
             assert_eq!(
@@ -2141,7 +2283,7 @@ fn assert_action_matches_model(
                 }),
                 "capability-rejection mismatch at index {index}: {action:?}"
             );
-            assert_eq!(flow_snapshot(flow), before);
+            assert_eq!(after, before);
         }
     }
 }
@@ -2369,12 +2511,16 @@ fn every_failure_class_is_terminal_and_releases_the_request() {
     ] {
         let mut flow = flow_for_model_state(state, 31);
         let other_binding = flow_fixture(31).binding;
+        let before = flow_snapshot(&flow);
         assert_eq!(
             apply_action(&mut flow, &other_binding, action),
-            Ok(ActionResult::FailureResult {
-                decision: expected_decision,
-                reason: expected_reason,
-            })
+            Ok(expected_action_result(
+                &before,
+                model_transition(state, action).unwrap_or_else(|| {
+                    panic!("failure fixture was ineligible: {state:?} {action:?}")
+                }),
+                action,
+            ))
         );
         assert_eq!(flow.phase(), expected_phase);
         assert_eq!(
@@ -2479,26 +2625,28 @@ fn all_336_phase_action_pairs_match_the_independent_model() {
             }
             let other_binding = flow_fixture(54).binding;
             let actual = apply_action(&mut flow, &other_binding, action);
+            let after = flow_snapshot(&flow);
             match expected {
                 Some(next) => {
-                    let expected_result = model_action_result(next);
-                    assert_eq!(
-                        actual,
-                        Ok(expected_result),
-                        "allowed pair rejected: {state:?} {action:?}"
+                    assert_action_matches_model(
+                        0,
+                        action,
+                        ExpectedAction::Allowed(next),
+                        &before,
+                        &after,
+                        &actual,
                     );
-                    assert_flow_matches_model(&flow, next);
                     succeeded += 1;
                 }
                 None => {
-                    assert_eq!(
-                        actual,
-                        Err(TransitionError::InvalidTransition {
-                            phase: model_phase(state),
-                            action: action.public(),
-                        })
+                    assert_action_matches_model(
+                        0,
+                        action,
+                        ExpectedAction::InvalidTransition,
+                        &before,
+                        &after,
+                        &actual,
                     );
-                    assert_eq!(flow_snapshot(&flow), before);
                     rejected += 1;
                 }
             }
@@ -4134,6 +4282,9 @@ fn one_million_actions_match_the_independent_verifier_model() {
     let mut model = ModelState::EvidenceReceived;
     let mut arbitrary_action_counts = [0usize; 24];
     let mut arbitrary_terminal_resets = 0usize;
+    let mut arbitrary_matching_gates = 0usize;
+    let mut arbitrary_other_flow_gates = 0usize;
+    let mut arbitrary_active_advances = 0usize;
 
     let action_stream = schedule
         .iter()
@@ -4151,6 +4302,11 @@ fn one_million_actions_match_the_independent_verifier_model() {
         if is_arbitrary {
             assert_eq!(reset_before, should_reset_arbitrary);
             arbitrary_action_counts[action_index(action)] += 1;
+            match action.binding_mode() {
+                Some(BindingMode::Matching) => arbitrary_matching_gates += 1,
+                Some(BindingMode::OtherFlow) => arbitrary_other_flow_gates += 1,
+                None => {}
+            }
             if reset_before {
                 arbitrary_terminal_resets += 1;
             }
@@ -4165,11 +4321,25 @@ fn one_million_actions_match_the_independent_verifier_model() {
         let expected = expected_history_action(model, action);
         let before = flow_snapshot(&flow);
         let actual = apply_action(&mut flow, &other_binding, action);
-        assert_action_matches_model(index, action, expected, before, &flow, &actual);
+        let after = flow_snapshot(&flow);
         if let ExpectedAction::Allowed(next) = expected {
             model = next;
         }
-        coverage.observe(model_before, action, expected, &actual);
+        coverage.observe(
+            index,
+            model_before,
+            action,
+            expected,
+            (&before, &after),
+            &actual,
+        );
+        if is_arbitrary
+            && let ExpectedAction::Allowed(next) = expected
+            && model_is_nonterminal(next)
+            && next != model_before
+        {
+            arbitrary_active_advances += 1;
+        }
         executed += 1;
     }
 
@@ -4183,7 +4353,111 @@ fn one_million_actions_match_the_independent_verifier_model() {
         "arbitrary action counts: {arbitrary_action_counts:?}"
     );
     assert!(arbitrary_terminal_resets > 0);
+    assert_eq!(arbitrary_matching_gates, ARBITRARY_MATCHING_GATES);
+    assert_eq!(arbitrary_other_flow_gates, ARBITRARY_OTHER_FLOW_GATES);
+    assert_eq!(arbitrary_active_advances, ARBITRARY_ACTIVE_ADVANCES);
     coverage.assert_non_vacuous();
+}
+
+#[test]
+fn arbitrary_tail_uses_both_binding_modes_and_advances_active_state() {
+    let mut rng = Lcg(0x4f47_4952_4d31_3031);
+    let mut model = ModelState::EvidenceReceived;
+    let mut matching_gates = 0usize;
+    let mut other_flow_gates = 0usize;
+    let mut active_advances = 0usize;
+
+    for _ in 0..ARBITRARY_ACTIONS {
+        if model_is_terminal(model) {
+            model = ModelState::EvidenceReceived;
+        }
+        let action = rng.action();
+        match action.binding_mode() {
+            Some(BindingMode::Matching) => matching_gates += 1,
+            Some(BindingMode::OtherFlow) => other_flow_gates += 1,
+            None => {}
+        }
+        if let ExpectedAction::Allowed(next) = expected_history_action(model, action) {
+            if model_is_nonterminal(next) && next != model {
+                active_advances += 1;
+            }
+            model = next;
+        }
+    }
+
+    assert_eq!(matching_gates, ARBITRARY_MATCHING_GATES);
+    assert_eq!(other_flow_gates, ARBITRARY_OTHER_FLOW_GATES);
+    assert_eq!(active_advances, ARBITRARY_ACTIVE_ADVANCES);
+}
+
+#[test]
+fn history_projection_captures_exact_failure_context_and_view() {
+    let mut flow = flow_fixture_with_context_tag(90, 9);
+    let before = flow_snapshot(&flow);
+    let other_binding = flow_fixture(91).binding;
+    let action = TestAction::MarkMalformed;
+    let actual = apply_action(&mut flow, &other_binding, action);
+
+    assert_eq!(
+        actual,
+        Ok(expected_action_result(
+            &before,
+            ModelState::Malformed,
+            action,
+        ))
+    );
+}
+
+#[test]
+fn history_projection_captures_exact_full_and_restricted_allows() {
+    for allowed in [AllowedClass::Full, AllowedClass::Restricted] {
+        let mut flow = policy_ready_flow_with_context_tag(
+            92,
+            10,
+            accepted_profile(),
+            session_key_id(7),
+            allowed,
+        );
+        let before = flow_snapshot(&flow);
+        let other_binding = flow_fixture(93).binding;
+        let action = TestAction::Complete;
+        let actual = apply_action(&mut flow, &other_binding, action);
+
+        assert_eq!(
+            actual,
+            Ok(expected_action_result(
+                &before,
+                ModelState::Verified(allowed),
+                action,
+            ))
+        );
+    }
+}
+
+#[test]
+fn successful_history_transitions_carry_and_add_exact_values() {
+    let mut flow = flow_fixture_with_context_tag(94, 11);
+    let other_binding = flow_fixture(95).binding;
+    let mut model = ModelState::EvidenceReceived;
+
+    for action in MATCHING_GATE_PREFIX {
+        let before = flow_snapshot(&flow);
+        let next = match model_transition(model, action) {
+            Some(value) => value,
+            None => panic!("canonical action rejected by model: {model:?} {action:?}"),
+        };
+        let actual = apply_action(&mut flow, &other_binding, action);
+        let after = flow_snapshot(&flow);
+        assert_action_matches_model(
+            0,
+            action,
+            ExpectedAction::Allowed(next),
+            &before,
+            &after,
+            &actual,
+        );
+        model = next;
+    }
 }
 
 const ALL_8_ACTIVE_MODEL_STATES: [ModelState; 8] = [
