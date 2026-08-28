@@ -6432,8 +6432,8 @@ fn authority_inventory_rejects_target_declaration_attribute_drift() {
     let source = include_str!("../verification.rs");
     for mutation in [
         source.replacen(
-            "#[must_use]\npub struct AppraisalResult",
-            "#[must_use]\n#[derive(Clone)]\npub struct AppraisalResult",
+            "#[must_use]\n#[deny(private_interfaces)]\npub struct AppraisalResult",
+            "#[must_use]\n#[deny(private_interfaces)]\n#[derive(Clone)]\npub struct AppraisalResult",
             1,
         ),
         source.replacen(
