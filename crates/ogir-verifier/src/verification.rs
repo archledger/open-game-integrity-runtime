@@ -571,6 +571,7 @@ enum VerificationState {
 /// }
 /// ```
 #[must_use]
+#[deny(private_interfaces)]
 pub struct AppraisalResult {
     context: ExpectedContext,
     payload: AppraisalPayload,

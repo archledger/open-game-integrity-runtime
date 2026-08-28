@@ -4417,7 +4417,7 @@ fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(
         (
             "struct",
             "AppraisalResult",
-            "#[must_use] pub struct AppraisalResult { context: ExpectedContext, payload: AppraisalPayload, }",
+            "#[must_use] #[deny(private_interfaces)] pub struct AppraisalResult { context: ExpectedContext, payload: AppraisalPayload, }",
         ),
         (
             "enum",

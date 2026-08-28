@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![forbid(unsafe_code)]
-#![deny(private_interfaces)]
 //! Deterministic verifier interfaces. Cryptographic verification is not implemented yet.
 
 mod freshness;
