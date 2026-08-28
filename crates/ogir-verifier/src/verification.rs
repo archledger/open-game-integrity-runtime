@@ -510,7 +510,7 @@ pub struct AppraisalResult {
 
 #[expect(
     dead_code,
-    reason = "Task 3 freezes result shapes before Tasks 5 and 6 add private construction paths"
+    reason = "Task 3 freezes the failure shape before Task 6 adds its private construction path"
 )]
 enum AppraisalPayload {
     Allow(AcceptedClaims),
@@ -672,7 +672,43 @@ pub struct PolicySatisfied {
 #[must_use]
 pub struct VerifiedAttestation {
     binding: VerificationBinding,
+    context: ExpectedContext,
+    accepted_profile: EvidenceProfile,
+    session_public_key_id: SessionPublicKeyId,
     allowed: AllowedClass,
+}
+
+/// Completed authority can be converted only once because conversion consumes it:
+///
+/// ```compile_fail
+/// use ogir_verifier::{AppraisalResult, VerifiedAttestation};
+/// fn forbidden(value: VerifiedAttestation) {
+///     let _: AppraisalResult = value.into_appraisal_result();
+///     let _: AppraisalResult = value.into_appraisal_result();
+/// }
+/// ```
+impl VerifiedAttestation {
+    /// Consumes completed verifier authority to create the only allowed result shape.
+    #[must_use = "the appraisal result carries the completed verifier outcome"]
+    pub fn into_appraisal_result(self) -> AppraisalResult {
+        let Self {
+            binding,
+            context,
+            accepted_profile,
+            session_public_key_id,
+            allowed,
+        } = self;
+        drop(binding);
+        let claims = AcceptedClaims {
+            accepted_profile,
+            session_public_key_id,
+        };
+        let payload = match allowed {
+            AllowedClass::FULL => AppraisalPayload::Allow(claims),
+            AllowedClass::RESTRICTED => AppraisalPayload::AllowRestricted(claims),
+        };
+        AppraisalResult { context, payload }
+    }
 }
 
 macro_rules! impl_redacted_debug {
@@ -1294,31 +1330,32 @@ impl VerifierFlow {
     /// Returns a redacted invalid-transition error unless policy satisfaction
     /// is the current phase.
     pub fn complete(&mut self) -> Result<VerifiedAttestation, TransitionError> {
-        if !matches!(&self.state, VerificationState::PolicySatisfied { .. }) {
-            return Err(self.invalid_transition(VerificationAction::Complete));
-        }
-        let previous = std::mem::replace(
-            &mut self.state,
-            VerificationState::Retryable {
-                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
-            },
-        );
+        let outcome = match &self.state {
+            VerificationState::PolicySatisfied {
+                allowed: AllowedClass::FULL,
+                ..
+            } => VerificationOutcome::allowed_full(),
+            VerificationState::PolicySatisfied {
+                allowed: AllowedClass::RESTRICTED,
+                ..
+            } => VerificationOutcome::allowed_restricted(),
+            _ => return Err(self.invalid_transition(VerificationAction::Complete)),
+        };
+        let previous = std::mem::replace(&mut self.state, VerificationState::Verified { outcome });
         let VerificationState::PolicySatisfied {
-            request: _request,
-            accepted_profile: _accepted_profile,
-            session_public_key_id: _session_public_key_id,
+            request,
+            accepted_profile,
+            session_public_key_id,
             allowed,
         } = previous
         else {
             unreachable!("phase was checked before terminal replacement")
         };
-        let outcome = match allowed {
-            AllowedClass::FULL => VerificationOutcome::allowed_full(),
-            AllowedClass::RESTRICTED => VerificationOutcome::allowed_restricted(),
-        };
-        self.state = VerificationState::Verified { outcome };
         Ok(VerifiedAttestation {
             binding: self.binding.clone(),
+            context: request.expected,
+            accepted_profile,
+            session_public_key_id,
             allowed,
         })
     }

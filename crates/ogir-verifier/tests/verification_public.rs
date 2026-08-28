@@ -11,7 +11,7 @@ use ogir_model::{
 use ogir_protocol::EvidenceBundle;
 use ogir_verifier::{
     AcceptedClaims, AppraisalResult, AppraisalResultView, ExpectedContext, VerificationPhase,
-    VerificationRequest, VerifierFlow,
+    VerificationRequest, VerifiedAttestation, VerifierFlow,
 };
 
 fn identifier<T>(value: &str) -> T
@@ -88,6 +88,7 @@ fn appraisal_result_public_accessors_type_check() {
 
     let _: fn(&AppraisalResult) = inspect;
     let _: fn(&AcceptedClaims) = inspect_claims;
+    let _: fn(VerifiedAttestation) -> AppraisalResult = VerifiedAttestation::into_appraisal_result;
 }
 
 #[test]

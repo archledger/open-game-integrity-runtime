@@ -1169,6 +1169,9 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
 
     let verified = VerifiedAttestation {
         binding,
+        context: request_fixture_with_context_tag(7, 1).expected,
+        accepted_profile: identifier("private-accepted-profile"),
+        session_public_key_id: session_key_id(0xA5),
         allowed: AllowedClass::Full,
     };
     let diagnostic = format!("{verified:?}");
@@ -1887,6 +1890,35 @@ fn canonical_full_path_returns_one_bound_verified_capability() {
 }
 
 #[test]
+fn completed_capability_converts_once_to_exact_full_result() {
+    let expected_context = request_fixture_with_context_tag(7, 1).expected;
+    let expected_profile = accepted_profile();
+    let expected_key = session_key_id(7);
+    let mut flow = policy_ready_flow_with_context_tag(
+        7,
+        1,
+        expected_profile.clone(),
+        expected_key,
+        AllowedClass::Full,
+    );
+    let verified = match flow.complete() {
+        Ok(value) => value,
+        Err(error) => panic!("canonical test path rejected: {error:?}"),
+    };
+    let result = verified.into_appraisal_result();
+    assert_eq!(result.context(), &expected_context);
+    assert_eq!(result.decision(), Decision::Allow);
+    assert_eq!(result.reason(), None);
+    match result.view() {
+        AppraisalResultView::Allow(claims) => {
+            assert_eq!(claims.accepted_profile(), &expected_profile);
+            assert_eq!(claims.session_public_key_id(), &expected_key);
+        }
+        _ => panic!("full completion returned the wrong view"),
+    }
+}
+
+#[test]
 fn complete_before_policy_satisfaction_rejects_without_releasing_request() {
     let mut flow = flow_fixture(8);
     match flow.complete() {
@@ -1901,6 +1933,23 @@ fn complete_before_policy_satisfaction_rejects_without_releasing_request() {
     }
     assert_eq!(flow.phase(), VerificationPhase::EvidenceReceived);
     assert!(flow_snapshot(&flow).request.is_some());
+}
+
+#[test]
+fn completed_flow_rejects_second_complete_without_result() {
+    let mut flow = policy_ready_flow(8, accepted_profile(), session_key_id(8), AllowedClass::Full);
+    let first = match flow.complete() {
+        Ok(value) => value,
+        Err(error) => panic!("canonical test path rejected: {error:?}"),
+    };
+    drop(first);
+    assert!(matches!(
+        flow.complete(),
+        Err(TransitionError::InvalidTransition {
+            phase: VerificationPhase::Verified,
+            action: VerificationAction::Complete,
+        })
+    ));
 }
 
 #[test]
@@ -1929,23 +1978,31 @@ fn equal_request_from_another_flow_rejects_challenge_capability() {
 
 #[test]
 fn restricted_success_uses_the_same_complete_gate() {
-    let mut flow = policy_ready_flow(
+    let expected_context = request_fixture_with_context_tag(9, 1).expected;
+    let expected_profile = accepted_profile();
+    let expected_key = session_key_id(9);
+    let mut flow = policy_ready_flow_with_context_tag(
         9,
-        accepted_profile(),
-        session_key_id(9),
+        1,
+        expected_profile.clone(),
+        expected_key,
         AllowedClass::Restricted,
     );
     let verified = match flow.complete() {
         Ok(value) => value,
-        Err(error) => panic!("restricted path rejected: {error:?}"),
+        Err(error) => panic!("restricted test path rejected: {error:?}"),
     };
-    assert!(verified.binding.matches(&flow.binding));
-    assert_eq!(verified.allowed, AllowedClass::Restricted);
-    assert_eq!(
-        flow.outcome().map(VerificationOutcome::decision),
-        Some(Decision::AllowRestricted)
-    );
-    assert_eq!(flow.outcome().map(VerificationOutcome::reason), Some(None));
+    let result = verified.into_appraisal_result();
+    assert_eq!(result.context(), &expected_context);
+    assert_eq!(result.decision(), Decision::AllowRestricted);
+    assert_eq!(result.reason(), None);
+    match result.view() {
+        AppraisalResultView::AllowRestricted(claims) => {
+            assert_eq!(claims.accepted_profile(), &expected_profile);
+            assert_eq!(claims.session_public_key_id(), &expected_key);
+        }
+        _ => panic!("restricted completion returned the wrong view"),
+    }
 }
 
 #[test]
@@ -2668,7 +2725,7 @@ fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(
         (
             "struct",
             "VerifiedAttestation",
-            "pub struct VerifiedAttestation { binding: VerificationBinding, allowed: AllowedClass, }",
+            "pub struct VerifiedAttestation { binding: VerificationBinding, context: ExpectedContext, accepted_profile: EvidenceProfile, session_public_key_id: SessionPublicKeyId, allowed: AllowedClass, }",
         ),
         (
             "struct",
