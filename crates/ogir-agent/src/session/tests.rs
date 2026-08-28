@@ -858,7 +858,7 @@ fn every_session_diagnostic_is_context_free_and_redacted() {
         "local session transition is not allowed",
         "local session capability rejected",
     ];
-    assert_eq!(values, expected);
+    assert!(values == expected, "private diagnostic mismatch");
 
     for value in values {
         for forbidden in [
@@ -873,7 +873,7 @@ fn every_session_diagnostic_is_context_free_and_redacted() {
         ] {
             assert!(
                 !value.contains(forbidden),
-                "forbidden diagnostic value: {forbidden:?}"
+                "private diagnostic exposed a forbidden value"
             );
         }
     }

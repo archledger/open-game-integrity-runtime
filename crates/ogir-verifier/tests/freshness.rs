@@ -777,13 +777,13 @@ fn replay_debug_and_errors_redact_every_binding_and_timestamp() {
     let guard = FreshnessGuard::new(&store, limits());
     assert_eq!(guard.register(UnixTime::new(4_242_400), &challenge), Ok(()));
 
-    assert_eq!(
-        format!("{private_expected:?}"),
-        "ExpectedContext([REDACTED])"
+    assert!(
+        format!("{private_expected:?}") == "ExpectedContext([REDACTED])",
+        "private diagnostic mismatch"
     );
-    assert_eq!(
-        format!("{verification_request:?}"),
-        "VerificationRequest([REDACTED])"
+    assert!(
+        format!("{verification_request:?}") == "VerificationRequest([REDACTED])",
+        "private diagnostic mismatch"
     );
 
     let debug_surfaces = [
@@ -825,12 +825,12 @@ fn replay_debug_and_errors_redact_every_binding_and_timestamp() {
     for debug in debug_surfaces {
         assert!(
             debug.contains("REDACTED"),
-            "missing redaction marker: {debug}"
+            "private diagnostic missing redaction marker"
         );
         for sensitive in sensitive_values {
             assert!(
                 !debug.contains(sensitive),
-                "debug output exposed {sensitive}: {debug}"
+                "private diagnostic exposed a forbidden value"
             );
         }
     }

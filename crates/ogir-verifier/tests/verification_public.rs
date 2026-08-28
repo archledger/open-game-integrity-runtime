@@ -66,8 +66,8 @@ fn new_flow_exposes_only_received_phase_and_no_outcome() {
     let flow = VerifierFlow::begin(request_fixture());
     assert_eq!(flow.phase(), VerificationPhase::EvidenceReceived);
     assert_eq!(flow.outcome(), None);
-    assert_eq!(
-        format!("{flow:?}"),
-        "VerifierFlow { phase: EvidenceReceived, outcome: None }"
+    assert!(
+        format!("{flow:?}") == "VerifierFlow { phase: EvidenceReceived, outcome: None }",
+        "private diagnostic mismatch"
     );
 }

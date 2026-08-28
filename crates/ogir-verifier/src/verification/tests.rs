@@ -1858,7 +1858,7 @@ fn every_flow_capability_outcome_and_error_diagnostic_is_redacted() {
         for sentinel in forbidden {
             assert!(
                 !diagnostic.contains(sentinel),
-                "diagnostic leaked {sentinel:?}: {diagnostic:?}"
+                "private diagnostic exposed a forbidden value"
             );
         }
     }
