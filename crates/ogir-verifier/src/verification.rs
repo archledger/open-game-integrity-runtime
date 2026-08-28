@@ -104,6 +104,14 @@
 //! }
 //! ```
 //!
+//! ```compile_fail
+//! use ogir_model::Decision;
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden() {
+//!     let _: AppraisalResult = Decision::Allow.into();
+//! }
+//! ```
+//!
 //! Appraisal results grant no signing, permit, or admission authority:
 //!
 //! ```compile_fail
