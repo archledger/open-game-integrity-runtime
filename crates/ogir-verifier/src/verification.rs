@@ -1,14 +1,149 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Checked verifier-flow and report-only outcome contracts.
+//!
+//! Appraisal results have no public constructor:
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, ExpectedContext};
+//! fn forbidden(context: ExpectedContext) {
+//!     let _ = AppraisalResult::new(context);
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden() {
+//!     let _ = AppraisalResult::builder();
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden() {
+//!     let _ = AppraisalResult::default();
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden(result: AppraisalResult) {
+//!     let _ = result.clone();
+//! }
+//! ```
+//!
+//! Accepted claims cannot be constructed outside the verifier:
+//!
+//! ```compile_fail
+//! use ogir_model::{EvidenceProfile, SessionPublicKeyId};
+//! use ogir_verifier::AcceptedClaims;
+//! fn forbidden(profile: EvidenceProfile, key_id: SessionPublicKeyId) {
+//!     let _ = AcceptedClaims::new(profile, key_id);
+//! }
+//! ```
+//!
+//! Reports cannot be converted into appraisal results:
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, VerificationOutcome};
+//! fn forbidden(outcome: VerificationOutcome) {
+//!     let _ = AppraisalResult::from_outcome(outcome);
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, AppraisalResultView};
+//! fn forbidden(view: AppraisalResultView<'_>) {
+//!     let _: AppraisalResult = view.into();
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_model::Decision;
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden() {
+//!     let _ = AppraisalResult::from_decision(Decision::Allow);
+//! }
+//! ```
+//!
+//! Appraisal results grant no signing, permit, or admission authority:
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! struct TestSigner;
+//! fn forbidden(result: AppraisalResult, signer: TestSigner) {
+//!     let _ = result.sign(signer);
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! struct ValidatedPermit;
+//! fn forbidden(result: AppraisalResult) -> ValidatedPermit {
+//!     result.into_permit()
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! struct Admission;
+//! fn forbidden(result: AppraisalResult) -> Admission {
+//!     result.admit()
+//! }
+//! ```
+//!
+//! Result and accepted-claim fields remain private:
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, ExpectedContext};
+//! fn forbidden(context: ExpectedContext) {
+//!     let _ = AppraisalResult { context, payload: unreachable!() };
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_model::{EvidenceProfile, SessionPublicKeyId};
+//! use ogir_verifier::AcceptedClaims;
+//! fn forbidden(profile: EvidenceProfile, session_public_key_id: SessionPublicKeyId) {
+//!     let _ = AcceptedClaims { accepted_profile: profile, session_public_key_id };
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden(result: AppraisalResult) {
+//!     let _ = result.context;
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden(result: AppraisalResult) {
+//!     let _ = result.payload;
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AcceptedClaims;
+//! fn forbidden(claims: AcceptedClaims) {
+//!     let _ = claims.accepted_profile;
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AcceptedClaims;
+//! fn forbidden(claims: AcceptedClaims) {
+//!     let _ = claims.session_public_key_id;
+//! }
+//! ```
 
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 
 use ogir_model::{
-    AccountScope, BuildId, Decision, FreshnessError, GameId, MatchId, PolicyId, PolicyVersion,
-    PublisherChallenge, PublisherId, ReasonCode, UnixTime,
+    AccountScope, BuildId, Decision, EvidenceProfile, FreshnessError, GameId, MatchId, PolicyId,
+    PolicyVersion, PublisherChallenge, PublisherId, ReasonCode, SessionPublicKeyId, UnixTime,
 };
 use ogir_protocol::EvidenceBundle;
 
@@ -331,6 +466,128 @@ enum VerificationState {
     Revoked,
 }
 
+/// Opaque unsigned semantic result of one verifier appraisal.
+#[must_use]
+pub struct AppraisalResult {
+    context: ExpectedContext,
+    payload: AppraisalPayload,
+}
+
+#[expect(
+    dead_code,
+    reason = "Task 3 freezes result shapes before Task 4 adds private construction paths"
+)]
+enum AppraisalPayload {
+    Allow(AcceptedClaims),
+    AllowRestricted(AcceptedClaims),
+    Failure(FailurePayload),
+}
+
+/// Accepted claims retained only by an allowed appraisal result.
+#[must_use]
+pub struct AcceptedClaims {
+    accepted_profile: EvidenceProfile,
+    session_public_key_id: SessionPublicKeyId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct FailurePayload {
+    decision: FailureDecision,
+    reason: ReasonCode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[expect(
+    dead_code,
+    reason = "Task 3 freezes failure shapes before Task 4 adds private construction paths"
+)]
+enum FailureDecision {
+    Deny,
+    Unsupported,
+    Retry,
+}
+
+impl FailureDecision {
+    const fn as_decision(self) -> Decision {
+        match self {
+            Self::Deny => Decision::Deny,
+            Self::Unsupported => Decision::Unsupported,
+            Self::Retry => Decision::Retry,
+        }
+    }
+}
+
+/// Borrowed report-only view of an appraisal result.
+pub enum AppraisalResultView<'a> {
+    /// Full-policy allow with opaque accepted claims.
+    Allow(&'a AcceptedClaims),
+    /// Restricted-policy allow with opaque accepted claims.
+    AllowRestricted(&'a AcceptedClaims),
+    /// Unsuccessful report with one coarse reason.
+    Failure {
+        /// Non-authoritative unsuccessful decision report.
+        decision: Decision,
+        /// Non-disciplinary reason report.
+        reason: ReasonCode,
+    },
+}
+
+impl AppraisalResult {
+    /// Returns the exact relying-party context retained by this result.
+    #[must_use]
+    pub const fn context(&self) -> &ExpectedContext {
+        &self.context
+    }
+
+    /// Returns the non-authoritative decision report.
+    #[must_use]
+    pub const fn decision(&self) -> Decision {
+        match &self.payload {
+            AppraisalPayload::Allow(_) => Decision::Allow,
+            AppraisalPayload::AllowRestricted(_) => Decision::AllowRestricted,
+            AppraisalPayload::Failure(failure) => failure.decision.as_decision(),
+        }
+    }
+
+    /// Returns no reason for allows and one coarse reason for failures.
+    #[must_use]
+    pub const fn reason(&self) -> Option<ReasonCode> {
+        match &self.payload {
+            AppraisalPayload::Allow(_) | AppraisalPayload::AllowRestricted(_) => None,
+            AppraisalPayload::Failure(failure) => Some(failure.reason),
+        }
+    }
+
+    /// Returns a borrowed report-only view of this result.
+    #[must_use]
+    pub const fn view(&self) -> AppraisalResultView<'_> {
+        match &self.payload {
+            AppraisalPayload::Allow(claims) => AppraisalResultView::Allow(claims),
+            AppraisalPayload::AllowRestricted(claims) => {
+                AppraisalResultView::AllowRestricted(claims)
+            }
+            AppraisalPayload::Failure(failure) => AppraisalResultView::Failure {
+                decision: failure.decision.as_decision(),
+                reason: failure.reason,
+            },
+        }
+    }
+}
+
+impl AcceptedClaims {
+    /// Returns the accepted evidence profile.
+    #[must_use]
+    pub const fn accepted_profile(&self) -> &EvidenceProfile {
+        &self.accepted_profile
+    }
+
+    /// Returns the accepted session public-key lookup handle.
+    #[must_use]
+    pub const fn session_public_key_id(&self) -> &SessionPublicKeyId {
+        &self.session_public_key_id
+    }
+}
+
 /// Opaque proof that the publisher challenge was authenticated for one attempt.
 #[must_use]
 pub struct ChallengeAuthenticated {
@@ -391,6 +648,9 @@ impl_redacted_debug!(EvidenceAppraised, "EvidenceAppraised([REDACTED])");
 impl_redacted_debug!(SessionBound, "SessionBound([REDACTED])");
 impl_redacted_debug!(RevocationChecked, "RevocationChecked([REDACTED])");
 impl_redacted_debug!(PolicySatisfied, "PolicySatisfied([REDACTED])");
+impl_redacted_debug!(AppraisalResult, "AppraisalResult([REDACTED])");
+impl_redacted_debug!(AcceptedClaims, "AcceptedClaims([REDACTED])");
+impl_redacted_debug!(AppraisalResultView<'_>, "AppraisalResultView([REDACTED])");
 
 impl fmt::Debug for VerifiedAttestation {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {

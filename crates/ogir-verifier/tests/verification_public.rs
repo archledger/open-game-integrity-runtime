@@ -4,12 +4,15 @@ use std::fmt::Debug;
 use std::num::NonZeroU64;
 
 use ogir_model::{
-    AccountScope, BuildId, ChallengeLifetime, ChallengeWindow, EvidenceProfile, GameId,
+    AccountScope, BuildId, ChallengeLifetime, ChallengeWindow, Decision, EvidenceProfile, GameId,
     IdentifierError, MatchId, Nonce, PolicyId, PolicyVersion, ProtocolVersion, PublisherChallenge,
-    PublisherId, UnixTime,
+    PublisherId, ReasonCode, UnixTime,
 };
 use ogir_protocol::EvidenceBundle;
-use ogir_verifier::{ExpectedContext, VerificationPhase, VerificationRequest, VerifierFlow};
+use ogir_verifier::{
+    AcceptedClaims, AppraisalResult, AppraisalResultView, ExpectedContext, VerificationPhase,
+    VerificationRequest, VerifierFlow,
+};
 
 fn identifier<T>(value: &str) -> T
 where
@@ -59,6 +62,32 @@ fn request_fixture() -> VerificationRequest {
         },
         now: UnixTime::new(100),
     }
+}
+
+#[test]
+fn appraisal_result_public_accessors_type_check() {
+    fn inspect_claims(claims: &AcceptedClaims) {
+        let _ = claims.accepted_profile();
+        let _ = claims.session_public_key_id();
+    }
+
+    fn inspect(result: &AppraisalResult) {
+        let _: &ExpectedContext = result.context();
+        let _: Decision = result.decision();
+        let _: Option<ReasonCode> = result.reason();
+        match result.view() {
+            AppraisalResultView::Allow(claims) | AppraisalResultView::AllowRestricted(claims) => {
+                inspect_claims(claims)
+            }
+            AppraisalResultView::Failure { decision, reason } => {
+                let _: Decision = decision;
+                let _: ReasonCode = reason;
+            }
+        }
+    }
+
+    let _: fn(&AppraisalResult) = inspect;
+    let _: fn(&AcceptedClaims) = inspect_claims;
 }
 
 #[test]
