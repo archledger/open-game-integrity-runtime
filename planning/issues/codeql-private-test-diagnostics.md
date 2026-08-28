@@ -201,7 +201,7 @@ or toolchain version changes.
   restored after each run and is byte-identical to both merged base and the
   pre-fix head (SHA-256
   `924088c3a6df903af3d8f24fd8ea805594c9cd665610d7c35a2efe2fb093d8f2`).
-- Final whole-branch review inventoried all 22 Rust files and 123
+- Final whole-branch review inventoried all 21 Rust files and 123
   runtime/integration tests and found one further confirmed same-root-cause
   site: the canonical success-path test compared a request-bound
   `VerifiedAttestation` diagnostic with `assert_eq!`. The final-review fix
