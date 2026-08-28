@@ -2776,6 +2776,37 @@ fn sequence_start(tokens: &[String], expected: &[&str]) -> Option<usize> {
     })
 }
 
+fn outer_attribute_start(tokens: &[String], item_start: usize) -> usize {
+    let mut start = item_start;
+    while start >= 3 && tokens[start - 1] == "]" {
+        let mut depth = 1_usize;
+        let mut cursor = start - 1;
+        let mut open = None;
+        while cursor > 0 {
+            cursor -= 1;
+            match tokens[cursor].as_str() {
+                "]" => depth += 1,
+                "[" => {
+                    depth -= 1;
+                    if depth == 0 {
+                        open = Some(cursor);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(open) = open else {
+            break;
+        };
+        if open == 0 || tokens[open - 1] != "#" {
+            break;
+        }
+        start = open - 1;
+    }
+    start
+}
+
 fn function_tokens<'a>(tokens: &'a [String], name: &str) -> Result<&'a [String], String> {
     let marker = ["pub", "fn", name];
     let starts = tokens
@@ -2795,23 +2826,29 @@ fn function_tokens<'a>(tokens: &'a [String], name: &str) -> Result<&'a [String],
             starts.len()
         ));
     }
-    let start = starts[0];
+    let function_start = starts[0];
     let body = tokens
         .iter()
         .enumerate()
-        .skip(start + marker.len())
+        .skip(function_start + marker.len())
         .find_map(|(index, token)| (token == "{").then_some(index))
         .ok_or_else(|| format!("function {name} has no body"))?;
     let end = matching_delimiter(tokens, body)
         .ok_or_else(|| format!("function {name} has an unbalanced body"))?;
+    let start = outer_attribute_start(tokens, function_start);
     Ok(&tokens[start..=end])
 }
 
 fn function_body_tokens<'a>(tokens: &'a [String], name: &str) -> Result<&'a [String], String> {
     let function = function_tokens(tokens, name)?;
+    let marker = ["pub", "fn", name];
+    let function_start = sequence_start(function, &marker)
+        .ok_or_else(|| format!("function {name} has no isolated signature"))?;
     let body = function
         .iter()
-        .position(|token| token == "{")
+        .enumerate()
+        .skip(function_start + marker.len())
+        .find_map(|(index, token)| (token == "{").then_some(index))
         .ok_or_else(|| format!("function {name} has no isolated body"))?;
     let end = matching_delimiter(function, body)
         .ok_or_else(|| format!("function {name} has an unbalanced isolated body"))?;
@@ -3000,16 +3037,29 @@ fn validate_exact_method_statements(
     tokens: &[String],
     type_name: &str,
     method_name: &str,
+    attributes: &str,
     signature: &str,
     statements: &[&str],
 ) -> Result<(), String> {
     let implementation = inherent_impl_tokens(tokens, type_name)?;
     let function = function_tokens(implementation, method_name)?;
+    let marker = ["pub", "fn", method_name];
+    let function_start = sequence_start(function, &marker)
+        .ok_or_else(|| format!("function {method_name} has no isolated signature"))?;
+    let actual_attributes = &function[..function_start];
+    let expected_attributes = rust_tokens(attributes);
+    if actual_attributes != expected_attributes {
+        return Err(format!(
+            "{type_name}::{method_name} outer attributes drifted; expected {expected_attributes:?}, found {actual_attributes:?}"
+        ));
+    }
     let body = function
         .iter()
-        .position(|token| token == "{")
+        .enumerate()
+        .skip(function_start + marker.len())
+        .find_map(|(index, token)| (token == "{").then_some(index))
         .ok_or_else(|| format!("function {method_name} has no isolated body"))?;
-    let actual_signature = &function[..=body];
+    let actual_signature = &function[function_start..=body];
     let expected_signature = rust_tokens(signature);
     if actual_signature != expected_signature {
         return Err(format!(
@@ -3042,6 +3092,7 @@ fn validate_appraisal_allow_construction(verification: &str) -> Result<(), Strin
         &tokens,
         "VerifierFlow",
         "complete",
+        "",
         "pub fn complete(&mut self) -> Result<VerifiedAttestation, TransitionError> {",
         &[
             r#"let outcome = match &self.state {
@@ -3071,6 +3122,7 @@ fn validate_appraisal_allow_construction(verification: &str) -> Result<(), Strin
         &tokens,
         "VerifiedAttestation",
         "into_appraisal_result",
+        r#"#[must_use = "the appraisal result carries the completed verifier outcome"]"#,
         "pub fn into_appraisal_result(self) -> AppraisalResult {",
         &[
             r#"let Self {
@@ -3389,9 +3441,17 @@ fn appraisal_allow_structure_rejects_conversion_refill_and_decoy_bypasses() {
     assert_ne!(reordered, source);
     assert!(validate_appraisal_allow_construction(&reordered).is_err());
 
+    let claims = r#"let claims = AcceptedClaims {
+            accepted_profile,
+            session_public_key_id,
+        };"#;
+    assert_eq!(source.matches(claims).count(), 1);
     let cloned = source.replacen(
-        "accepted_profile,\n            session_public_key_id,",
-        "accepted_profile: accepted_profile.clone(),\n            session_public_key_id,",
+        claims,
+        r#"let claims = AcceptedClaims {
+            accepted_profile: accepted_profile.clone(),
+            session_public_key_id,
+        };"#,
         1,
     );
     assert_ne!(cloned, source);
@@ -3415,6 +3475,43 @@ fn appraisal_allow_structure_rejects_conversion_refill_and_decoy_bypasses() {
     let bypass = decoy.replacen(result, "self.refill_appraisal_result()", 1);
     assert_ne!(bypass, decoy);
     assert!(validate_appraisal_allow_construction(&bypass).is_err());
+}
+
+#[test]
+fn appraisal_allow_structure_rejects_target_method_attribute_drift() {
+    let source = include_str!("../verification.rs");
+    let complete =
+        "    pub fn complete(&mut self) -> Result<VerifiedAttestation, TransitionError> {";
+    let cfg_complete = source.replacen(complete, &format!("    #[cfg(test)]\n{complete}"), 1);
+    assert_ne!(cfg_complete, source);
+    assert!(validate_appraisal_allow_construction(&cfg_complete).is_err());
+
+    let must_use =
+        "    #[must_use = \"the appraisal result carries the completed verifier outcome\"]\n";
+    let missing_must_use = source.replacen(must_use, "", 1);
+    assert_ne!(missing_must_use, source);
+    assert!(validate_appraisal_allow_construction(&missing_must_use).is_err());
+
+    let cfg_conversion = source.replacen(must_use, &format!("    #[cfg(test)]\n{must_use}"), 1);
+    assert_ne!(cfg_conversion, source);
+    assert!(validate_appraisal_allow_construction(&cfg_conversion).is_err());
+}
+
+#[test]
+fn appraisal_allow_structure_does_not_misattribute_neighbor_attributes() {
+    let source = include_str!("../verification.rs");
+    let complete_docs =
+        "    /// Completes the fully gated path and releases the owned raw request.";
+    let neighboring = source.replacen(
+        complete_docs,
+        &format!("    #[inline]\n    fn attributed_neighbor() {{}}\n\n{complete_docs}"),
+        1,
+    );
+    assert_ne!(neighboring, source);
+    let decoys = neighboring
+        + "\nimpl CompleteAttributeDecoy { #[cfg(test)] pub fn complete(&mut self) {} }"
+        + "\nimpl ConversionAttributeDecoy { #[inline] pub fn into_appraisal_result(self) {} }";
+    assert!(validate_appraisal_allow_construction(&decoys).is_ok());
 }
 
 #[test]

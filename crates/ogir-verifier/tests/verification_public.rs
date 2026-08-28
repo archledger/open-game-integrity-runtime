@@ -10,8 +10,8 @@ use ogir_model::{
 };
 use ogir_protocol::EvidenceBundle;
 use ogir_verifier::{
-    AcceptedClaims, AppraisalResult, AppraisalResultView, ExpectedContext, VerificationPhase,
-    VerificationRequest, VerifiedAttestation, VerifierFlow,
+    AcceptedClaims, AppraisalResult, AppraisalResultView, ExpectedContext, TransitionError,
+    VerificationPhase, VerificationRequest, VerifiedAttestation, VerifierFlow,
 };
 
 fn identifier<T>(value: &str) -> T
@@ -88,6 +88,8 @@ fn appraisal_result_public_accessors_type_check() {
 
     let _: fn(&AppraisalResult) = inspect;
     let _: fn(&AcceptedClaims) = inspect_claims;
+    let _: fn(&mut VerifierFlow) -> Result<VerifiedAttestation, TransitionError> =
+        VerifierFlow::complete;
     let _: fn(VerifiedAttestation) -> AppraisalResult = VerifiedAttestation::into_appraisal_result;
 }
 
