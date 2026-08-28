@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 use std::num::NonZeroU64;
 
@@ -3053,7 +3054,7 @@ fn identifier_end(source: &str, start: usize) -> Option<usize> {
     Some(cursor)
 }
 
-fn rust_tokens(source: &str) -> Vec<String> {
+fn rust_tokens_with_literal_policy(source: &str, retain_literals: bool) -> Vec<String> {
     let source = source.strip_prefix('\u{feff}').unwrap_or(source);
     let bytes = source.as_bytes();
     let mut tokens = Vec::new();
@@ -3087,22 +3088,42 @@ fn rust_tokens(source: &str) -> Vec<String> {
                 }
             }
         } else if let Some(end) = raw_string_end(source, cursor) {
-            cursor = identifier_end(source, end).unwrap_or(end);
+            let end = identifier_end(source, end).unwrap_or(end);
+            if retain_literals {
+                tokens.push(source[cursor..end].to_owned());
+            }
+            cursor = end;
         } else if bytes[cursor] == b'"' {
             let end = quoted_string_end(source, cursor);
-            cursor = identifier_end(source, end).unwrap_or(end);
+            let end = identifier_end(source, end).unwrap_or(end);
+            if retain_literals {
+                tokens.push(source[cursor..end].to_owned());
+            }
+            cursor = end;
         } else if matches!(bytes.get(cursor), Some(b'b' | b'c'))
             && bytes.get(cursor + 1) == Some(&b'"')
         {
             let end = quoted_string_end(source, cursor + 1);
-            cursor = identifier_end(source, end).unwrap_or(end);
+            let end = identifier_end(source, end).unwrap_or(end);
+            if retain_literals {
+                tokens.push(source[cursor..end].to_owned());
+            }
+            cursor = end;
         } else if bytes[cursor] == b'b' && bytes.get(cursor + 1) == Some(&b'\'') {
             let end = char_literal_end(source, cursor + 1)
                 .unwrap_or_else(|| panic!("invalid byte character at byte {cursor}"));
-            cursor = identifier_end(source, end).unwrap_or(end);
+            let end = identifier_end(source, end).unwrap_or(end);
+            if retain_literals {
+                tokens.push(source[cursor..end].to_owned());
+            }
+            cursor = end;
         } else if bytes[cursor] == b'\'' {
             if let Some(end) = char_literal_end(source, cursor) {
-                cursor = identifier_end(source, end).unwrap_or(end);
+                let end = identifier_end(source, end).unwrap_or(end);
+                if retain_literals {
+                    tokens.push(source[cursor..end].to_owned());
+                }
+                cursor = end;
             } else if bytes
                 .get(cursor + 1..)
                 .is_some_and(|tail| tail.starts_with(b"r#"))
@@ -3146,6 +3167,14 @@ fn rust_tokens(source: &str) -> Vec<String> {
         }
     }
     tokens
+}
+
+fn rust_tokens(source: &str) -> Vec<String> {
+    rust_tokens_with_literal_policy(source, false)
+}
+
+fn rust_tokens_with_literals(source: &str) -> Vec<String> {
+    rust_tokens_with_literal_policy(source, true)
 }
 
 fn matching_delimiter(tokens: &[String], open: usize) -> Option<usize> {
@@ -3292,6 +3321,345 @@ fn direct_item_body(item: &[String]) -> Result<&[String], String> {
     let close = matching_delimiter(item, open)
         .ok_or_else(|| "direct item has an unbalanced body".to_owned())?;
     Ok(&item[open + 1..close])
+}
+
+const AUTHORITY_TARGETS: [&str; 3] = ["AppraisalResult", "AcceptedClaims", "VerifiedAttestation"];
+
+#[derive(Clone, Default)]
+struct AuthorityScope {
+    local_target_shadows: BTreeSet<String>,
+    aliases: BTreeMap<String, bool>,
+}
+
+fn path_start(tokens: &[String], end: usize) -> usize {
+    let mut start = end;
+    while start >= 3
+        && tokens.get(start - 1).map(String::as_str) == Some(":")
+        && tokens.get(start - 2).map(String::as_str) == Some(":")
+    {
+        start -= 3;
+    }
+    start
+}
+
+fn path_segments(tokens: &[String], end: usize) -> Vec<&str> {
+    let start = path_start(tokens, end);
+    (start..=end)
+        .step_by(3)
+        .filter_map(|index| tokens.get(index).map(String::as_str))
+        .collect()
+}
+
+fn unqualified_name_resolves_authority(name: &str, scopes: &[AuthorityScope]) -> bool {
+    for scope in scopes.iter().rev() {
+        if let Some(resolves) = scope.aliases.get(name) {
+            return *resolves;
+        }
+        if AUTHORITY_TARGETS.contains(&name) && scope.local_target_shadows.contains(name) {
+            return false;
+        }
+    }
+    AUTHORITY_TARGETS.contains(&name)
+}
+
+fn path_resolves_authority(tokens: &[String], end: usize, scopes: &[AuthorityScope]) -> bool {
+    let segments = path_segments(tokens, end);
+    let Some(name) = segments.last().copied() else {
+        return false;
+    };
+    if segments.len() == 1 {
+        return unqualified_name_resolves_authority(name, scopes);
+    }
+
+    match segments[0] {
+        "crate" | "$crate" => {
+            scopes
+                .first()
+                .is_some_and(|scope| scope.aliases.get(name).copied().unwrap_or(false))
+                || AUTHORITY_TARGETS.contains(&name)
+        }
+        "self" => scopes.last().is_some_and(|scope| {
+            scope.aliases.get(name).copied().unwrap_or(false)
+                || (AUTHORITY_TARGETS.contains(&name) && !scope.local_target_shadows.contains(name))
+        }),
+        "super" => {
+            let levels = segments
+                .iter()
+                .take_while(|segment| **segment == "super")
+                .count();
+            let retained = scopes.len().saturating_sub(levels);
+            retained == 0 || unqualified_name_resolves_authority(name, &scopes[..retained])
+        }
+        _ => unqualified_name_resolves_authority(name, scopes) || AUTHORITY_TARGETS.contains(&name),
+    }
+}
+
+fn tokens_resolve_authority(tokens: &[String], scopes: &[AuthorityScope]) -> bool {
+    tokens.iter().enumerate().any(|(index, token)| {
+        (AUTHORITY_TARGETS.contains(&token.as_str())
+            || scopes
+                .iter()
+                .rev()
+                .find_map(|scope| scope.aliases.get(token))
+                .copied()
+                .unwrap_or(false))
+            && path_resolves_authority(tokens, index, scopes)
+    })
+}
+
+fn type_alias_parts(item: &[String]) -> Result<Option<(&str, &[String])>, String> {
+    let header = direct_item_header(item)?;
+    let core = item_core_start(header)?;
+    if header.get(core).map(String::as_str) != Some("type") {
+        return Ok(None);
+    }
+    let name = header
+        .get(core + 1)
+        .map(String::as_str)
+        .ok_or_else(|| "type alias lacks a name".to_owned())?;
+    let equals = header
+        .iter()
+        .position(|token| token == "=")
+        .ok_or_else(|| format!("type alias {name} lacks a right-hand side"))?;
+    Ok(Some((name, &header[equals + 1..])))
+}
+
+fn macro_invocations(tokens: &[String]) -> Result<Vec<&[String]>, String> {
+    let mut invocations = Vec::new();
+    for bang in 1..tokens.len().saturating_sub(1) {
+        if tokens[bang] != "!" || !matches!(tokens[bang + 1].as_str(), "(" | "[" | "{") {
+            continue;
+        }
+        let close = matching_delimiter(tokens, bang + 1)
+            .ok_or_else(|| format!("macro invocation at token {bang} is unbalanced"))?;
+        invocations.push(&tokens[path_start(tokens, bang - 1)..=close]);
+    }
+    Ok(invocations)
+}
+
+fn macro_arguments(invocation: &[String]) -> Result<&[String], String> {
+    let bang = invocation
+        .iter()
+        .position(|token| token == "!")
+        .ok_or_else(|| "macro invocation lacks !".to_owned())?;
+    let close = matching_delimiter(invocation, bang + 1)
+        .ok_or_else(|| "macro invocation arguments are unbalanced".to_owned())?;
+    Ok(&invocation[bang + 2..close])
+}
+
+fn semicolon_terminated_slice(tokens: &[String], start: usize) -> Result<&[String], String> {
+    let mut delimiters = Vec::new();
+    for (index, token) in tokens.iter().enumerate().skip(start) {
+        match token.as_str() {
+            "(" => delimiters.push(")"),
+            "[" => delimiters.push("]"),
+            "{" => delimiters.push("}"),
+            ")" | "]" | "}" if delimiters.pop() != Some(token.as_str()) => {
+                return Err(format!("mismatched statement delimiter at token {index}"));
+            }
+            ";" if delimiters.is_empty() => return Ok(&tokens[start..=index]),
+            _ => {}
+        }
+    }
+    Err(format!(
+        "item-like statement at token {start} is unterminated"
+    ))
+}
+
+fn validate_nested_aliases_and_imports(
+    tokens: &[String],
+    scopes: &[AuthorityScope],
+) -> Result<(), String> {
+    for (index, token) in tokens.iter().enumerate() {
+        if token == "type" {
+            let statement = semicolon_terminated_slice(tokens, index)?;
+            let Some(equals) = statement.iter().position(|candidate| candidate == "=") else {
+                continue;
+            };
+            if tokens_resolve_authority(&statement[equals + 1..statement.len() - 1], scopes) {
+                return Err(
+                    "block or associated type alias resolves to appraisal authority".to_owned(),
+                );
+            }
+        } else if token == "use" {
+            let statement = semicolon_terminated_slice(tokens, index)?;
+            if tokens_resolve_authority(statement, scopes) {
+                return Err("block import resolves to appraisal authority".to_owned());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn is_inline_module(item: &[String]) -> Result<bool, String> {
+    let header = direct_item_header(item)?;
+    let core = item_core_start(header)?;
+    Ok(header.get(core).map(String::as_str) == Some("mod") && item_body_open(item).is_some())
+}
+
+fn is_macro_definition(item: &[String]) -> Result<bool, String> {
+    let header = direct_item_header(item)?;
+    let core = item_core_start(header)?;
+    Ok(header.get(core).map(String::as_str) == Some("macro_rules"))
+}
+
+fn validate_macro_invocations(
+    tokens: &[String],
+    scopes: &[AuthorityScope],
+    root_scope: bool,
+) -> Result<(), String> {
+    let approved = [
+        r#"impl_redacted_debug!(AppraisalResult, "AppraisalResult([REDACTED])")"#,
+        r#"impl_redacted_debug!(AcceptedClaims, "AcceptedClaims([REDACTED])")"#,
+    ]
+    .map(rust_tokens_with_literals);
+    for invocation in macro_invocations(tokens)? {
+        if !tokens_resolve_authority(macro_arguments(invocation)?, scopes) {
+            continue;
+        }
+        if root_scope && approved.iter().any(|expected| invocation == expected) {
+            continue;
+        }
+        return Err(format!(
+            "unapproved macro invocation mentions appraisal authority: {invocation:?}"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_associated_target_aliases(
+    item: &[String],
+    scopes: &[AuthorityScope],
+) -> Result<(), String> {
+    let header = direct_item_header(item)?;
+    let core = item_core_start(header)?;
+    if !matches!(header.get(core).map(String::as_str), Some("impl" | "trait")) {
+        return Ok(());
+    }
+    for associated in direct_items(direct_item_body(item)?)? {
+        if let Some((name, rhs)) = type_alias_parts(associated)?
+            && tokens_resolve_authority(rhs, scopes)
+        {
+            return Err(format!(
+                "associated type alias {name} resolves to appraisal authority"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_authority_scope(
+    tokens: &[String],
+    parent_scopes: &[AuthorityScope],
+    root_scope: bool,
+) -> Result<(), String> {
+    let items = direct_items(tokens)?;
+    let mut scope = AuthorityScope::default();
+    if !root_scope {
+        for item in &items {
+            let header = direct_item_header(item)?;
+            let core = item_core_start(header)?;
+            if matches!(
+                header.get(core).map(String::as_str),
+                Some("struct" | "enum" | "union" | "type")
+            ) && header
+                .get(core + 1)
+                .is_some_and(|name| AUTHORITY_TARGETS.contains(&name.as_str()))
+            {
+                scope.local_target_shadows.insert(header[core + 1].clone());
+            }
+        }
+    }
+
+    let aliases = items
+        .iter()
+        .filter_map(|item| type_alias_parts(item).transpose())
+        .collect::<Result<Vec<_>, _>>()?;
+    for (name, _) in &aliases {
+        scope.aliases.insert((*name).to_owned(), false);
+    }
+    let mut scopes = parent_scopes.to_vec();
+    scopes.push(scope);
+    for _ in 0..=aliases.len() {
+        let mut changed = false;
+        for (name, rhs) in &aliases {
+            let resolves = tokens_resolve_authority(rhs, &scopes);
+            let current = scopes
+                .last_mut()
+                .ok_or_else(|| "authority scope stack is empty".to_owned())?
+                .aliases
+                .get_mut(*name)
+                .ok_or_else(|| format!("type alias {name} was not registered"))?;
+            if resolves && !*current {
+                *current = true;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    for item in items {
+        let header = direct_item_header(item)?;
+        let core = item_core_start(header)?;
+        if header.get(core).map(String::as_str) == Some("use") {
+            if !root_scope
+                && header.iter().any(|token| token == "*")
+                && header
+                    .iter()
+                    .any(|token| matches!(token.as_str(), "self" | "super" | "crate"))
+            {
+                return Err("ambiguous nested import may expose appraisal authority".to_owned());
+            }
+            if tokens_resolve_authority(header, &scopes) {
+                return Err(format!(
+                    "import or re-export resolves to appraisal authority: {header:?}"
+                ));
+            }
+        }
+        if is_inline_module(item)? {
+            validate_authority_scope(direct_item_body(item)?, &scopes, false)?;
+            continue;
+        }
+        if is_macro_definition(item)? {
+            if item
+                .iter()
+                .any(|token| AUTHORITY_TARGETS.contains(&token.as_str()))
+                || tokens_resolve_authority(item, &scopes)
+            {
+                return Err("macro definition names appraisal authority".to_owned());
+            }
+            continue;
+        }
+        validate_macro_invocations(item, &scopes, root_scope)?;
+        validate_nested_aliases_and_imports(item, &scopes)?;
+        validate_associated_target_aliases(item, &scopes)?;
+        if !root_scope && tokens_resolve_authority(item, &scopes) {
+            return Err(format!(
+                "nested module item resolves to appraisal authority: {header:?}"
+            ));
+        }
+    }
+
+    let target_aliases = scopes
+        .last()
+        .into_iter()
+        .flat_map(|scope| &scope.aliases)
+        .filter_map(|(name, resolves)| resolves.then_some(name))
+        .collect::<Vec<_>>();
+    if target_aliases.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "type aliases resolve to appraisal authority: {target_aliases:?}"
+        ))
+    }
+}
+
+fn validate_recursive_authority_inventory(source: &str) -> Result<(), String> {
+    let tokens = rust_tokens_with_literals(source);
+    validate_authority_scope(&tokens, &[], true)
 }
 
 fn item_is_named(item: &[String], keyword: &str, name: &str) -> Result<bool, String> {
@@ -3446,7 +3814,7 @@ fn validate_authority_trait_impls(tokens: &[String]) -> Result<(), String> {
             let core = item_core_start(header).ok()?;
             (header.get(core).map(String::as_str) == Some("impl")
                 && header.iter().any(|token| token == "for")
-                && header_mentions_authority_target(item))
+                && header_mentions_authority_target(header))
             .then_some(item)
         })
         .collect::<Vec<_>>();
@@ -3455,6 +3823,34 @@ fn validate_authority_trait_impls(tokens: &[String]) -> Result<(), String> {
     } else {
         Err(format!(
             "authority trait implementation inventory drifted; found {relevant:?}"
+        ))
+    }
+}
+
+fn validate_authority_impl_headers(tokens: &[String]) -> Result<(), String> {
+    let actual = direct_items(tokens)?
+        .into_iter()
+        .filter_map(|item| {
+            let header = direct_item_header(item).ok()?;
+            let core = item_core_start(header).ok()?;
+            (header.get(core).map(String::as_str) == Some("impl")
+                && header_mentions_authority_target(header))
+            .then(|| header.to_vec())
+        })
+        .collect::<Vec<_>>();
+    let expected = [
+        "impl AppraisalResult",
+        "impl AcceptedClaims",
+        "impl VerifiedAttestation",
+        "impl fmt::Debug for VerifiedAttestation",
+    ]
+    .map(rust_tokens)
+    .to_vec();
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "appraisal authority impl header inventory drifted; expected {expected:?}, found {actual:?}"
         ))
     }
 }
@@ -3522,13 +3918,60 @@ fn construction_count(function: &[String], type_name: &str) -> Result<usize, Str
 }
 
 fn validate_authority_constructions(tokens: &[String]) -> Result<(), String> {
+    let mut self_constructions = BTreeMap::<String, (usize, usize, usize)>::new();
+    for item in direct_items(tokens)? {
+        let header = direct_item_header(item)?;
+        let core = item_core_start(header)?;
+        if header.get(core).map(String::as_str) != Some("impl")
+            || header.iter().any(|token| token == "for")
+        {
+            continue;
+        }
+        let Some(target) = header.get(core + 1).map(String::as_str) else {
+            continue;
+        };
+        let Some(target_index) = AUTHORITY_TARGETS.iter().position(|name| *name == target) else {
+            continue;
+        };
+        for method in direct_items(direct_item_body(item)?)? {
+            let count = direct_item_body(method)?
+                .windows(2)
+                .enumerate()
+                .filter(|(index, window)| {
+                    window == &["Self", "{"]
+                        && index
+                            .checked_sub(1)
+                            .and_then(|previous| direct_item_body(method).ok()?.get(previous))
+                            .is_none_or(|token| token != "let")
+                })
+                .count();
+            if count == 0 {
+                continue;
+            }
+            let counts = self_constructions
+                .entry(function_name(method)?.to_owned())
+                .or_insert((0, 0, 0));
+            match target_index {
+                0 => counts.0 += count,
+                1 => counts.1 += count,
+                2 => counts.2 += count,
+                _ => return Err("authority target index escaped fixed inventory".to_owned()),
+            }
+        }
+    }
+
     let mut actual = Vec::new();
     for function in concrete_functions(tokens)? {
-        let counts = (
+        let mut counts = (
             construction_count(function, "AppraisalResult")?,
             construction_count(function, "AcceptedClaims")?,
             construction_count(function, "VerifiedAttestation")?,
         );
+        if let Some(additional) = self_constructions.get(function_name(function)?) {
+            counts.0 += additional.0;
+            counts.1 += additional.1;
+            counts.2 += additional.2;
+        }
         if counts != (0, 0, 0) {
             actual.push((function_name(function)?.to_owned(), counts));
         }
@@ -3614,7 +4057,34 @@ fn validate_exact_failure_entry_points(tokens: &[String]) -> Result<(), String> 
     }
 }
 
+fn validate_private_diagnostic_assertions(source: &str) -> Result<(), String> {
+    let tokens = rust_tokens_with_literals(source);
+    let body = private_function_body_tokens(&tokens, "push_result_diagnostics")?;
+    let actual = macro_invocations(body)?
+        .into_iter()
+        .map(<[String]>::to_vec)
+        .collect::<Vec<_>>();
+    let expected = [
+        r#"format!("{result:?}")"#,
+        r#"assert!(diagnostic == "AppraisalResult([REDACTED])", "appraisal result diagnostic was not the fixed redaction marker")"#,
+        r#"format!("{view:?}")"#,
+        r#"assert!(diagnostic == "AppraisalResultView([REDACTED])", "appraisal result view diagnostic was not the fixed redaction marker")"#,
+        r#"format!("{claims:?}")"#,
+        r#"assert!(diagnostic == "AcceptedClaims([REDACTED])", "accepted claims diagnostic was not the fixed redaction marker")"#,
+    ]
+    .map(rust_tokens_with_literals)
+    .to_vec();
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "private diagnostic macro inventory drifted; expected {expected:?}, found {actual:?}"
+        ))
+    }
+}
+
 fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(), String> {
+    validate_recursive_authority_inventory(verification)?;
     let tokens = rust_tokens(verification);
     for (keyword, name, expected) in [
         (
@@ -3738,6 +4208,7 @@ fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(
         require_exact_item(&tokens, keyword, name, expected)?;
     }
     validate_authority_method_inventories(&tokens)?;
+    validate_authority_impl_headers(&tokens)?;
     validate_authority_trait_impls(&tokens)?;
     validate_redacted_debug_macro_inventory(&tokens)?;
     validate_authority_constructions(&tokens)?;
@@ -4973,16 +5444,235 @@ fn authority_inventory_rejects_extra_result_construction_expression() {
 }
 
 #[test]
+fn authority_inventory_rejects_child_impl_of_ancestor_result() {
+    let source = include_str!("../verification.rs");
+    let mutation = format!(
+        "{source}\nmod child {{ impl super::AppraisalResult {{ pub fn protect(self) -> Self {{ self }} }} }}"
+    );
+    assert!(validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_nested_self_result_construction() {
+    let source = include_str!("../verification.rs");
+    let mutation = format!(
+        "{source}\nmod child {{ impl super::AppraisalResult {{ fn duplicate(&self) -> Self {{ Self {{ context: self.context.clone(), payload: AppraisalPayload::Failure(FailurePayload {{ decision: FailureDecision::Deny, reason: ReasonCode::Malformed }}) }} }} }} }}"
+    );
+    assert!(validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_self_construction_in_root_target_impl() {
+    let source = include_str!("../verification.rs");
+    let mutation = source.replacen(
+        "    pub const fn context(&self) -> &ExpectedContext {\n        &self.context",
+        "    pub const fn context(&self) -> &ExpectedContext {\n        if false { let _duplicate = Self { context: self.context.clone(), payload: AppraisalPayload::Failure(FailurePayload { decision: FailureDecision::Deny, reason: ReasonCode::Malformed }) }; }\n        &self.context",
+        1,
+    );
+    assert_ne!(mutation, source);
+    assert!(validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_direct_target_aliases() {
+    let source = include_str!("../verification.rs");
+    for alias in [
+        "type ResultAlias = AppraisalResult;",
+        "type ClaimsAlias = Option<Vec<AcceptedClaims>>;",
+        "type VerifiedAlias = crate::verification::VerifiedAttestation;",
+    ] {
+        let mutation = format!("{source}\n{alias}");
+        assert!(
+            validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err(),
+            "target alias was accepted: {alias}"
+        );
+    }
+}
+
+#[test]
+fn authority_inventory_rejects_block_local_target_aliases() {
+    let source = include_str!("../verification.rs");
+    let mutation = source.replacen(
+        "    pub const fn context(&self) -> &ExpectedContext {",
+        "    pub const fn context(&self) -> &ExpectedContext {\n        type ResultAlias = AppraisalResult;\n        let _: Option<ResultAlias> = None;",
+        1,
+    );
+    assert_ne!(mutation, source);
+    assert!(validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_chained_target_aliases() {
+    let source = include_str!("../verification.rs");
+    let mutation = format!(
+        "{source}\ntype ChainedResult = ResultAlias;\ntype ResultAlias = Option<AppraisalResult>;"
+    );
+    assert!(validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_generic_target_macro_invocation() {
+    let source = include_str!("../verification.rs");
+    let mutation = format!(
+        "{source}\nmacro_rules! make_into {{ ($from:ty => $to:ty) => {{ impl Into<$to> for $from {{ fn into(self) -> $to {{ unreachable!() }} }} }}; }}\nmake_into!(VerifiedAttestation => AppraisalResult);"
+    );
+    assert!(validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_aliased_target_macro_invocation() {
+    let source = include_str!("../verification.rs");
+    let mutation = format!(
+        "{source}\ntype ResultAlias = AppraisalResult;\nmake_into!(VerifiedAttestation => ResultAlias);"
+    );
+    assert!(validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_nested_target_macro_invocation() {
+    let source = include_str!("../verification.rs");
+    let mutation = format!(
+        "{source}\nmod child {{ make_into!(super::VerifiedAttestation => super::AppraisalResult); }}"
+    );
+    assert!(validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_qualified_and_imported_target_paths() {
+    let source = include_str!("../verification.rs");
+    for item in [
+        "impl self::AppraisalResult { fn duplicate(&self) -> self::AppraisalResult { unreachable!() } }",
+        "mod child { use super::AppraisalResult as ResultAlias; impl ResultAlias { fn duplicate(&self) -> Self { unreachable!() } } }",
+        "mod child { pub use crate::verification::VerifiedAttestation as VerifiedAlias; }",
+    ] {
+        let mutation = format!("{source}\n{item}");
+        assert!(
+            validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err(),
+            "qualified or imported authority path was accepted: {item}"
+        );
+    }
+}
+
+#[test]
+fn authority_inventory_rejects_target_bearing_macro_definition() {
+    let source = include_str!("../verification.rs");
+    let mutation = format!(
+        "{source}\nmacro_rules! clone_result {{ ($value:expr) => {{ let _: AppraisalResult = $value; }}; }}"
+    );
+    assert!(validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err());
+}
+
+#[test]
+fn authority_inventory_ignores_bodyless_external_module_declaration() {
+    let source = include_str!("../verification.rs");
+    let positive = format!("{source}\nmod unrelated_external;");
+    if let Err(error) = validate_authority_structure(&positive, include_str!("../freshness.rs")) {
+        panic!("bodyless external module declaration affected authority inventory: {error}");
+    }
+}
+
+#[test]
+fn authority_trait_inventory_ignores_unrelated_impl_bodies() {
+    let source = include_str!("../verification.rs");
+    let positive = format!(
+        "{source}\nstruct Unrelated; trait Observe {{ fn inspect(); }} impl Observe for Unrelated {{ fn inspect() {{ let _: Option<AppraisalResult> = None; }} }}"
+    );
+    if let Err(error) = validate_authority_structure(&positive, include_str!("../freshness.rs")) {
+        panic!("unrelated trait implementation body affected authority relevance: {error}");
+    }
+}
+
+#[test]
+fn authority_inventory_permits_wholly_local_child_shadow() {
+    let source = include_str!("../verification.rs");
+    let positive = format!(
+        "{source}\nmod child {{ struct AppraisalResult {{ value: usize }} impl AppraisalResult {{ fn duplicate(&self) -> Self {{ Self {{ value: self.value }} }} }} }}"
+    );
+    if let Err(error) = validate_authority_structure(&positive, include_str!("../freshness.rs")) {
+        panic!("wholly child-local shadow was misattributed: {error}");
+    }
+}
+
+#[test]
+fn authority_inventory_permits_harmless_unrelated_macro() {
+    let source = include_str!("../verification.rs");
+    let positive = format!(
+        "{source}\nmacro_rules! make_pair {{ ($left:ty => $right:ty) => {{ struct Pair($left, $right); }}; }}\nmake_pair!(usize => String);"
+    );
+    if let Err(error) = validate_authority_structure(&positive, include_str!("../freshness.rs")) {
+        panic!("unrelated macro affected authority inventory: {error}");
+    }
+}
+
+#[test]
 fn private_diagnostic_assertions_never_print_formatted_values() {
     let source = include_str!("tests.rs");
-    let tokens = rust_tokens(source);
-    let body = private_function_body_tokens(&tokens, "push_result_diagnostics")
-        .unwrap_or_else(|error| panic!("failed to isolate private diagnostic helper: {error}"));
-    for value_printing_assertion in [["assert_eq", "!"], ["assert_ne", "!"]] {
-        assert!(
-            sequence_start(body, &value_printing_assertion).is_none(),
-            "private diagnostic helper must use boolean assertions with fixed messages"
+    if let Err(error) = validate_private_diagnostic_assertions(source) {
+        panic!("private diagnostic assertion inventory drifted: {error}");
+    }
+}
+
+#[test]
+fn private_diagnostic_inventory_rejects_interpolated_assertion() {
+    let source = include_str!("tests.rs");
+    let mutation = source.replacen(
+        "\"appraisal result diagnostic was not the fixed redaction marker\"",
+        "\"appraisal result diagnostic leaked: {diagnostic}\"",
+        1,
+    );
+    assert_ne!(mutation, source);
+    assert!(validate_private_diagnostic_assertions(&mutation).is_err());
+}
+
+#[test]
+fn private_diagnostic_inventory_rejects_panic_with_diagnostic() {
+    let source = include_str!("tests.rs");
+    let mutation = source.replacen(
+        "    diagnostics.push(diagnostic);",
+        "    panic!(\"diagnostic leaked: {diagnostic}\");\n    diagnostics.push(diagnostic);",
+        1,
+    );
+    assert_ne!(mutation, source);
+    assert!(validate_private_diagnostic_assertions(&mutation).is_err());
+}
+
+#[test]
+fn private_diagnostic_inventory_rejects_formatting_arguments() {
+    let source = include_str!("tests.rs");
+    let mutation = source.replacen(
+        "\"appraisal result diagnostic was not the fixed redaction marker\"",
+        "\"appraisal result diagnostic leaked: {}\", diagnostic",
+        1,
+    );
+    assert_ne!(mutation, source);
+    assert!(validate_private_diagnostic_assertions(&mutation).is_err());
+}
+
+#[test]
+fn private_diagnostic_inventory_rejects_dbg_and_alternate_macros() {
+    let source = include_str!("tests.rs");
+    for statement in ["dbg!(&diagnostic);", "eprintln!(\"{diagnostic}\");"] {
+        let mutation = source.replacen(
+            "    diagnostics.push(diagnostic);",
+            &format!("    {statement}\n    diagnostics.push(diagnostic);"),
+            1,
         );
+        assert_ne!(mutation, source);
+        assert!(
+            validate_private_diagnostic_assertions(&mutation).is_err(),
+            "alternate value-printing macro was accepted: {statement}"
+        );
+    }
+}
+
+#[test]
+fn private_diagnostic_inventory_ignores_unrelated_safe_assertion() {
+    let source = format!(
+        "{}\nfn unrelated_safe_assertion() {{ assert!(true, \"fixed unrelated message\"); }}",
+        include_str!("tests.rs")
+    );
+    if let Err(error) = validate_private_diagnostic_assertions(&source) {
+        panic!("unrelated safe assertion affected private helper inventory: {error}");
     }
 }
 
