@@ -3461,9 +3461,9 @@ fn approved_macro_definition() -> Vec<String> {
 
 fn approved_macro_invocations() -> Vec<Vec<String>> {
     [
-        r#"matches!(phase, VerificationPhase::EvidenceReceived | VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::IdentityChecked | VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied)"#,
-        r#"matches!(phase, VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::EvidenceAppraised)"#,
-        r#"matches!(phase, VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied)"#,
+        r#"std::matches!(phase, VerificationPhase::EvidenceReceived | VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::IdentityChecked | VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied)"#,
+        r#"std::matches!(phase, VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::EvidenceAppraised)"#,
+        r#"std::matches!(phase, VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied)"#,
         r#"impl_redacted_debug!(ChallengeAuthenticated, "ChallengeAuthenticated([REDACTED])")"#,
         r#"impl_redacted_debug!(IdentityChecked, "IdentityChecked([REDACTED])")"#,
         r#"impl_redacted_debug!(EvidenceAppraised, "EvidenceAppraised([REDACTED])")"#,
@@ -3473,22 +3473,22 @@ fn approved_macro_invocations() -> Vec<Vec<String>> {
         r#"impl_redacted_debug!(AppraisalResult, "AppraisalResult([REDACTED])")"#,
         r#"impl_redacted_debug!(AcceptedClaims, "AcceptedClaims([REDACTED])")"#,
         r#"impl_redacted_debug!(AppraisalResultView<'_>, "AppraisalResultView([REDACTED])")"#,
-        r#"matches!(&self.state, VerificationState::EvidenceReceived { .. })"#,
-        r#"unreachable!("phase was checked before active-state replacement")"#,
-        r#"matches!(&self.state, VerificationState::ChallengeAuthenticated { .. })"#,
-        r#"unreachable!("phase was checked before active-state replacement")"#,
-        r#"matches!(&self.state, VerificationState::FreshnessChecked { .. })"#,
-        r#"unreachable!("phase was checked before active-state replacement")"#,
-        r#"matches!(&self.state, VerificationState::IdentityChecked { .. })"#,
-        r#"unreachable!("phase was checked before active-state replacement")"#,
-        r#"matches!(&self.state, VerificationState::EvidenceAppraised { .. })"#,
-        r#"unreachable!("phase was checked before active-state replacement")"#,
-        r#"matches!(&self.state, VerificationState::SessionBound { .. })"#,
-        r#"unreachable!("phase was checked before active-state replacement")"#,
-        r#"matches!(&self.state, VerificationState::RevocationChecked { .. })"#,
-        r#"unreachable!("phase was checked before active-state replacement")"#,
-        r#"unreachable!("phase was checked before terminal replacement")"#,
-        r#"unreachable!("eligibility excluded terminal state before replacement")"#,
+        r#"std::matches!(&self.state, VerificationState::EvidenceReceived { .. })"#,
+        r#"std::unreachable!("phase was checked before active-state replacement")"#,
+        r#"std::matches!(&self.state, VerificationState::ChallengeAuthenticated { .. })"#,
+        r#"std::unreachable!("phase was checked before active-state replacement")"#,
+        r#"std::matches!(&self.state, VerificationState::FreshnessChecked { .. })"#,
+        r#"std::unreachable!("phase was checked before active-state replacement")"#,
+        r#"std::matches!(&self.state, VerificationState::IdentityChecked { .. })"#,
+        r#"std::unreachable!("phase was checked before active-state replacement")"#,
+        r#"std::matches!(&self.state, VerificationState::EvidenceAppraised { .. })"#,
+        r#"std::unreachable!("phase was checked before active-state replacement")"#,
+        r#"std::matches!(&self.state, VerificationState::SessionBound { .. })"#,
+        r#"std::unreachable!("phase was checked before active-state replacement")"#,
+        r#"std::matches!(&self.state, VerificationState::RevocationChecked { .. })"#,
+        r#"std::unreachable!("phase was checked before active-state replacement")"#,
+        r#"std::unreachable!("phase was checked before terminal replacement")"#,
+        r#"std::unreachable!("eligibility excluded terminal state before replacement")"#,
     ]
     .map(rust_tokens_with_literals)
     .to_vec()
@@ -3900,8 +3900,7 @@ fn named_item_tokens<'a>(
             matching.len()
         ));
     }
-    let start = outer_attributes_end(matching[0])?;
-    Ok(&matching[0][start..])
+    Ok(matching[0])
 }
 
 fn require_exact_item(
@@ -4327,52 +4326,52 @@ fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(
         (
             "struct",
             "VerificationBinding",
-            "pub(crate) struct VerificationBinding(Arc<AttemptRecord>);",
+            "#[derive(Clone)] pub(crate) struct VerificationBinding(Arc<AttemptRecord>);",
         ),
         (
             "struct",
             "VerificationOutcome",
-            "pub struct VerificationOutcome { decision: Decision, reason: Option<ReasonCode>, }",
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq)] pub struct VerificationOutcome { decision: Decision, reason: Option<ReasonCode>, }",
         ),
         (
             "struct",
             "ChallengeAuthenticated",
-            "pub struct ChallengeAuthenticated { binding: VerificationBinding, }",
+            "#[must_use] pub struct ChallengeAuthenticated { binding: VerificationBinding, }",
         ),
         (
             "struct",
             "IdentityChecked",
-            "pub struct IdentityChecked { binding: VerificationBinding, }",
+            "#[must_use] pub struct IdentityChecked { binding: VerificationBinding, }",
         ),
         (
             "struct",
             "EvidenceAppraised",
-            "pub struct EvidenceAppraised { binding: VerificationBinding, accepted_profile: EvidenceProfile, }",
+            "#[must_use] pub struct EvidenceAppraised { binding: VerificationBinding, accepted_profile: EvidenceProfile, }",
         ),
         (
             "struct",
             "SessionBound",
-            "pub struct SessionBound { binding: VerificationBinding, session_public_key_id: SessionPublicKeyId, }",
+            "#[must_use] pub struct SessionBound { binding: VerificationBinding, session_public_key_id: SessionPublicKeyId, }",
         ),
         (
             "struct",
             "RevocationChecked",
-            "pub struct RevocationChecked { binding: VerificationBinding, }",
+            "#[must_use] pub struct RevocationChecked { binding: VerificationBinding, }",
         ),
         (
             "struct",
             "PolicySatisfied",
-            "pub struct PolicySatisfied { binding: VerificationBinding, allowed: AllowedClass, }",
+            "#[must_use] pub struct PolicySatisfied { binding: VerificationBinding, allowed: AllowedClass, }",
         ),
         (
             "struct",
             "AppraisalResult",
-            "pub struct AppraisalResult { context: ExpectedContext, payload: AppraisalPayload, }",
+            "#[must_use] pub struct AppraisalResult { context: ExpectedContext, payload: AppraisalPayload, }",
         ),
         (
             "enum",
             "AllowedClass",
-            "enum AllowedClass { Full, Restricted, }",
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq)] enum AllowedClass { Full, Restricted, }",
         ),
         (
             "enum",
@@ -4382,17 +4381,17 @@ fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(
         (
             "struct",
             "AcceptedClaims",
-            "pub struct AcceptedClaims { accepted_profile: EvidenceProfile, session_public_key_id: SessionPublicKeyId, }",
+            "#[must_use] pub struct AcceptedClaims { accepted_profile: EvidenceProfile, session_public_key_id: SessionPublicKeyId, }",
         ),
         (
             "enum",
             "FailureDecision",
-            "enum FailureDecision { Deny, Unsupported, Retry, }",
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] enum FailureDecision { Deny, Unsupported, Retry, }",
         ),
         (
             "enum",
             "FailureKind",
-            "enum FailureKind { Malformed, Unsupported(UnsupportedRequirement), Retry(RetryReason), Deny(DenialReason), Revoked, }",
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] enum FailureKind { Malformed, Unsupported(UnsupportedRequirement), Retry(RetryReason), Deny(DenialReason), Revoked, }",
         ),
         (
             "enum",
@@ -4402,17 +4401,17 @@ fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(
         (
             "struct",
             "VerifiedAttestation",
-            "pub struct VerifiedAttestation { binding: VerificationBinding, context: ExpectedContext, accepted_profile: EvidenceProfile, session_public_key_id: SessionPublicKeyId, allowed: AllowedClass, }",
+            "#[must_use] pub struct VerifiedAttestation { binding: VerificationBinding, context: ExpectedContext, accepted_profile: EvidenceProfile, session_public_key_id: SessionPublicKeyId, allowed: AllowedClass, }",
         ),
         (
             "struct",
             "VerifierFlow",
-            "pub struct VerifierFlow { binding: VerificationBinding, state: VerificationState, }",
+            "#[must_use] pub struct VerifierFlow { binding: VerificationBinding, state: VerificationState, }",
         ),
         (
             "struct",
             "FailurePayload",
-            "struct FailurePayload { decision: FailureDecision, reason: ReasonCode, }",
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] struct FailurePayload { decision: FailureDecision, reason: ReasonCode, }",
         ),
         (
             "enum",
@@ -4452,8 +4451,42 @@ fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(
         &freshness_tokens,
         "struct",
         "FreshnessChecked",
-        "pub struct FreshnessChecked { binding: VerificationBinding, }",
+        "#[must_use] pub struct FreshnessChecked { binding: VerificationBinding, }",
     )
+}
+
+fn validate_parent_verification_source(source: &str) -> Result<(), String> {
+    let tokens = rust_tokens_with_literals(source);
+    let crate_attributes = rust_tokens_with_literals("#![forbid(unsafe_code)]");
+    if !tokens.starts_with(&crate_attributes) {
+        return Err("parent crate attributes drifted".to_owned());
+    }
+    let items = direct_items(&tokens[crate_attributes.len()..])?;
+    let modules = items
+        .iter()
+        .copied()
+        .filter(|item| is_module_item(item).unwrap_or(false))
+        .map(<[String]>::to_vec)
+        .collect::<Vec<_>>();
+    let expected_modules = ["mod freshness;", "mod verification;"]
+        .map(rust_tokens_with_literals)
+        .to_vec();
+    if modules != expected_modules {
+        return Err(format!(
+            "parent module inventory drifted; expected {expected_modules:?}, found {modules:?}"
+        ));
+    }
+    let body = &tokens[crate_attributes.len()..];
+    if !macro_definitions(body)?.is_empty() {
+        return Err("parent source contains a macro definition".to_owned());
+    }
+    validate_macro_imports(body)?;
+    if let Some(invocation) = macro_invocations(body)?.first() {
+        return Err(format!(
+            "parent source contains an unapproved macro invocation: {invocation:?}"
+        ));
+    }
+    Ok(())
 }
 
 fn sequence_start(tokens: &[String], expected: &[&str]) -> Option<usize> {
@@ -4599,7 +4632,7 @@ fn validate_failure_eligibility(verification: &str) -> Result<(), String> {
         &tokens,
         "is_active_phase",
         r#"fn is_active_phase(phase: VerificationPhase) -> bool {
-            matches!(phase, VerificationPhase::EvidenceReceived
+            std::matches!(phase, VerificationPhase::EvidenceReceived
                 | VerificationPhase::ChallengeAuthenticated
                 | VerificationPhase::FreshnessChecked
                 | VerificationPhase::IdentityChecked
@@ -4626,14 +4659,14 @@ fn validate_failure_eligibility(verification: &str) -> Result<(), String> {
                     phase == VerificationPhase::EvidenceReceived
                 }
                 FailureKind::Deny(DenialReason::NotYetValid | DenialReason::Expired | DenialReason::ReplayDetected,) => phase == VerificationPhase::ChallengeAuthenticated,
-                FailureKind::Deny(DenialReason::ContextBindingMismatch) => matches!(phase, VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::EvidenceAppraised),
+                FailureKind::Deny(DenialReason::ContextBindingMismatch) => std::matches!(phase, VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::EvidenceAppraised),
                 FailureKind::Deny(DenialReason::EvidenceInvalid) => {
                     phase == VerificationPhase::IdentityChecked
                 }
                 FailureKind::Deny(DenialReason::PolicyDenied) => {
                     phase == VerificationPhase::RevocationChecked
                 }
-                FailureKind::Deny(DenialReason::ProtectedSessionLost) => matches!(phase, VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied),
+                FailureKind::Deny(DenialReason::ProtectedSessionLost) => std::matches!(phase, VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied),
                 FailureKind::Revoked => phase == VerificationPhase::SessionBound,
             }
         }"#,
@@ -4708,51 +4741,51 @@ fn validate_active_state_replacement(verification: &str) -> Result<(), String> {
     for (method_name, phase, binding, extraction, assignment) in [
         (
             "record_challenge_authenticated",
-            "if !matches!(&self.state, VerificationState::EvidenceReceived { .. }) { return Err(self.invalid_transition(VerificationAction::RecordChallengeAuthenticated)); }",
+            "if !std::matches!(&self.state, VerificationState::EvidenceReceived { .. }) { return Err(self.invalid_transition(VerificationAction::RecordChallengeAuthenticated)); }",
             "self.ensure_binding(VerificationAction::RecordChallengeAuthenticated, &capability.binding,)?;",
-            "let VerificationState::EvidenceReceived { request } = previous else { unreachable!(\"phase was checked before active-state replacement\") };",
+            "let VerificationState::EvidenceReceived { request } = previous else { std::unreachable!(\"phase was checked before active-state replacement\") };",
             "self.state = VerificationState::ChallengeAuthenticated { request };",
         ),
         (
             "record_freshness_checked",
-            "if !matches!(&self.state, VerificationState::ChallengeAuthenticated { .. }) { return Err(self.invalid_transition(VerificationAction::RecordFreshnessChecked)); }",
+            "if !std::matches!(&self.state, VerificationState::ChallengeAuthenticated { .. }) { return Err(self.invalid_transition(VerificationAction::RecordFreshnessChecked)); }",
             "self.ensure_binding(VerificationAction::RecordFreshnessChecked, capability.binding(),)?;",
-            "let VerificationState::ChallengeAuthenticated { request } = previous else { unreachable!(\"phase was checked before active-state replacement\") };",
+            "let VerificationState::ChallengeAuthenticated { request } = previous else { std::unreachable!(\"phase was checked before active-state replacement\") };",
             "self.state = VerificationState::FreshnessChecked { request };",
         ),
         (
             "record_identity_checked",
-            "if !matches!(&self.state, VerificationState::FreshnessChecked { .. }) { return Err(self.invalid_transition(VerificationAction::RecordIdentityChecked)); }",
+            "if !std::matches!(&self.state, VerificationState::FreshnessChecked { .. }) { return Err(self.invalid_transition(VerificationAction::RecordIdentityChecked)); }",
             "self.ensure_binding(VerificationAction::RecordIdentityChecked, &capability.binding,)?;",
-            "let VerificationState::FreshnessChecked { request } = previous else { unreachable!(\"phase was checked before active-state replacement\") };",
+            "let VerificationState::FreshnessChecked { request } = previous else { std::unreachable!(\"phase was checked before active-state replacement\") };",
             "self.state = VerificationState::IdentityChecked { request };",
         ),
         (
             "record_evidence_appraised",
-            "if !matches!(&self.state, VerificationState::IdentityChecked { .. }) { return Err(self.invalid_transition(VerificationAction::RecordEvidenceAppraised)); }",
+            "if !std::matches!(&self.state, VerificationState::IdentityChecked { .. }) { return Err(self.invalid_transition(VerificationAction::RecordEvidenceAppraised)); }",
             "self.ensure_binding(VerificationAction::RecordEvidenceAppraised, &capability.binding,)?;",
-            "let VerificationState::IdentityChecked { request } = previous else { unreachable!(\"phase was checked before active-state replacement\") };",
+            "let VerificationState::IdentityChecked { request } = previous else { std::unreachable!(\"phase was checked before active-state replacement\") };",
             "self.state = VerificationState::EvidenceAppraised { request, accepted_profile: capability.accepted_profile, };",
         ),
         (
             "record_session_bound",
-            "if !matches!(&self.state, VerificationState::EvidenceAppraised { .. }) { return Err(self.invalid_transition(VerificationAction::RecordSessionBound)); }",
+            "if !std::matches!(&self.state, VerificationState::EvidenceAppraised { .. }) { return Err(self.invalid_transition(VerificationAction::RecordSessionBound)); }",
             "self.ensure_binding(VerificationAction::RecordSessionBound, &capability.binding)?;",
-            "let VerificationState::EvidenceAppraised { request, accepted_profile, } = previous else { unreachable!(\"phase was checked before active-state replacement\") };",
+            "let VerificationState::EvidenceAppraised { request, accepted_profile, } = previous else { std::unreachable!(\"phase was checked before active-state replacement\") };",
             "self.state = VerificationState::SessionBound { request, accepted_profile, session_public_key_id: capability.session_public_key_id, };",
         ),
         (
             "record_revocation_checked",
-            "if !matches!(&self.state, VerificationState::SessionBound { .. }) { return Err(self.invalid_transition(VerificationAction::RecordRevocationChecked)); }",
+            "if !std::matches!(&self.state, VerificationState::SessionBound { .. }) { return Err(self.invalid_transition(VerificationAction::RecordRevocationChecked)); }",
             "self.ensure_binding(VerificationAction::RecordRevocationChecked, &capability.binding,)?;",
-            "let VerificationState::SessionBound { request, accepted_profile, session_public_key_id, } = previous else { unreachable!(\"phase was checked before active-state replacement\") };",
+            "let VerificationState::SessionBound { request, accepted_profile, session_public_key_id, } = previous else { std::unreachable!(\"phase was checked before active-state replacement\") };",
             "self.state = VerificationState::RevocationChecked { request, accepted_profile, session_public_key_id, };",
         ),
         (
             "record_policy_satisfied",
-            "if !matches!(&self.state, VerificationState::RevocationChecked { .. }) { return Err(self.invalid_transition(VerificationAction::RecordPolicySatisfied)); }",
+            "if !std::matches!(&self.state, VerificationState::RevocationChecked { .. }) { return Err(self.invalid_transition(VerificationAction::RecordPolicySatisfied)); }",
             "self.ensure_binding(VerificationAction::RecordPolicySatisfied, &capability.binding,)?;",
-            "let VerificationState::RevocationChecked { request, accepted_profile, session_public_key_id, } = previous else { unreachable!(\"phase was checked before active-state replacement\") };",
+            "let VerificationState::RevocationChecked { request, accepted_profile, session_public_key_id, } = previous else { std::unreachable!(\"phase was checked before active-state replacement\") };",
             "self.state = VerificationState::PolicySatisfied { request, accepted_profile, session_public_key_id, allowed: capability.allowed, };",
         ),
     ] {
@@ -4810,7 +4843,7 @@ fn validate_active_state_replacement(verification: &str) -> Result<(), String> {
                 | VerificationState::Unsupported { .. }
                 | VerificationState::Retryable { .. }
                 | VerificationState::Denied { .. }
-                | VerificationState::Revoked { .. } => { unreachable!("eligibility excluded terminal state before replacement") }
+                | VerificationState::Revoked { .. } => { std::unreachable!("eligibility excluded terminal state before replacement") }
             };"#,
         ),
         rust_tokens(
@@ -4928,7 +4961,7 @@ fn validate_appraisal_allow_construction(verification: &str) -> Result<(), Strin
                 session_public_key_id,
                 allowed,
             } = previous else {
-                unreachable!("phase was checked before terminal replacement")
+                std::unreachable!("phase was checked before terminal replacement")
             };"#,
             r#"Ok(VerifiedAttestation {
                 binding: self.binding.clone(),
@@ -5173,7 +5206,7 @@ fn active_replacement_rejects_direct_assignment_with_stringify_sequence_decoy() 
             },
         );
         let VerificationState::EvidenceReceived { request } = previous else {
-            unreachable!("phase was checked before active-state replacement")
+            std::unreachable!("phase was checked before active-state replacement")
         };
         self.state = VerificationState::ChallengeAuthenticated { request };"#;
     let bypass = r#"        self.state = match &self.state {
@@ -5212,7 +5245,7 @@ fn active_replacement_rejects_sequence_nested_under_unreachable_block() {
             },
         );
         let VerificationState::EvidenceReceived { request } = previous else {
-            unreachable!("phase was checked before active-state replacement")
+            std::unreachable!("phase was checked before active-state replacement")
         };
         self.state = VerificationState::ChallengeAuthenticated { request };"#;
     let nested = format!("        if false {{\n{correct}\n        }}");
@@ -6073,14 +6106,140 @@ fn authority_inventory_rejects_macro_definition_or_invocation_drift() {
     for mutation in [
         source.replacen("$type_name:ty", "$type_name:path", 1),
         source.replacen(
-            "matches!(\n        phase,",
-            "matches!(\n        VerificationPhase::EvidenceReceived,",
+            "std::matches!(\n        phase,",
+            "std::matches!(\n        VerificationPhase::EvidenceReceived,",
             1,
         ),
     ] {
         assert_ne!(mutation, source);
         let tokens = rust_tokens_with_literals(&mutation);
         assert!(validate_production_macro_inventory(&tokens).is_err());
+    }
+}
+
+#[test]
+fn authority_inventory_requires_qualified_standard_macros() {
+    let tokens = rust_tokens_with_literals(include_str!("../verification.rs"));
+    let invocations = macro_invocations(&tokens)
+        .unwrap_or_else(|error| panic!("production macro inventory did not parse: {error}"));
+    let mut qualified = BTreeMap::<String, usize>::new();
+    let mut unqualified = BTreeMap::<String, usize>::new();
+    for invocation in invocations {
+        let bang = invocation
+            .iter()
+            .position(|token| token == "!")
+            .unwrap_or_else(|| panic!("macro invocation did not contain !: {invocation:?}"));
+        let name = invocation
+            .get(bang - 1)
+            .unwrap_or_else(|| panic!("macro invocation did not have a name: {invocation:?}"));
+        if matches!(name.as_str(), "matches" | "unreachable") {
+            let target = if invocation.get(bang.wrapping_sub(4)).map(String::as_str) == Some("std")
+                && invocation.get(bang - 3).map(String::as_str) == Some(":")
+                && invocation.get(bang - 2).map(String::as_str) == Some(":")
+            {
+                &mut qualified
+            } else {
+                &mut unqualified
+            };
+            *target.entry(name.clone()).or_default() += 1;
+        }
+    }
+    assert_eq!(
+        qualified,
+        BTreeMap::from([("matches".to_owned(), 10), ("unreachable".to_owned(), 9)])
+    );
+    assert!(
+        unqualified.is_empty(),
+        "unqualified macros: {unqualified:?}"
+    );
+}
+
+#[test]
+fn authority_inventory_rejects_parent_macro_shadowing() {
+    let source = include_str!("../lib.rs");
+    for definition in [
+        "macro_rules! matches { ($($tokens:tt)*) => { false }; }",
+        "macro_rules! unreachable { ($($tokens:tt)*) => { loop {} }; }",
+    ] {
+        let mutation = source.replacen(
+            "mod freshness;",
+            &format!("{definition}\nmod freshness;"),
+            1,
+        );
+        assert!(
+            validate_parent_verification_source(&mutation).is_err(),
+            "parent macro shadow was accepted: {definition}"
+        );
+    }
+}
+
+#[test]
+fn authority_inventory_pins_parent_verification_source() {
+    let source = include_str!("../lib.rs");
+    if let Err(error) = validate_parent_verification_source(source) {
+        panic!("exact parent source was rejected: {error}");
+    }
+    for mutation in [
+        source.replacen(
+            "mod verification;",
+            "#[path = \"alternate.rs\"] mod verification;",
+            1,
+        ),
+        source.replacen("mod verification;", "#[cfg(test)] mod verification;", 1),
+        source.replacen("mod verification;", "include!(\"verification.rs\");", 1),
+        source.replacen("mod verification;", "#[macro_use] mod verification;", 1),
+    ] {
+        assert_ne!(mutation, source);
+        assert!(validate_parent_verification_source(&mutation).is_err());
+    }
+}
+
+#[test]
+fn authority_inventory_rejects_target_declaration_attribute_drift() {
+    let source = include_str!("../verification.rs");
+    for mutation in [
+        source.replacen(
+            "#[must_use]\npub struct AppraisalResult",
+            "#[must_use]\n#[derive(Clone)]\npub struct AppraisalResult",
+            1,
+        ),
+        source.replacen(
+            "#[must_use]\npub struct AcceptedClaims",
+            "#[cfg(test)]\n#[must_use]\npub struct AcceptedClaims",
+            1,
+        ),
+        source.replacen(
+            "#[must_use]\npub struct VerifiedAttestation",
+            "#[cfg_attr(test, derive(Clone))]\n#[must_use]\npub struct VerifiedAttestation",
+            1,
+        ),
+        source.replacen(
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]\nenum FailureKind",
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]\n#[authority] enum FailureKind",
+            1,
+        ),
+        source.replacen(
+            "#[must_use]\npub struct VerifierFlow",
+            "#[must_use]\n#[must_use]\npub struct VerifierFlow",
+            1,
+        ),
+    ] {
+        assert_ne!(mutation, source);
+        assert!(
+            validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err(),
+            "authority declaration attribute drift was accepted"
+        );
+    }
+}
+
+#[test]
+fn authority_inventory_permits_unrelated_derive() {
+    let source = format!(
+        "{}\n#[derive(Clone, Copy, Default)] struct UnrelatedAttributeControl;",
+        include_str!("../verification.rs")
+    );
+    if let Err(error) = validate_authority_structure(&source, include_str!("../freshness.rs")) {
+        panic!("unrelated derive affected authority inventory: {error}");
     }
 }
 
