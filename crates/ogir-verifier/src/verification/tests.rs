@@ -415,29 +415,109 @@ fn report_reason_is_absent_only_for_allows() {
 #[test]
 fn every_failure_reason_has_one_report_mapping() {
     let mappings = [
-        (Decision::Deny, ReasonCode::Malformed),
-        (Decision::Deny, ReasonCode::ChallengeAuthenticationFailed),
-        (Decision::Deny, ReasonCode::NotYetValid),
-        (Decision::Deny, ReasonCode::Expired),
-        (Decision::Deny, ReasonCode::ReplayDetected),
-        (Decision::Deny, ReasonCode::ContextBindingMismatch),
-        (Decision::Deny, ReasonCode::EvidenceInvalid),
-        (Decision::Deny, ReasonCode::PolicyDenied),
-        (Decision::Deny, ReasonCode::Revoked),
-        (Decision::Deny, ReasonCode::ProtectedSessionLost),
         (
+            VerificationOutcome::malformed(),
+            Decision::Deny,
+            ReasonCode::Malformed,
+        ),
+        (
+            VerificationOutcome::denied(DenialReason::ChallengeAuthenticationFailed),
+            Decision::Deny,
+            ReasonCode::ChallengeAuthenticationFailed,
+        ),
+        (
+            VerificationOutcome::denied(DenialReason::NotYetValid),
+            Decision::Deny,
+            ReasonCode::NotYetValid,
+        ),
+        (
+            VerificationOutcome::denied(DenialReason::Expired),
+            Decision::Deny,
+            ReasonCode::Expired,
+        ),
+        (
+            VerificationOutcome::denied(DenialReason::ReplayDetected),
+            Decision::Deny,
+            ReasonCode::ReplayDetected,
+        ),
+        (
+            VerificationOutcome::denied(DenialReason::ContextBindingMismatch),
+            Decision::Deny,
+            ReasonCode::ContextBindingMismatch,
+        ),
+        (
+            VerificationOutcome::denied(DenialReason::EvidenceInvalid),
+            Decision::Deny,
+            ReasonCode::EvidenceInvalid,
+        ),
+        (
+            VerificationOutcome::denied(DenialReason::PolicyDenied),
+            Decision::Deny,
+            ReasonCode::PolicyDenied,
+        ),
+        (
+            VerificationOutcome::revoked(),
+            Decision::Deny,
+            ReasonCode::Revoked,
+        ),
+        (
+            VerificationOutcome::denied(DenialReason::ProtectedSessionLost),
+            Decision::Deny,
+            ReasonCode::ProtectedSessionLost,
+        ),
+        (
+            VerificationOutcome::unsupported(UnsupportedRequirement::VersionOrProfile),
             Decision::Unsupported,
             ReasonCode::UnsupportedVersionOrProfile,
         ),
-        (Decision::Unsupported, ReasonCode::UnsupportedPlatform),
         (
+            VerificationOutcome::unsupported(UnsupportedRequirement::Platform),
+            Decision::Unsupported,
+            ReasonCode::UnsupportedPlatform,
+        ),
+        (
+            VerificationOutcome::unsupported(UnsupportedRequirement::UnknownCriticalRequirement),
             Decision::Unsupported,
             ReasonCode::UnsupportedCriticalRequirement,
         ),
-        (Decision::Retry, ReasonCode::AttestationUnavailable),
-        (Decision::Retry, ReasonCode::TransientFailure),
+        (
+            VerificationOutcome::retryable(RetryReason::AttestationUnavailable),
+            Decision::Retry,
+            ReasonCode::AttestationUnavailable,
+        ),
+        (
+            VerificationOutcome::retryable(RetryReason::TransientFailure),
+            Decision::Retry,
+            ReasonCode::TransientFailure,
+        ),
     ];
     assert_eq!(mappings.len(), 15);
+
+    for (outcome, expected_decision, expected_reason) in mappings {
+        assert_eq!(outcome.decision(), expected_decision);
+        let actual_reason = match outcome.reason() {
+            Some(reason) => reason,
+            None => panic!("failure report omitted its reason"),
+        };
+        match actual_reason {
+            ReasonCode::Malformed
+            | ReasonCode::ChallengeAuthenticationFailed
+            | ReasonCode::NotYetValid
+            | ReasonCode::Expired
+            | ReasonCode::ReplayDetected
+            | ReasonCode::ContextBindingMismatch
+            | ReasonCode::EvidenceInvalid
+            | ReasonCode::PolicyDenied
+            | ReasonCode::Revoked
+            | ReasonCode::ProtectedSessionLost
+            | ReasonCode::UnsupportedVersionOrProfile
+            | ReasonCode::UnsupportedPlatform
+            | ReasonCode::UnsupportedCriticalRequirement
+            | ReasonCode::AttestationUnavailable
+            | ReasonCode::TransientFailure => {}
+        }
+        assert_eq!(actual_reason, expected_reason);
+    }
 }
 
 fn model_denial_reason(reason: DenialReason) -> ReasonCode {
