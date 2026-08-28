@@ -116,3 +116,24 @@ fn new_flow_exposes_only_received_phase_and_no_outcome() {
         "private diagnostic mismatch"
     );
 }
+
+#[test]
+fn public_failure_result_is_valid_shape_not_trusted_signing_provenance() {
+    let expected = request_fixture().expected;
+    let mut flow = VerifierFlow::begin(request_fixture());
+    let result = match flow.mark_malformed() {
+        Ok(value) => value,
+        Err(error) => panic!("eligible public failure rejected: {error:?}"),
+    };
+
+    assert_eq!(result.context(), &expected);
+    assert_eq!(result.decision(), Decision::Deny);
+    assert_eq!(result.reason(), Some(ReasonCode::Malformed));
+    assert!(matches!(
+        result.view(),
+        AppraisalResultView::Failure {
+            decision: Decision::Deny,
+            reason: ReasonCode::Malformed,
+        }
+    ));
+}

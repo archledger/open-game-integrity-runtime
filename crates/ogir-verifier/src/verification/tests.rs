@@ -41,7 +41,7 @@ fn request_fixture(seed: u8) -> VerificationRequest {
             account_scope: identifier::<AccountScope>("account-1"),
             match_id: identifier::<MatchId>("match-1"),
             policy_id: identifier::<PolicyId>("research-v0"),
-            policy_version: PolicyVersion::new(1),
+            policy_version: PolicyVersion::new(3_141_592_653),
             nonce: Nonce::from_bytes([seed; 32]),
             window,
         },
@@ -823,6 +823,29 @@ fn claim_capabilities_move_payload_only_after_phase_and_binding_checks() {
 }
 
 #[test]
+fn correct_binding_does_not_claim_cryptographic_payload_provenance() {
+    let profiles = [
+        identifier::<EvidenceProfile>("trusted-producer-profile-a"),
+        identifier::<EvidenceProfile>("trusted-producer-profile-b"),
+    ];
+
+    for (seed, supplied_profile) in (21_u8..).zip(profiles) {
+        let mut flow = flow_fixture(seed);
+        advance_to_identity_checked(&mut flow);
+        let capability = EvidenceAppraised {
+            binding: flow.binding.clone(),
+            accepted_profile: supplied_profile.clone(),
+        };
+
+        assert_eq!(flow.record_evidence_appraised(capability), Ok(()));
+        assert_eq!(
+            flow_snapshot(&flow).accepted_profile,
+            Some(supplied_profile)
+        );
+    }
+}
+
+#[test]
 fn every_failure_reason_has_one_report_mapping() {
     let mappings = [
         (
@@ -1496,9 +1519,9 @@ fn flow_with_private_sentinels() -> VerifierFlow {
             account_scope: identifier::<AccountScope>("private-account"),
             match_id: identifier::<MatchId>("private-match"),
             policy_id: identifier::<PolicyId>("private-policy"),
-            policy_version: PolicyVersion::new(1),
+            policy_version: PolicyVersion::new(3_141_592_653),
         },
-        now: UnixTime::new(4_242),
+        now: UnixTime::new(4_243),
     })
 }
 
@@ -1506,6 +1529,24 @@ fn private_flow_for_model_state(state: ModelState) -> VerifierFlow {
     let flow = flow_with_private_sentinels();
     let other_binding = flow_fixture(86).binding;
     advance_flow_to_model_state(flow, state, &other_binding)
+}
+
+fn push_result_diagnostics(result: &AppraisalResult, diagnostics: &mut Vec<String>) {
+    let diagnostic = format!("{result:?}");
+    assert_eq!(diagnostic, "AppraisalResult([REDACTED])");
+    diagnostics.push(diagnostic);
+
+    let view = result.view();
+    let diagnostic = format!("{view:?}");
+    assert_eq!(diagnostic, "AppraisalResultView([REDACTED])");
+    diagnostics.push(diagnostic);
+
+    if let AppraisalResultView::Allow(claims) | AppraisalResultView::AllowRestricted(claims) = view
+    {
+        let diagnostic = format!("{claims:?}");
+        assert_eq!(diagnostic, "AcceptedClaims([REDACTED])");
+        diagnostics.push(diagnostic);
+    }
 }
 
 fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
@@ -1590,11 +1631,15 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
     );
     diagnostics.push(diagnostic);
 
+    let private_context = match &flow.state {
+        VerificationState::EvidenceReceived { request } => request.expected.clone(),
+        _ => panic!("sentinel flow unexpectedly left its initial active state"),
+    };
     let verified = VerifiedAttestation {
         binding,
-        context: request_fixture_with_context_tag(7, 1).expected,
+        context: private_context.clone(),
         accepted_profile: identifier("private-accepted-profile"),
-        session_public_key_id: session_key_id(0xA5),
+        session_public_key_id: SessionPublicKeyId::from_bytes([0xD7; 32]),
         allowed: AllowedClass::Full,
     };
     let diagnostic = format!("{verified:?}");
@@ -1603,6 +1648,25 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
         "private diagnostic mismatch"
     );
     diagnostics.push(diagnostic);
+
+    let full = verified.into_appraisal_result();
+    push_result_diagnostics(&full, &mut diagnostics);
+    let restricted = AppraisalResult {
+        context: private_context.clone(),
+        payload: AppraisalPayload::AllowRestricted(AcceptedClaims {
+            accepted_profile: identifier("private-accepted-profile"),
+            session_public_key_id: SessionPublicKeyId::from_bytes([0xD7; 32]),
+        }),
+    };
+    push_result_diagnostics(&restricted, &mut diagnostics);
+    let failure = AppraisalResult {
+        context: private_context,
+        payload: AppraisalPayload::Failure(FailurePayload {
+            decision: FailureDecision::Deny,
+            reason: ReasonCode::EvidenceInvalid,
+        }),
+    };
+    push_result_diagnostics(&failure, &mut diagnostics);
 
     let request = match &flow.state {
         VerificationState::EvidenceReceived { request } => request,
@@ -1672,7 +1736,9 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
         ModelState::Verified(AllowedClass::Restricted),
         ModelState::Malformed,
         ModelState::Unsupported(UnsupportedRequirement::Platform),
+        ModelState::Unsupported(UnsupportedRequirement::UnknownCriticalRequirement),
         ModelState::Retryable(RetryReason::TransientFailure),
+        ModelState::Denied(DenialReason::ChallengeAuthenticationFailed),
         ModelState::Denied(DenialReason::NotYetValid),
         ModelState::Denied(DenialReason::Expired),
         ModelState::Denied(DenialReason::ReplayDetected),
@@ -2793,9 +2859,16 @@ fn mismatched_capabilities_preserve_phase_before_binding_error_precedence() {
 }
 
 #[test]
-fn every_flow_capability_outcome_and_error_diagnostic_is_redacted() {
+fn every_flow_result_claim_view_and_error_diagnostic_is_redacted() {
     let mut flow = flow_with_private_sentinels();
     let diagnostics = diagnostics_for_every_surface(&mut flow);
+    for required in [
+        "AppraisalResult([REDACTED])",
+        "AcceptedClaims([REDACTED])",
+        "AppraisalResultView([REDACTED])",
+    ] {
+        assert!(diagnostics.iter().any(|diagnostic| diagnostic == required));
+    }
     let forbidden = [
         "private.publisher",
         "private.game",
@@ -2804,7 +2877,15 @@ fn every_flow_capability_outcome_and_error_diagnostic_is_redacted() {
         "private-match",
         "private-policy",
         "private-profile",
+        "private-accepted-profile",
         "private-evidence-payload",
+        "3141592653",
+        "4242",
+        "4243",
+        "4342",
+        "d7",
+        "D7",
+        "215",
         "/home/",
         "::error::",
         "\n",
@@ -3221,6 +3302,41 @@ fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(
         ),
         (
             "struct",
+            "AppraisalResult",
+            "pub struct AppraisalResult { context: ExpectedContext, payload: AppraisalPayload, }",
+        ),
+        (
+            "enum",
+            "AllowedClass",
+            "enum AllowedClass { Full, Restricted, }",
+        ),
+        (
+            "enum",
+            "AppraisalPayload",
+            "enum AppraisalPayload { Allow(AcceptedClaims), AllowRestricted(AcceptedClaims), Failure(FailurePayload), }",
+        ),
+        (
+            "struct",
+            "AcceptedClaims",
+            "pub struct AcceptedClaims { accepted_profile: EvidenceProfile, session_public_key_id: SessionPublicKeyId, }",
+        ),
+        (
+            "enum",
+            "FailureDecision",
+            "enum FailureDecision { Deny, Unsupported, Retry, }",
+        ),
+        (
+            "enum",
+            "FailureKind",
+            "enum FailureKind { Malformed, Unsupported(UnsupportedRequirement), Retry(RetryReason), Deny(DenialReason), Revoked, }",
+        ),
+        (
+            "enum",
+            "AppraisalResultView",
+            "pub enum AppraisalResultView<'a> { Allow(&'a AcceptedClaims), AllowRestricted(&'a AcceptedClaims), Failure { decision: Decision, reason: ReasonCode, }, }",
+        ),
+        (
+            "struct",
             "VerifiedAttestation",
             "pub struct VerifiedAttestation { binding: VerificationBinding, context: ExpectedContext, accepted_profile: EvidenceProfile, session_public_key_id: SessionPublicKeyId, allowed: AllowedClass, }",
         ),
@@ -3258,6 +3374,35 @@ fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(
         ),
     ] {
         require_exact_item(&tokens, keyword, name, expected)?;
+    }
+
+    for forbidden in [
+        &["request", ":", "Option"][..],
+        &["accepted_profile", ":", "Option"][..],
+        &["session_public_key_id", ":", "Option"][..],
+        &["pub", "fn", "new"][..],
+        &["pub", "const", "fn", "new"][..],
+        &["fn", "builder"][..],
+        &[
+            "impl",
+            "From",
+            "<",
+            "VerificationOutcome",
+            ">",
+            "for",
+            "AppraisalResult",
+        ][..],
+        &["impl", "From", "<", "AppraisalResultView"][..],
+        &["fn", "sign"][..],
+        &["fn", "permit"][..],
+        &["fn", "proof"][..],
+        &["fn", "admit"][..],
+    ] {
+        if sequence_start(&tokens, forbidden).is_some() {
+            return Err(format!(
+                "forbidden authority expansion tokens: {forbidden:?}"
+            ));
+        }
     }
 
     let freshness_tokens = rust_tokens(freshness);
@@ -3382,6 +3527,90 @@ fn private_function_body_tokens<'a>(
     let end = matching_delimiter(tokens, body)
         .ok_or_else(|| format!("private function {name} has an unbalanced body"))?;
     Ok(&tokens[body + 1..end])
+}
+
+fn require_exact_private_function(
+    tokens: &[String],
+    name: &str,
+    expected_source: &str,
+) -> Result<(), String> {
+    let marker = ["fn", name];
+    let starts = tokens
+        .windows(marker.len())
+        .enumerate()
+        .filter_map(|(index, window)| (window == marker).then_some(index))
+        .collect::<Vec<_>>();
+    if starts.len() != 1 {
+        return Err(format!(
+            "expected one private function {name}, found {}",
+            starts.len()
+        ));
+    }
+    let start = starts[0];
+    let body = tokens
+        .iter()
+        .enumerate()
+        .skip(start + marker.len())
+        .find_map(|(index, token)| (token == "{").then_some(index))
+        .ok_or_else(|| format!("private function {name} has no body"))?;
+    let end = matching_delimiter(tokens, body)
+        .ok_or_else(|| format!("private function {name} has an unbalanced body"))?;
+    let actual = &tokens[start..=end];
+    let expected = rust_tokens(expected_source);
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "private function {name} token inventory drifted; expected {expected:?}, found {actual:?}"
+        ))
+    }
+}
+
+fn validate_failure_eligibility(verification: &str) -> Result<(), String> {
+    let tokens = rust_tokens(verification);
+    require_exact_private_function(
+        &tokens,
+        "is_active_phase",
+        r#"fn is_active_phase(phase: VerificationPhase) -> bool {
+            matches!(phase, VerificationPhase::EvidenceReceived
+                | VerificationPhase::ChallengeAuthenticated
+                | VerificationPhase::FreshnessChecked
+                | VerificationPhase::IdentityChecked
+                | VerificationPhase::EvidenceAppraised
+                | VerificationPhase::SessionBound
+                | VerificationPhase::RevocationChecked
+                | VerificationPhase::PolicySatisfied)
+        }"#,
+    )?;
+    require_exact_private_function(
+        &tokens,
+        "failure_is_eligible",
+        r#"fn failure_is_eligible(phase: VerificationPhase, failure: FailureKind) -> bool {
+            match failure {
+                FailureKind::Malformed => phase == VerificationPhase::EvidenceReceived,
+                FailureKind::Unsupported(UnsupportedRequirement::VersionOrProfile) => {
+                    phase == VerificationPhase::ChallengeAuthenticated
+                }
+                FailureKind::Unsupported(UnsupportedRequirement::Platform) => {
+                    phase == VerificationPhase::IdentityChecked
+                }
+                FailureKind::Unsupported(UnsupportedRequirement::UnknownCriticalRequirement) | FailureKind::Retry(_) => is_active_phase(phase),
+                FailureKind::Deny(DenialReason::ChallengeAuthenticationFailed) => {
+                    phase == VerificationPhase::EvidenceReceived
+                }
+                FailureKind::Deny(DenialReason::NotYetValid | DenialReason::Expired | DenialReason::ReplayDetected,) => phase == VerificationPhase::ChallengeAuthenticated,
+                FailureKind::Deny(DenialReason::ContextBindingMismatch) => matches!(phase, VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::EvidenceAppraised),
+                FailureKind::Deny(DenialReason::EvidenceInvalid) => {
+                    phase == VerificationPhase::IdentityChecked
+                }
+                FailureKind::Deny(DenialReason::PolicyDenied) => {
+                    phase == VerificationPhase::RevocationChecked
+                }
+                FailureKind::Deny(DenialReason::ProtectedSessionLost) => matches!(phase, VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied),
+                FailureKind::Revoked => phase == VerificationPhase::SessionBound,
+            }
+        }"#,
+    )
 }
 
 fn top_level_statements(tokens: &[String]) -> Result<Vec<&[String]>, String> {
@@ -4256,12 +4485,76 @@ fn top_level_statement_splitter_keeps_nested_constructs_together() {
 
 #[test]
 fn authority_fields_remain_private_by_structure() {
-    if let Err(error) = validate_authority_structure(
-        include_str!("../verification.rs"),
-        include_str!("../freshness.rs"),
-    ) {
+    let verification = include_str!("../verification.rs");
+    if let Err(error) = validate_authority_structure(verification, include_str!("../freshness.rs"))
+    {
         panic!("verification authority structure drifted: {error}");
     }
+    if let Err(error) = validate_active_state_replacement(verification) {
+        panic!("whole-state replacement drifted: {error}");
+    }
+    if let Err(error) = validate_appraisal_allow_construction(verification) {
+        panic!("sole allow construction drifted: {error}");
+    }
+    if let Err(error) = validate_appraisal_failure_methods(verification) {
+        panic!("failure method authority drifted: {error}");
+    }
+    if let Err(error) = validate_failure_eligibility(verification) {
+        panic!("failure eligibility drifted: {error}");
+    }
+}
+
+#[test]
+fn authority_structure_rejects_result_authority_expansion_and_decoys() {
+    let source = include_str!("../verification.rs");
+    let result = "pub struct AppraisalResult {\n    context: ExpectedContext,\n    payload: AppraisalPayload,\n}";
+    let public_context = source.replacen(result, &result.replace("context:", "pub context:"), 1);
+    assert_ne!(public_context, source);
+    assert!(
+        validate_authority_structure(&public_context, include_str!("../freshness.rs")).is_err()
+    );
+
+    for mutation in [
+        source.replacen(
+            "payload: AppraisalPayload,",
+            "payload: AppraisalPayload,\n    accepted_profile: Option<EvidenceProfile>,",
+            1,
+        ),
+        format!(
+            "{source}\nimpl AppraisalResult {{ pub fn builder() -> Self {{ unreachable!() }} }}"
+        ),
+        format!(
+            "{source}\nimpl From<VerificationOutcome> for AppraisalResult {{ fn from(_: VerificationOutcome) -> Self {{ unreachable!() }} }}"
+        ),
+        format!("{source}\nimpl AppraisalResult {{ pub fn sign(self) {{}} }}"),
+    ] {
+        assert_ne!(mutation, source);
+        assert!(validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err());
+    }
+
+    let decoys = format!(
+        "{source}\n// pub fn sign(self) {{}}\nconst DECOY: &str = \"impl From<VerificationOutcome> for AppraisalResult\";"
+    );
+    assert!(validate_authority_structure(&decoys, include_str!("../freshness.rs")).is_ok());
+}
+
+#[test]
+fn failure_eligibility_structure_rejects_macro_and_unreachable_decoys() {
+    let source = include_str!("../verification.rs");
+    let exact = "FailureKind::Malformed => phase == VerificationPhase::EvidenceReceived,";
+    let bypass = source.replacen(
+        exact,
+        &format!(
+            "FailureKind::Malformed => is_active_phase(phase),\n                FailureKind::Revoked if false => {{ stringify!({exact}); false }},"
+        ),
+        1,
+    );
+    assert_ne!(bypass, source);
+    assert!(validate_failure_eligibility(&bypass).is_err());
+
+    let decoys =
+        format!("{source}\n// {exact}\nconst FAILURE_ELIGIBILITY_DECOY: &str = \"{exact}\";");
+    assert!(validate_failure_eligibility(&decoys).is_ok());
 }
 
 #[test]

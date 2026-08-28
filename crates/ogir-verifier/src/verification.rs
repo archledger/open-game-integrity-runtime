@@ -32,6 +32,14 @@
 //! }
 //! ```
 //!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden(result: AppraisalResult) {
+//!     let _first = result;
+//!     let _second = result;
+//! }
+//! ```
+//!
 //! Accepted claims cannot be constructed outside the verifier:
 //!
 //! ```compile_fail
@@ -42,12 +50,42 @@
 //! }
 //! ```
 //!
+//! ```compile_fail
+//! use ogir_model::{EvidenceProfile, SessionPublicKeyId};
+//! use ogir_verifier::{AcceptedClaims, AppraisalResultView};
+//! fn forbidden(profile: EvidenceProfile, session_public_key_id: SessionPublicKeyId) {
+//!     let claims = AcceptedClaims { accepted_profile: profile, session_public_key_id };
+//!     let _ = AppraisalResultView::Allow(&claims);
+//! }
+//! ```
+//!
 //! Reports cannot be converted into appraisal results:
 //!
 //! ```compile_fail
 //! use ogir_verifier::{AppraisalResult, VerificationOutcome};
 //! fn forbidden(outcome: VerificationOutcome) {
 //!     let _ = AppraisalResult::from_outcome(outcome);
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, VerificationOutcome};
+//! fn forbidden(report: VerificationOutcome) {
+//!     let _: AppraisalResult = report.into();
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, VerificationRequest};
+//! fn forbidden(request: VerificationRequest) {
+//!     let _: AppraisalResult = request.into();
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, ExpectedContext};
+//! fn forbidden(mut result: AppraisalResult, replacement: ExpectedContext) {
+//!     result.set_context(replacement);
 //! }
 //! ```
 //!
@@ -92,6 +130,22 @@
 //! }
 //! ```
 //!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! struct ProtectedResult;
+//! fn forbidden(result: AppraisalResult) -> ProtectedResult {
+//!     result.into_protected_result()
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! struct ProofOfPossession;
+//! fn forbidden(result: AppraisalResult) -> ProofOfPossession {
+//!     result.into_proof_of_possession()
+//! }
+//! ```
+//!
 //! Result and accepted-claim fields remain private:
 //!
 //! ```compile_fail
@@ -120,6 +174,13 @@
 //! use ogir_verifier::AppraisalResult;
 //! fn forbidden(result: AppraisalResult) {
 //!     let _ = result.payload;
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, ExpectedContext};
+//! fn forbidden(result: &AppraisalResult, replacement: ExpectedContext) {
+//!     *result.context() = replacement;
 //! }
 //! ```
 //!
@@ -758,6 +819,21 @@ pub struct VerifiedAttestation {
 /// fn forbidden(value: VerifiedAttestation) {
 ///     let _: AppraisalResult = value.into_appraisal_result();
 ///     let _: AppraisalResult = value.into_appraisal_result();
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::VerifiedAttestation;
+/// fn forbidden(verified: VerifiedAttestation) {
+///     let _first = verified.into_appraisal_result();
+///     let _second = verified.into_appraisal_result();
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::VerifiedAttestation;
+/// fn forbidden(verified: VerifiedAttestation) {
+///     let _ = verified.clone();
 /// }
 /// ```
 impl VerifiedAttestation {
