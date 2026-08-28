@@ -475,7 +475,7 @@ pub struct AppraisalResult {
 
 #[expect(
     dead_code,
-    reason = "Task 3 freezes result shapes before Task 4 adds private construction paths"
+    reason = "Task 3 freezes result shapes before Tasks 5 and 6 add private construction paths"
 )]
 enum AppraisalPayload {
     Allow(AcceptedClaims),
@@ -499,7 +499,7 @@ struct FailurePayload {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[expect(
     dead_code,
-    reason = "Task 3 freezes failure shapes before Task 4 adds private construction paths"
+    reason = "Task 3 freezes failure shapes before Task 6 adds private construction paths"
 )]
 enum FailureDecision {
     Deny,
