@@ -6,7 +6,7 @@ use std::num::NonZeroU64;
 use ogir_model::{
     AccountScope, BuildId, ChallengeLifetime, ChallengeWindow, Decision, EvidenceProfile, GameId,
     IdentifierError, MatchId, Nonce, PolicyId, PolicyVersion, ProtocolVersion, PublisherChallenge,
-    PublisherId, ReasonCode, UnixTime,
+    PublisherId, ReasonCode, SessionPublicKeyId, UnixTime,
 };
 use ogir_protocol::EvidenceBundle;
 
@@ -66,7 +66,69 @@ fn flow_fixture(seed: u8) -> VerifierFlow {
     VerifierFlow::begin(request_fixture(seed))
 }
 
-fn advance_to_policy_ready(flow: &mut VerifierFlow, allowed: AllowedClass) {
+fn request_fixture_with_context_tag(seed: u8, tag: u8) -> VerificationRequest {
+    let mut request = request_fixture(seed);
+    let publisher = format!("publisher-{tag}");
+    let game = format!("game-{tag}");
+    let build = format!("build-{tag}");
+    let account = format!("account-{tag}");
+    let match_id = format!("match-{tag}");
+    let policy = format!("policy-{tag}");
+    let policy_version = PolicyVersion::new(u32::from(tag) + 1);
+
+    request.challenge.publisher_id = identifier(&publisher);
+    request.challenge.game_id = identifier(&game);
+    request.challenge.build_id = identifier(&build);
+    request.challenge.account_scope = identifier(&account);
+    request.challenge.match_id = identifier(&match_id);
+    request.challenge.policy_id = identifier(&policy);
+    request.challenge.policy_version = policy_version;
+    request.expected.publisher_id = identifier(&publisher);
+    request.expected.game_id = identifier(&game);
+    request.expected.build_id = identifier(&build);
+    request.expected.account_scope = identifier(&account);
+    request.expected.match_id = identifier(&match_id);
+    request.expected.policy_id = identifier(&policy);
+    request.expected.policy_version = policy_version;
+    request
+}
+
+fn flow_fixture_with_context_tag(seed: u8, tag: u8) -> VerifierFlow {
+    VerifierFlow::begin(request_fixture_with_context_tag(seed, tag))
+}
+
+fn accepted_profile() -> EvidenceProfile {
+    identifier("accepted-profile-v1")
+}
+
+fn session_key_id(seed: u8) -> SessionPublicKeyId {
+    SessionPublicKeyId::from_bytes(std::array::from_fn(|index| seed ^ index as u8))
+}
+
+fn advance_to_identity_checked(flow: &mut VerifierFlow) {
+    let binding = flow.binding.clone();
+    assert_eq!(
+        flow.record_challenge_authenticated(ChallengeAuthenticated {
+            binding: binding.clone(),
+        }),
+        Ok(())
+    );
+    assert_eq!(
+        flow.record_freshness_checked(crate::freshness::test_freshness_checked(binding.clone())),
+        Ok(())
+    );
+    assert_eq!(
+        flow.record_identity_checked(IdentityChecked { binding }),
+        Ok(())
+    );
+}
+
+fn advance_to_policy_ready(
+    flow: &mut VerifierFlow,
+    accepted_profile: EvidenceProfile,
+    session_public_key_id: SessionPublicKeyId,
+    allowed: AllowedClass,
+) {
     let binding = flow.binding.clone();
     assert_eq!(
         flow.record_challenge_authenticated(ChallengeAuthenticated {
@@ -87,12 +149,14 @@ fn advance_to_policy_ready(flow: &mut VerifierFlow, allowed: AllowedClass) {
     assert_eq!(
         flow.record_evidence_appraised(EvidenceAppraised {
             binding: binding.clone(),
+            accepted_profile,
         }),
         Ok(())
     );
     assert_eq!(
         flow.record_session_bound(SessionBound {
             binding: binding.clone(),
+            session_public_key_id,
         }),
         Ok(())
     );
@@ -108,9 +172,26 @@ fn advance_to_policy_ready(flow: &mut VerifierFlow, allowed: AllowedClass) {
     );
 }
 
-fn policy_ready_flow(seed: u8, allowed: AllowedClass) -> VerifierFlow {
+fn policy_ready_flow(
+    seed: u8,
+    accepted_profile: EvidenceProfile,
+    session_public_key_id: SessionPublicKeyId,
+    allowed: AllowedClass,
+) -> VerifierFlow {
     let mut flow = flow_fixture(seed);
-    advance_to_policy_ready(&mut flow, allowed);
+    advance_to_policy_ready(&mut flow, accepted_profile, session_public_key_id, allowed);
+    flow
+}
+
+fn policy_ready_flow_with_context_tag(
+    seed: u8,
+    tag: u8,
+    accepted_profile: EvidenceProfile,
+    session_public_key_id: SessionPublicKeyId,
+    allowed: AllowedClass,
+) -> VerifierFlow {
+    let mut flow = flow_fixture_with_context_tag(seed, tag);
+    advance_to_policy_ready(&mut flow, accepted_profile, session_public_key_id, allowed);
     flow
 }
 
@@ -199,18 +280,82 @@ impl TestAction {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct FlowSnapshot {
     phase: VerificationPhase,
     outcome: Option<VerificationOutcome>,
-    has_request: bool,
+    request: Option<VerificationRequest>,
+    context: Option<ExpectedContext>,
+    accepted_profile: Option<EvidenceProfile>,
+    session_public_key_id: Option<SessionPublicKeyId>,
+    allowed: Option<AllowedClass>,
 }
 
 fn flow_snapshot(flow: &VerifierFlow) -> FlowSnapshot {
+    let (request, context, accepted_profile, session_public_key_id, allowed) = match &flow.state {
+        VerificationState::EvidenceReceived { request }
+        | VerificationState::ChallengeAuthenticated { request }
+        | VerificationState::FreshnessChecked { request }
+        | VerificationState::IdentityChecked { request } => (
+            Some(request.clone()),
+            Some(request.expected.clone()),
+            None,
+            None,
+            None,
+        ),
+        VerificationState::EvidenceAppraised {
+            request,
+            accepted_profile,
+        } => (
+            Some(request.clone()),
+            Some(request.expected.clone()),
+            Some(accepted_profile.clone()),
+            None,
+            None,
+        ),
+        VerificationState::SessionBound {
+            request,
+            accepted_profile,
+            session_public_key_id,
+        }
+        | VerificationState::RevocationChecked {
+            request,
+            accepted_profile,
+            session_public_key_id,
+        } => (
+            Some(request.clone()),
+            Some(request.expected.clone()),
+            Some(accepted_profile.clone()),
+            Some(*session_public_key_id),
+            None,
+        ),
+        VerificationState::PolicySatisfied {
+            request,
+            accepted_profile,
+            session_public_key_id,
+            allowed,
+        } => (
+            Some(request.clone()),
+            Some(request.expected.clone()),
+            Some(accepted_profile.clone()),
+            Some(*session_public_key_id),
+            Some(*allowed),
+        ),
+        VerificationState::Verified { .. }
+        | VerificationState::Malformed { .. }
+        | VerificationState::Unsupported { .. }
+        | VerificationState::Retryable { .. }
+        | VerificationState::Denied { .. }
+        | VerificationState::Revoked { .. } => (None, None, None, None, None),
+    };
     FlowSnapshot {
         phase: flow.phase(),
         outcome: flow.outcome(),
-        has_request: flow.request.is_some(),
+        request,
+        context,
+        accepted_profile,
+        session_public_key_id,
+        allowed,
     }
 }
 
@@ -413,6 +558,75 @@ fn report_reason_is_absent_only_for_allows() {
 }
 
 #[test]
+fn claim_capabilities_move_payload_only_after_phase_and_binding_checks() {
+    let mut flow = flow_fixture_with_context_tag(7, 1);
+    advance_to_identity_checked(&mut flow);
+    let other = flow_fixture_with_context_tag(7, 1);
+    let before_evidence = flow_snapshot(&flow);
+    assert_eq!(
+        flow.record_evidence_appraised(EvidenceAppraised {
+            binding: other.binding.clone(),
+            accepted_profile: identifier("other-flow-profile"),
+        }),
+        Err(TransitionError::CapabilityRejected {
+            action: VerificationAction::RecordEvidenceAppraised,
+        })
+    );
+    assert_eq!(flow_snapshot(&flow), before_evidence);
+
+    let profile = accepted_profile();
+    assert_eq!(
+        flow.record_evidence_appraised(EvidenceAppraised {
+            binding: flow.binding.clone(),
+            accepted_profile: profile.clone(),
+        }),
+        Ok(())
+    );
+    let after_evidence = flow_snapshot(&flow);
+    assert_eq!(after_evidence.accepted_profile, Some(profile.clone()));
+    assert_eq!(after_evidence.session_public_key_id, None);
+
+    let before_session = flow_snapshot(&flow);
+    assert_eq!(
+        flow.record_session_bound(SessionBound {
+            binding: other.binding,
+            session_public_key_id: session_key_id(251),
+        }),
+        Err(TransitionError::CapabilityRejected {
+            action: VerificationAction::RecordSessionBound,
+        })
+    );
+    assert_eq!(flow_snapshot(&flow), before_session);
+
+    let key_id = session_key_id(7);
+    assert_eq!(
+        flow.record_session_bound(SessionBound {
+            binding: flow.binding.clone(),
+            session_public_key_id: key_id,
+        }),
+        Ok(())
+    );
+    let after_session = flow_snapshot(&flow);
+    assert_eq!(after_session.accepted_profile, Some(profile));
+    assert_eq!(after_session.session_public_key_id, Some(key_id));
+
+    let tagged_policy = policy_ready_flow_with_context_tag(
+        8,
+        1,
+        accepted_profile(),
+        session_key_id(8),
+        AllowedClass::Full,
+    );
+    let tagged_snapshot = flow_snapshot(&tagged_policy);
+    let context = match tagged_snapshot.context.as_ref() {
+        Some(value) => value,
+        None => panic!("policy-ready state must retain exact context"),
+    };
+    assert_ne!(context.policy_version, PolicyVersion::new(u32::MAX));
+    assert_eq!(tagged_snapshot.allowed, Some(AllowedClass::Full));
+}
+
+#[test]
 fn every_failure_reason_has_one_report_mapping() {
     let mappings = [
         (
@@ -607,12 +821,26 @@ fn apply_action(
         }
         TestAction::Evidence(mode) => {
             let binding = selected_binding(flow, other_binding, mode);
-            flow.record_evidence_appraised(EvidenceAppraised { binding })?;
+            let accepted_profile = match mode {
+                BindingMode::Matching => accepted_profile(),
+                BindingMode::OtherFlow => identifier("other-flow-profile"),
+            };
+            flow.record_evidence_appraised(EvidenceAppraised {
+                binding,
+                accepted_profile,
+            })?;
             Ok(ActionResult::NoCapability)
         }
         TestAction::Session(mode) => {
             let binding = selected_binding(flow, other_binding, mode);
-            flow.record_session_bound(SessionBound { binding })?;
+            let session_public_key_id = match mode {
+                BindingMode::Matching => session_key_id(7),
+                BindingMode::OtherFlow => session_key_id(251),
+            };
+            flow.record_session_bound(SessionBound {
+                binding,
+                session_public_key_id,
+            })?;
             Ok(ActionResult::NoCapability)
         }
         TestAction::Revocation(mode) => {
@@ -739,7 +967,10 @@ fn assert_flow_matches_model(flow: &VerifierFlow, state: ModelState) {
             .map(|outcome| (outcome.decision(), outcome.reason())),
         model_report(state)
     );
-    assert_eq!(flow.request.is_some(), model_is_nonterminal(state));
+    assert_eq!(
+        flow_snapshot(flow).request.is_some(),
+        model_is_nonterminal(state)
+    );
 }
 
 fn equal_flows_at_gate(gate: GateKind, seed: u8) -> (VerifierFlow, VerifierFlow) {
@@ -748,7 +979,10 @@ fn equal_flows_at_gate(gate: GateKind, seed: u8) -> (VerifierFlow, VerifierFlow)
     assert_eq!(request, equal_request);
     let mut source = VerifierFlow::begin(request);
     let mut target = VerifierFlow::begin(equal_request);
-    assert_eq!(source.request.as_ref(), target.request.as_ref());
+    assert_eq!(
+        flow_snapshot(&source).request,
+        flow_snapshot(&target).request
+    );
     assert!(!source.binding.matches(&target.binding));
 
     let prefix_length = match gate {
@@ -790,8 +1024,14 @@ fn apply_capability_from_other_flow(
             target.record_freshness_checked(crate::freshness::test_freshness_checked(binding))
         }
         GateKind::Identity => target.record_identity_checked(IdentityChecked { binding }),
-        GateKind::Evidence => target.record_evidence_appraised(EvidenceAppraised { binding }),
-        GateKind::Session => target.record_session_bound(SessionBound { binding }),
+        GateKind::Evidence => target.record_evidence_appraised(EvidenceAppraised {
+            binding,
+            accepted_profile: identifier("other-flow-profile"),
+        }),
+        GateKind::Session => target.record_session_bound(SessionBound {
+            binding,
+            session_public_key_id: session_key_id(251),
+        }),
         GateKind::Revocation => target.record_revocation_checked(RevocationChecked { binding }),
         GateKind::Policy => target.record_policy_satisfied(PolicySatisfied {
             binding,
@@ -886,6 +1126,7 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
 
     let evidence = EvidenceAppraised {
         binding: binding.clone(),
+        accepted_profile: identifier("private-accepted-profile"),
     };
     let diagnostic = format!("{evidence:?}");
     assert!(
@@ -896,6 +1137,7 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
 
     let session = SessionBound {
         binding: binding.clone(),
+        session_public_key_id: session_key_id(0xA5),
     };
     let diagnostic = format!("{session:?}");
     assert!(
@@ -936,9 +1178,9 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
     );
     diagnostics.push(diagnostic);
 
-    let request = match flow.request.as_ref() {
-        Some(value) => value,
-        None => panic!("active sentinel flow unexpectedly released its request"),
+    let request = match &flow.state {
+        VerificationState::EvidenceReceived { request } => request,
+        _ => panic!("sentinel flow unexpectedly left its initial active state"),
     };
     let diagnostic = format!("{request:?}");
     assert!(
@@ -1601,12 +1843,14 @@ fn canonical_full_path_returns_one_bound_verified_capability() {
     assert_eq!(
         flow.record_evidence_appraised(EvidenceAppraised {
             binding: binding.clone(),
+            accepted_profile: accepted_profile(),
         }),
         Ok(())
     );
     assert_eq!(
         flow.record_session_bound(SessionBound {
             binding: binding.clone(),
+            session_public_key_id: session_key_id(7),
         }),
         Ok(())
     );
@@ -1656,16 +1900,19 @@ fn complete_before_policy_satisfaction_rejects_without_releasing_request() {
         Ok(_) => panic!("early completion unexpectedly succeeded"),
     }
     assert_eq!(flow.phase(), VerificationPhase::EvidenceReceived);
-    assert!(flow.request.is_some());
+    assert!(flow_snapshot(&flow).request.is_some());
 }
 
 #[test]
 fn equal_request_from_another_flow_rejects_challenge_capability() {
     let source = flow_fixture(8);
     let mut target = flow_fixture(8);
-    assert_eq!(source.request.as_ref(), target.request.as_ref());
+    assert_eq!(
+        flow_snapshot(&source).request,
+        flow_snapshot(&target).request
+    );
     let before_phase = target.phase();
-    let before_request = target.request.clone();
+    let before_request = flow_snapshot(&target).request;
 
     let action = TestAction::Challenge(BindingMode::OtherFlow);
     assert_eq!(action.binding_mode(), Some(BindingMode::OtherFlow));
@@ -1677,12 +1924,17 @@ fn equal_request_from_another_flow_rejects_challenge_capability() {
         })
     );
     assert_eq!(target.phase(), before_phase);
-    assert_eq!(target.request, before_request);
+    assert_eq!(flow_snapshot(&target).request, before_request);
 }
 
 #[test]
 fn restricted_success_uses_the_same_complete_gate() {
-    let mut flow = policy_ready_flow(9, AllowedClass::Restricted);
+    let mut flow = policy_ready_flow(
+        9,
+        accepted_profile(),
+        session_key_id(9),
+        AllowedClass::Restricted,
+    );
     let verified = match flow.complete() {
         Ok(value) => value,
         Err(error) => panic!("restricted path rejected: {error:?}"),
@@ -1745,7 +1997,7 @@ fn every_failure_class_is_terminal_and_releases_the_request() {
             flow.outcome().map(VerificationOutcome::reason),
             Some(Some(expected_reason))
         );
-        assert!(flow.request.is_none());
+        assert!(flow_snapshot(&flow).request.is_none());
         assert_every_action_rejected(&mut flow);
     }
 }
@@ -1881,7 +2133,7 @@ fn omitting_each_gate_prevents_completion() {
             Ok(_) => panic!("completion succeeded with omitted gate {omitted:?}"),
         }
         assert_eq!(flow_snapshot(&flow), before);
-        assert!(flow.request.is_some());
+        assert!(flow_snapshot(&flow).request.is_some());
         assert_eq!(flow.outcome(), None);
         omissions += 1;
     }
@@ -1908,7 +2160,7 @@ fn gate_permutations_require_the_one_canonical_order() {
         if ordering == ALL_7_GATE_KINDS {
             assert_eq!(flow.phase(), VerificationPhase::PolicySatisfied);
             assert_eq!(flow.outcome(), None);
-            assert!(flow.request.is_some());
+            assert!(flow_snapshot(&flow).request.is_some());
             let verified = match flow.complete() {
                 Ok(value) => value,
                 Err(error) => panic!("canonical ordering rejected: {error:?}"),
@@ -1919,13 +2171,13 @@ fn gate_permutations_require_the_one_canonical_order() {
                 flow.outcome().map(VerificationOutcome::decision),
                 Some(Decision::Allow)
             );
-            assert!(flow.request.is_none());
+            assert!(flow_snapshot(&flow).request.is_none());
             canonical += 1;
         } else {
             assert_ne!(flow.phase(), VerificationPhase::PolicySatisfied);
             assert_ne!(flow.phase(), VerificationPhase::Verified);
             assert_eq!(flow.outcome(), None);
-            assert!(flow.request.is_some());
+            assert!(flow_snapshot(&flow).request.is_some());
             let before = flow_snapshot(&flow);
             match flow.complete() {
                 Err(error) => assert_eq!(
@@ -2030,7 +2282,10 @@ fn every_flow_capability_outcome_and_error_diagnostic_is_redacted() {
 fn request_exists_only_while_flow_is_nonterminal() {
     for state in ALL_14_MODEL_STATES {
         let flow = flow_for_model_state(state, 83);
-        assert_eq!(flow.request.is_some(), model_is_nonterminal(state));
+        assert_eq!(
+            flow_snapshot(&flow).request.is_some(),
+            model_is_nonterminal(state)
+        );
     }
 }
 
@@ -2044,12 +2299,12 @@ fn authority_fields_remain_private_by_structure() {
         "pub struct VerificationOutcome {\n    decision: Decision,\n    reason: Option<ReasonCode>,\n}",
         "pub struct ChallengeAuthenticated {\n    binding: VerificationBinding,\n}",
         "pub struct IdentityChecked {\n    binding: VerificationBinding,\n}",
-        "pub struct EvidenceAppraised {\n    binding: VerificationBinding,\n}",
-        "pub struct SessionBound {\n    binding: VerificationBinding,\n}",
+        "pub struct EvidenceAppraised {\n    binding: VerificationBinding,\n    accepted_profile: EvidenceProfile,\n}",
+        "pub struct SessionBound {\n    binding: VerificationBinding,\n    session_public_key_id: SessionPublicKeyId,\n}",
         "pub struct RevocationChecked {\n    binding: VerificationBinding,\n}",
         "pub struct PolicySatisfied {\n    binding: VerificationBinding,\n    allowed: AllowedClass,\n}",
         "pub struct VerifiedAttestation {\n    binding: VerificationBinding,\n    allowed: AllowedClass,\n}",
-        "pub struct VerifierFlow {\n    binding: VerificationBinding,\n    request: Option<VerificationRequest>,\n    state: VerificationState,\n}",
+        "pub struct VerifierFlow {\n    binding: VerificationBinding,\n    state: VerificationState,\n}",
     ] {
         assert!(
             verification.contains(declaration),
@@ -2066,22 +2321,21 @@ fn authority_fields_remain_private_by_structure() {
     );
 
     let verification_lines: Vec<&str> = verification.lines().collect();
-    for private_line in [
-        "    _registration: ReplayRegistration,",
-        "    binding: VerificationBinding,",
-        "    request: Option<VerificationRequest>,",
-        "    state: VerificationState,",
-        "    allowed: AllowedClass,",
-        "    decision: Decision,",
-        "    reason: Option<ReasonCode>,",
+    for (indent, field) in [
+        ("    ", "_registration: ReplayRegistration,"),
+        ("    ", "binding: VerificationBinding,"),
+        ("        ", "request: VerificationRequest,"),
+        ("    ", "accepted_profile: EvidenceProfile,"),
+        ("    ", "session_public_key_id: SessionPublicKeyId,"),
+        ("    ", "state: VerificationState,"),
+        ("    ", "allowed: AllowedClass,"),
+        ("    ", "decision: Decision,"),
+        ("    ", "reason: Option<ReasonCode>,"),
     ] {
-        assert!(verification_lines.contains(&private_line));
-        let field = match private_line.strip_prefix("    ") {
-            Some(value) => value,
-            None => panic!("private field fixture lost exact indentation"),
-        };
+        let private_line = format!("{indent}{field}");
+        assert!(verification_lines.contains(&private_line.as_str()));
         for visibility in ["pub ", "pub(crate) ", "pub(super) "] {
-            let forbidden = format!("    {visibility}{field}");
+            let forbidden = format!("{indent}{visibility}{field}");
             assert!(
                 !verification_lines.contains(&forbidden.as_str()),
                 "verification authority field became visible: {forbidden:?}"
@@ -2106,6 +2360,98 @@ fn authority_fields_remain_private_by_structure() {
         "pub(crate) struct VerificationBinding(pub(super) Arc<AttemptRecord>);",
     ] {
         assert!(!verification.contains(forbidden));
+    }
+
+    for state_shape in [
+        "EvidenceReceived {\n        request: VerificationRequest,\n    }",
+        "ChallengeAuthenticated {\n        request: VerificationRequest,\n    }",
+        "FreshnessChecked {\n        request: VerificationRequest,\n    }",
+        "IdentityChecked {\n        request: VerificationRequest,\n    }",
+        "EvidenceAppraised {\n        request: VerificationRequest,\n        accepted_profile: EvidenceProfile,\n    }",
+        "SessionBound {\n        request: VerificationRequest,\n        accepted_profile: EvidenceProfile,\n        session_public_key_id: SessionPublicKeyId,\n    }",
+        "RevocationChecked {\n        request: VerificationRequest,\n        accepted_profile: EvidenceProfile,\n        session_public_key_id: SessionPublicKeyId,\n    }",
+        "PolicySatisfied {\n        request: VerificationRequest,\n        accepted_profile: EvidenceProfile,\n        session_public_key_id: SessionPublicKeyId,\n        allowed: AllowedClass,\n    }",
+        "Verified {\n        outcome: VerificationOutcome,\n    }",
+        "Malformed {\n        outcome: VerificationOutcome,\n    }",
+        "Unsupported {\n        outcome: VerificationOutcome,\n    }",
+        "Retryable {\n        outcome: VerificationOutcome,\n    }",
+        "Denied {\n        outcome: VerificationOutcome,\n    }",
+        "Revoked {\n        outcome: VerificationOutcome,\n    }",
+    ] {
+        assert!(
+            verification.contains(state_shape),
+            "verification state ownership drifted: {state_shape:?}"
+        );
+    }
+
+    assert!(!verification.contains("Option<VerificationState>"));
+    assert!(!verification.contains("self.state.take()"));
+}
+
+#[test]
+fn active_state_replacement_is_terminal_first_and_never_taken_from_option() {
+    let verification = include_str!("../verification.rs").replace("\r\n", "\n");
+    for method_name in [
+        "record_challenge_authenticated",
+        "record_freshness_checked",
+        "record_identity_checked",
+        "record_evidence_appraised",
+        "record_session_bound",
+        "record_revocation_checked",
+        "record_policy_satisfied",
+    ] {
+        let marker = format!("    pub fn {method_name}(");
+        let start = verification
+            .find(&marker)
+            .unwrap_or_else(|| panic!("missing gate method: {method_name}"));
+        let remaining = &verification[start..];
+        let end = remaining
+            .find("\n    ///")
+            .unwrap_or_else(|| panic!("missing gate method boundary: {method_name}"));
+        let method = &remaining[..end];
+
+        let binding_check = method
+            .find("self.ensure_binding")
+            .unwrap_or_else(|| panic!("gate lacks binding check: {method_name}"));
+        let phase_check = method[..binding_check]
+            .find("matches!")
+            .unwrap_or_else(|| panic!("gate lacks phase match before binding: {method_name}"));
+        assert!(
+            method[..binding_check].contains("&self.state"),
+            "gate does not borrow state for phase check: {method_name}"
+        );
+        let replacement = method
+            .find("std::mem::replace")
+            .unwrap_or_else(|| panic!("gate lacks whole-state replacement: {method_name}"));
+        let retry_terminal = method
+            .find("VerificationState::Retryable")
+            .unwrap_or_else(|| panic!("gate lacks transient retry terminal: {method_name}"));
+        let extraction = method
+            .find("let VerificationState::")
+            .unwrap_or_else(|| panic!("gate lacks old-state extraction: {method_name}"));
+        let assignment = method
+            .rfind("self.state = VerificationState::")
+            .unwrap_or_else(|| {
+                panic!("gate lacks infallible next-state assignment: {method_name}")
+            });
+
+        assert!(phase_check < binding_check);
+        assert!(binding_check < replacement);
+        assert!(replacement <= retry_terminal);
+        assert!(retry_terminal < extraction);
+        assert!(extraction < assignment);
+        assert_eq!(method.matches("std::mem::replace").count(), 1);
+    }
+
+    for forbidden in [
+        "Option<VerificationState>",
+        "self.state.take()",
+        "std::mem::take(&mut self.state)",
+    ] {
+        assert!(
+            !verification.contains(forbidden),
+            "verification state may not use an option/take extraction: {forbidden}"
+        );
     }
 }
 

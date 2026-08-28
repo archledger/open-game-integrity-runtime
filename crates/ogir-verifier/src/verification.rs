@@ -448,22 +448,57 @@ impl AllowedClass {
     const RESTRICTED: Self = Self::Restricted;
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
 enum VerificationState {
-    EvidenceReceived,
-    ChallengeAuthenticated,
-    FreshnessChecked,
-    IdentityChecked,
-    EvidenceAppraised,
-    SessionBound,
-    RevocationChecked,
-    PolicySatisfied(AllowedClass),
-    Verified(AllowedClass),
-    Malformed,
-    Unsupported,
-    Retryable,
-    Denied(DenialReason),
-    Revoked,
+    EvidenceReceived {
+        request: VerificationRequest,
+    },
+    ChallengeAuthenticated {
+        request: VerificationRequest,
+    },
+    FreshnessChecked {
+        request: VerificationRequest,
+    },
+    IdentityChecked {
+        request: VerificationRequest,
+    },
+    EvidenceAppraised {
+        request: VerificationRequest,
+        accepted_profile: EvidenceProfile,
+    },
+    SessionBound {
+        request: VerificationRequest,
+        accepted_profile: EvidenceProfile,
+        session_public_key_id: SessionPublicKeyId,
+    },
+    RevocationChecked {
+        request: VerificationRequest,
+        accepted_profile: EvidenceProfile,
+        session_public_key_id: SessionPublicKeyId,
+    },
+    PolicySatisfied {
+        request: VerificationRequest,
+        accepted_profile: EvidenceProfile,
+        session_public_key_id: SessionPublicKeyId,
+        allowed: AllowedClass,
+    },
+    Verified {
+        outcome: VerificationOutcome,
+    },
+    Malformed {
+        outcome: VerificationOutcome,
+    },
+    Unsupported {
+        outcome: VerificationOutcome,
+    },
+    Retryable {
+        outcome: VerificationOutcome,
+    },
+    Denied {
+        outcome: VerificationOutcome,
+    },
+    Revoked {
+        outcome: VerificationOutcome,
+    },
 }
 
 /// Opaque unsigned semantic result of one verifier appraisal.
@@ -601,15 +636,23 @@ pub struct IdentityChecked {
 }
 
 /// Opaque proof that evidence appraisal passed for one attempt.
+///
+/// Attempt binding proves flow association, not the truth of the profile
+/// supplied by the trusted producer.
 #[must_use]
 pub struct EvidenceAppraised {
     binding: VerificationBinding,
+    accepted_profile: EvidenceProfile,
 }
 
 /// Opaque proof that the live session was bound to one attempt.
+///
+/// Attempt binding proves flow association, not the truth of the key handle
+/// supplied by the trusted producer.
 #[must_use]
 pub struct SessionBound {
     binding: VerificationBinding,
+    session_public_key_id: SessionPublicKeyId,
 }
 
 /// Opaque proof that revocation checks passed for one attempt.
@@ -947,7 +990,6 @@ impl Error for TransitionError {}
 #[must_use]
 pub struct VerifierFlow {
     binding: VerificationBinding,
-    request: Option<VerificationRequest>,
     state: VerificationState,
 }
 
@@ -957,59 +999,51 @@ impl VerifierFlow {
         let binding = VerificationBinding::new(&request.challenge);
         Self {
             binding,
-            request: Some(request),
-            state: VerificationState::EvidenceReceived,
+            state: VerificationState::EvidenceReceived { request },
         }
     }
 
     /// Returns the redacted current phase.
     #[must_use]
     pub const fn phase(&self) -> VerificationPhase {
-        match self.state {
-            VerificationState::EvidenceReceived => VerificationPhase::EvidenceReceived,
-            VerificationState::ChallengeAuthenticated => VerificationPhase::ChallengeAuthenticated,
-            VerificationState::FreshnessChecked => VerificationPhase::FreshnessChecked,
-            VerificationState::IdentityChecked => VerificationPhase::IdentityChecked,
-            VerificationState::EvidenceAppraised => VerificationPhase::EvidenceAppraised,
-            VerificationState::SessionBound => VerificationPhase::SessionBound,
-            VerificationState::RevocationChecked => VerificationPhase::RevocationChecked,
-            VerificationState::PolicySatisfied(_) => VerificationPhase::PolicySatisfied,
-            VerificationState::Verified(_) => VerificationPhase::Verified,
-            VerificationState::Malformed => VerificationPhase::Malformed,
-            VerificationState::Unsupported => VerificationPhase::Unsupported,
-            VerificationState::Retryable => VerificationPhase::Retryable,
-            VerificationState::Denied(_) => VerificationPhase::Denied,
-            VerificationState::Revoked => VerificationPhase::Revoked,
+        match &self.state {
+            VerificationState::EvidenceReceived { .. } => VerificationPhase::EvidenceReceived,
+            VerificationState::ChallengeAuthenticated { .. } => {
+                VerificationPhase::ChallengeAuthenticated
+            }
+            VerificationState::FreshnessChecked { .. } => VerificationPhase::FreshnessChecked,
+            VerificationState::IdentityChecked { .. } => VerificationPhase::IdentityChecked,
+            VerificationState::EvidenceAppraised { .. } => VerificationPhase::EvidenceAppraised,
+            VerificationState::SessionBound { .. } => VerificationPhase::SessionBound,
+            VerificationState::RevocationChecked { .. } => VerificationPhase::RevocationChecked,
+            VerificationState::PolicySatisfied { .. } => VerificationPhase::PolicySatisfied,
+            VerificationState::Verified { .. } => VerificationPhase::Verified,
+            VerificationState::Malformed { .. } => VerificationPhase::Malformed,
+            VerificationState::Unsupported { .. } => VerificationPhase::Unsupported,
+            VerificationState::Retryable { .. } => VerificationPhase::Retryable,
+            VerificationState::Denied { .. } => VerificationPhase::Denied,
+            VerificationState::Revoked { .. } => VerificationPhase::Revoked,
         }
     }
 
     /// Returns a report only after the flow reaches a terminal.
     #[must_use]
     pub const fn outcome(&self) -> Option<VerificationOutcome> {
-        match self.state {
-            VerificationState::Verified(AllowedClass::FULL) => {
-                Some(VerificationOutcome::allowed_full())
-            }
-            VerificationState::Verified(AllowedClass::RESTRICTED) => {
-                Some(VerificationOutcome::allowed_restricted())
-            }
-            VerificationState::Malformed => Some(VerificationOutcome::malformed()),
-            VerificationState::Unsupported => Some(VerificationOutcome::unsupported(
-                UnsupportedRequirement::VersionOrProfile,
-            )),
-            VerificationState::Retryable => Some(VerificationOutcome::retryable(
-                RetryReason::AttestationUnavailable,
-            )),
-            VerificationState::Denied(reason) => Some(VerificationOutcome::denied(reason)),
-            VerificationState::Revoked => Some(VerificationOutcome::revoked()),
-            VerificationState::EvidenceReceived
-            | VerificationState::ChallengeAuthenticated
-            | VerificationState::FreshnessChecked
-            | VerificationState::IdentityChecked
-            | VerificationState::EvidenceAppraised
-            | VerificationState::SessionBound
-            | VerificationState::RevocationChecked
-            | VerificationState::PolicySatisfied(_) => None,
+        match &self.state {
+            VerificationState::Verified { outcome }
+            | VerificationState::Malformed { outcome }
+            | VerificationState::Unsupported { outcome }
+            | VerificationState::Retryable { outcome }
+            | VerificationState::Denied { outcome }
+            | VerificationState::Revoked { outcome } => Some(*outcome),
+            VerificationState::EvidenceReceived { .. }
+            | VerificationState::ChallengeAuthenticated { .. }
+            | VerificationState::FreshnessChecked { .. }
+            | VerificationState::IdentityChecked { .. }
+            | VerificationState::EvidenceAppraised { .. }
+            | VerificationState::SessionBound { .. }
+            | VerificationState::RevocationChecked { .. }
+            | VerificationState::PolicySatisfied { .. } => None,
         }
     }
 
@@ -1023,14 +1057,23 @@ impl VerifierFlow {
         &mut self,
         capability: ChallengeAuthenticated,
     ) -> Result<(), TransitionError> {
-        if self.state != VerificationState::EvidenceReceived {
+        if !matches!(&self.state, VerificationState::EvidenceReceived { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordChallengeAuthenticated));
         }
         self.ensure_binding(
             VerificationAction::RecordChallengeAuthenticated,
             &capability.binding,
         )?;
-        self.state = VerificationState::ChallengeAuthenticated;
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::EvidenceReceived { request } = previous else {
+            unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::ChallengeAuthenticated { request };
         Ok(())
     }
 
@@ -1044,14 +1087,26 @@ impl VerifierFlow {
         &mut self,
         capability: FreshnessChecked,
     ) -> Result<(), TransitionError> {
-        if self.state != VerificationState::ChallengeAuthenticated {
+        if !matches!(
+            &self.state,
+            VerificationState::ChallengeAuthenticated { .. }
+        ) {
             return Err(self.invalid_transition(VerificationAction::RecordFreshnessChecked));
         }
         self.ensure_binding(
             VerificationAction::RecordFreshnessChecked,
             capability.binding(),
         )?;
-        self.state = VerificationState::FreshnessChecked;
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::ChallengeAuthenticated { request } = previous else {
+            unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::FreshnessChecked { request };
         Ok(())
     }
 
@@ -1065,14 +1120,23 @@ impl VerifierFlow {
         &mut self,
         capability: IdentityChecked,
     ) -> Result<(), TransitionError> {
-        if self.state != VerificationState::FreshnessChecked {
+        if !matches!(&self.state, VerificationState::FreshnessChecked { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordIdentityChecked));
         }
         self.ensure_binding(
             VerificationAction::RecordIdentityChecked,
             &capability.binding,
         )?;
-        self.state = VerificationState::IdentityChecked;
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::FreshnessChecked { request } = previous else {
+            unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::IdentityChecked { request };
         Ok(())
     }
 
@@ -1086,14 +1150,26 @@ impl VerifierFlow {
         &mut self,
         capability: EvidenceAppraised,
     ) -> Result<(), TransitionError> {
-        if self.state != VerificationState::IdentityChecked {
+        if !matches!(&self.state, VerificationState::IdentityChecked { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordEvidenceAppraised));
         }
         self.ensure_binding(
             VerificationAction::RecordEvidenceAppraised,
             &capability.binding,
         )?;
-        self.state = VerificationState::EvidenceAppraised;
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::IdentityChecked { request } = previous else {
+            unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::EvidenceAppraised {
+            request,
+            accepted_profile: capability.accepted_profile,
+        };
         Ok(())
     }
 
@@ -1107,11 +1183,28 @@ impl VerifierFlow {
         &mut self,
         capability: SessionBound,
     ) -> Result<(), TransitionError> {
-        if self.state != VerificationState::EvidenceAppraised {
+        if !matches!(&self.state, VerificationState::EvidenceAppraised { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordSessionBound));
         }
         self.ensure_binding(VerificationAction::RecordSessionBound, &capability.binding)?;
-        self.state = VerificationState::SessionBound;
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::EvidenceAppraised {
+            request,
+            accepted_profile,
+        } = previous
+        else {
+            unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::SessionBound {
+            request,
+            accepted_profile,
+            session_public_key_id: capability.session_public_key_id,
+        };
         Ok(())
     }
 
@@ -1125,14 +1218,32 @@ impl VerifierFlow {
         &mut self,
         capability: RevocationChecked,
     ) -> Result<(), TransitionError> {
-        if self.state != VerificationState::SessionBound {
+        if !matches!(&self.state, VerificationState::SessionBound { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordRevocationChecked));
         }
         self.ensure_binding(
             VerificationAction::RecordRevocationChecked,
             &capability.binding,
         )?;
-        self.state = VerificationState::RevocationChecked;
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::SessionBound {
+            request,
+            accepted_profile,
+            session_public_key_id,
+        } = previous
+        else {
+            unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::RevocationChecked {
+            request,
+            accepted_profile,
+            session_public_key_id,
+        };
         Ok(())
     }
 
@@ -1146,14 +1257,33 @@ impl VerifierFlow {
         &mut self,
         capability: PolicySatisfied,
     ) -> Result<(), TransitionError> {
-        if self.state != VerificationState::RevocationChecked {
+        if !matches!(&self.state, VerificationState::RevocationChecked { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordPolicySatisfied));
         }
         self.ensure_binding(
             VerificationAction::RecordPolicySatisfied,
             &capability.binding,
         )?;
-        self.state = VerificationState::PolicySatisfied(capability.allowed);
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::RevocationChecked {
+            request,
+            accepted_profile,
+            session_public_key_id,
+        } = previous
+        else {
+            unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::PolicySatisfied {
+            request,
+            accepted_profile,
+            session_public_key_id,
+            allowed: capability.allowed,
+        };
         Ok(())
     }
 
@@ -1164,12 +1294,29 @@ impl VerifierFlow {
     /// Returns a redacted invalid-transition error unless policy satisfaction
     /// is the current phase.
     pub fn complete(&mut self) -> Result<VerifiedAttestation, TransitionError> {
-        let allowed = match self.state {
-            VerificationState::PolicySatisfied(allowed) => allowed,
-            _ => return Err(self.invalid_transition(VerificationAction::Complete)),
+        if !matches!(&self.state, VerificationState::PolicySatisfied { .. }) {
+            return Err(self.invalid_transition(VerificationAction::Complete));
+        }
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::PolicySatisfied {
+            request: _request,
+            accepted_profile: _accepted_profile,
+            session_public_key_id: _session_public_key_id,
+            allowed,
+        } = previous
+        else {
+            unreachable!("phase was checked before terminal replacement")
         };
-        self.state = VerificationState::Verified(allowed);
-        self.request = None;
+        let outcome = match allowed {
+            AllowedClass::FULL => VerificationOutcome::allowed_full(),
+            AllowedClass::RESTRICTED => VerificationOutcome::allowed_restricted(),
+        };
+        self.state = VerificationState::Verified { outcome };
         Ok(VerifiedAttestation {
             binding: self.binding.clone(),
             allowed,
@@ -1185,7 +1332,9 @@ impl VerifierFlow {
     pub fn mark_malformed(&mut self) -> Result<(), TransitionError> {
         self.enter_failure(
             VerificationAction::MarkMalformed,
-            VerificationState::Malformed,
+            VerificationState::Malformed {
+                outcome: VerificationOutcome::malformed(),
+            },
         )
     }
 
@@ -1202,7 +1351,9 @@ impl VerifierFlow {
         let _checked_requirement = requirement;
         self.enter_failure(
             VerificationAction::MarkUnsupported,
-            VerificationState::Unsupported,
+            VerificationState::Unsupported {
+                outcome: VerificationOutcome::unsupported(UnsupportedRequirement::VersionOrProfile),
+            },
         )
     }
 
@@ -1215,7 +1366,9 @@ impl VerifierFlow {
     pub fn mark_retryable(&mut self) -> Result<(), TransitionError> {
         self.enter_failure(
             VerificationAction::MarkRetryable,
-            VerificationState::Retryable,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::AttestationUnavailable),
+            },
         )
     }
 
@@ -1226,7 +1379,12 @@ impl VerifierFlow {
     /// Returns a redacted invalid-transition error when the flow is already
     /// terminal.
     pub fn deny(&mut self, reason: DenialReason) -> Result<(), TransitionError> {
-        self.enter_failure(VerificationAction::Deny, VerificationState::Denied(reason))
+        self.enter_failure(
+            VerificationAction::Deny,
+            VerificationState::Denied {
+                outcome: VerificationOutcome::denied(reason),
+            },
+        )
     }
 
     /// Terminates this attempt because a required input was revoked.
@@ -1236,18 +1394,23 @@ impl VerifierFlow {
     /// Returns a redacted invalid-transition error when the flow is already
     /// terminal.
     pub fn mark_revoked(&mut self) -> Result<(), TransitionError> {
-        self.enter_failure(VerificationAction::MarkRevoked, VerificationState::Revoked)
+        self.enter_failure(
+            VerificationAction::MarkRevoked,
+            VerificationState::Revoked {
+                outcome: VerificationOutcome::revoked(),
+            },
+        )
     }
 
     fn is_terminal(&self) -> bool {
         matches!(
-            self.state,
-            VerificationState::Verified(_)
-                | VerificationState::Malformed
-                | VerificationState::Unsupported
-                | VerificationState::Retryable
-                | VerificationState::Denied(_)
-                | VerificationState::Revoked
+            &self.state,
+            VerificationState::Verified { .. }
+                | VerificationState::Malformed { .. }
+                | VerificationState::Unsupported { .. }
+                | VerificationState::Retryable { .. }
+                | VerificationState::Denied { .. }
+                | VerificationState::Revoked { .. }
         )
     }
 
@@ -1259,8 +1422,8 @@ impl VerifierFlow {
         if self.is_terminal() {
             return Err(self.invalid_transition(action));
         }
-        self.request = None;
-        self.state = next;
+        let previous = std::mem::replace(&mut self.state, next);
+        drop(previous);
         Ok(())
     }
 
