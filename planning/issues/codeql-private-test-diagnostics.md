@@ -157,12 +157,12 @@ or toolchain version changes.
 ## Implementation evidence
 
 - Verified base: `25030e1af6a437472e27c5e842f4251222d4c6fe`.
-- Verified fix head before the final evidence-only update:
-  `be0cb565038ad05e80d1c53e0972bf88a9ade2f2`.
+- Verified final-review fix head before the final evidence-only update:
+  `8163e7ab326bf05718e8d090ca49a6c7c97f0c22`.
 - The base-to-fix-head diff contains 13 approved planning, test, and
   documentation paths: the eight test locations named by the plan,
   `docs/TEST_STRATEGY.md`, `docs/LESSONS_LEARNED.md`, this issue, the approved
-  design, and the implementation plan. It contains 1,061 insertions and 47
+  design, and the implementation plan. It contains 1,072 insertions and 48
   deletions. The production/configuration path guard passed; the only model
   source diff is inside its existing `#[cfg(test)]` module, the agent and
   verifier `src/` diffs are dedicated test modules, and `.github/**`,
@@ -181,7 +181,7 @@ or toolchain version changes.
   fixtures, formatting, Clippy, rustdoc, and cargo-deny also passed.
   `cargo test --workspace --all-features --release` passed with the same 123
   runtime/integration tests and 80 doctests. `git diff --check` passed.
-- Focused word-diff review confirmed 33 new fixed mismatch messages, three new
+- Focused word-diff review confirmed 34 new fixed mismatch messages, three new
   fixed forbidden-value messages, and one new fixed missing-marker message;
   the edited predicates, expected strings, forbidden sets, fixtures, loops,
   and unrelated functional/state-machine assertions remain unchanged.
@@ -189,9 +189,8 @@ or toolchain version changes.
   `diagnostics_for_every_surface` to the same fixed-message boolean shape. The
   actual and expected expressions, order, pushes, fixtures, arrays, and loops
   remain unchanged. The four type-constrained transition-error comparisons and
-  one outcome comparison remain unchanged. Focused variant review now finds no
-  value-emitting assertion form on a privacy-bearing diagnostic in the eight
-  reviewed test locations.
+  one outcome comparison remain unchanged. That focused helper review found no
+  remaining value-emitting assertion form inside the helper.
 - The independent failure-path mutant cycle passed. Before the fix, temporarily
   formatting `VerificationBinding` as the literal synthetic marker
   `VerificationBinding(private-account)` made the exact verifier privacy test
@@ -202,11 +201,34 @@ or toolchain version changes.
   restored after each run and is byte-identical to both merged base and the
   pre-fix head (SHA-256
   `924088c3a6df903af3d8f24fd8ea805594c9cd665610d7c35a2efe2fb093d8f2`).
+- Final whole-branch review inventoried all 22 Rust files and 123
+  runtime/integration tests and found one further confirmed same-root-cause
+  site: the canonical success-path test compared a request-bound
+  `VerifiedAttestation` diagnostic with `assert_eq!`. The final-review fix
+  converts only that assertion to boolean equality with the fixed mismatch
+  message, preserving the actual expression, expected expression, and
+  evaluation. Complete base-diff accounting now proves 38 hardened assertion
+  sites: 15 model/protocol sites, 8 initial agent/verifier sites, 14 verifier
+  helper sites, and 1 canonical capability site. By message category these are
+  34 fixed mismatch assertions, 3 fixed forbidden-value assertions, and 1
+  fixed missing-marker assertion.
+- The final-review failure-path mutant cycle passed. Before that final fix,
+  temporarily formatting `VerifiedAttestation` as
+  `VerifiedAttestation(private-account)` made
+  `canonical_full_path_returns_one_bound_verified_capability` fail through
+  `assert_eq!` and print the marker as its left operand. With the single
+  test-only correction applied, the identical mutant made the identical exact
+  test fail with only `private diagnostic mismatch` and zero
+  `private-account` occurrences. The mutant was never staged or committed;
+  `verification.rs` was restored after each run to the same SHA-256 above and
+  Git blob `6d03a789a21ee36104b65a3baeb928f0366179e0`. Complete variant searches found
+  no remaining confirmed privacy-bearing value-emitting assertion form.
 - Before this section was appended, the local issue body was byte-equal to live
   issue #18. This local evidence update is intentionally not synchronized;
   GitHub issue state, labels, milestone, body, and alerts remain unchanged.
 - Limitations and pending gates: the normal and release suites exercise passing
-  behavior; the separate mutant cycle supplies assertion-failure
-  confidentiality evidence. No independent reviewer was dispatched under the
-  Task 5 controller ruling. Controller review, exact DCO certification and
-  rewrite, publication, and post-publication CodeQL GREEN all remain pending.
+  behavior; the two separate mutant cycles supply assertion-failure
+  confidentiality evidence. The final whole-branch review identified and this
+  wave corrected its sole confirmed remaining variant. Controller review of
+  the correction, exact DCO certification and rewrite, publication, and
+  post-publication CodeQL GREEN all remain pending.
