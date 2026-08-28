@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 use std::num::NonZeroU64;
+use std::sync::Weak;
 
 use ogir_model::{
     AccountScope, BuildId, ChallengeLifetime, ChallengeWindow, Decision, EvidenceProfile, GameId,
@@ -67,6 +68,21 @@ fn flow_fixture(seed: u8) -> VerifierFlow {
     VerifierFlow::begin(request_fixture(seed))
 }
 
+fn active_binding(flow: &VerifierFlow) -> &VerificationBinding {
+    match &flow.binding {
+        Some(binding) => binding,
+        None => panic!("test expected an active verifier binding"),
+    }
+}
+
+fn cloned_active_binding(flow: &VerifierFlow) -> VerificationBinding {
+    active_binding(flow).clone()
+}
+
+fn attempt_record_weak(flow: &VerifierFlow) -> Weak<AttemptRecord> {
+    std::sync::Arc::downgrade(&active_binding(flow).0)
+}
+
 fn request_fixture_with_context_tag(seed: u8, tag: u8) -> VerificationRequest {
     let mut request = request_fixture(seed);
     let publisher = format!("publisher-{tag}");
@@ -107,7 +123,7 @@ fn session_key_id(seed: u8) -> SessionPublicKeyId {
 }
 
 fn advance_to_identity_checked(flow: &mut VerifierFlow) {
-    let binding = flow.binding.clone();
+    let binding = cloned_active_binding(flow);
     assert_eq!(
         flow.record_challenge_authenticated(ChallengeAuthenticated {
             binding: binding.clone(),
@@ -130,7 +146,7 @@ fn advance_to_policy_ready(
     session_public_key_id: SessionPublicKeyId,
     allowed: AllowedClass,
 ) {
-    let binding = flow.binding.clone();
+    let binding = cloned_active_binding(flow);
     assert_eq!(
         flow.record_challenge_authenticated(ChallengeAuthenticated {
             binding: binding.clone(),
@@ -762,7 +778,7 @@ fn claim_capabilities_move_payload_only_after_phase_and_binding_checks() {
     let before_evidence = flow_snapshot(&flow);
     assert_eq!(
         flow.record_evidence_appraised(EvidenceAppraised {
-            binding: other.binding.clone(),
+            binding: cloned_active_binding(&other),
             accepted_profile: identifier("other-flow-profile"),
         }),
         Err(TransitionError::CapabilityRejected {
@@ -774,7 +790,7 @@ fn claim_capabilities_move_payload_only_after_phase_and_binding_checks() {
     let profile = accepted_profile();
     assert_eq!(
         flow.record_evidence_appraised(EvidenceAppraised {
-            binding: flow.binding.clone(),
+            binding: cloned_active_binding(&flow),
             accepted_profile: profile.clone(),
         }),
         Ok(())
@@ -786,7 +802,7 @@ fn claim_capabilities_move_payload_only_after_phase_and_binding_checks() {
     let before_session = flow_snapshot(&flow);
     assert_eq!(
         flow.record_session_bound(SessionBound {
-            binding: other.binding,
+            binding: cloned_active_binding(&other),
             session_public_key_id: session_key_id(251),
         }),
         Err(TransitionError::CapabilityRejected {
@@ -798,7 +814,7 @@ fn claim_capabilities_move_payload_only_after_phase_and_binding_checks() {
     let key_id = session_key_id(7);
     assert_eq!(
         flow.record_session_bound(SessionBound {
-            binding: flow.binding.clone(),
+            binding: cloned_active_binding(&flow),
             session_public_key_id: key_id,
         }),
         Ok(())
@@ -834,7 +850,7 @@ fn correct_binding_does_not_claim_cryptographic_payload_provenance() {
         let mut flow = flow_fixture(seed);
         advance_to_identity_checked(&mut flow);
         let capability = EvidenceAppraised {
-            binding: flow.binding.clone(),
+            binding: cloned_active_binding(&flow),
             accepted_profile: supplied_profile.clone(),
         };
 
@@ -1087,7 +1103,7 @@ fn selected_binding(
     mode: BindingMode,
 ) -> VerificationBinding {
     match mode {
-        BindingMode::Matching => flow.binding.clone(),
+        BindingMode::Matching => flow.binding.as_ref().unwrap_or(other_binding).clone(),
         BindingMode::OtherFlow => other_binding.clone(),
     }
 }
@@ -1345,7 +1361,7 @@ fn advance_flow_to_model_state(
 
 fn flow_for_model_state(state: ModelState, seed: u8) -> VerifierFlow {
     let flow = flow_fixture(seed);
-    let other_binding = flow_fixture(seed.wrapping_add(1)).binding;
+    let other_binding = cloned_active_binding(&flow_fixture(seed.wrapping_add(1)));
     advance_flow_to_model_state(flow, state, &other_binding)
 }
 
@@ -1429,7 +1445,7 @@ fn equal_flows_at_gate(gate: GateKind, seed: u8) -> (VerifierFlow, VerifierFlow)
         flow_snapshot(&source).request,
         flow_snapshot(&target).request
     );
-    assert!(!source.binding.matches(&target.binding));
+    assert!(!active_binding(&source).matches(active_binding(&target)));
 
     let prefix_length = match gate {
         GateKind::Challenge => 0,
@@ -1443,11 +1459,11 @@ fn equal_flows_at_gate(gate: GateKind, seed: u8) -> (VerifierFlow, VerifierFlow)
     for prefix_gate in ALL_7_GATE_KINDS.into_iter().take(prefix_length) {
         let action = prefix_gate.matching_action(AllowedClass::Full);
         assert_eq!(
-            apply_action(&mut source, &target.binding.clone(), action),
+            apply_action(&mut source, &cloned_active_binding(&target), action),
             Ok(ActionResult::NoResult)
         );
         assert_eq!(
-            apply_action(&mut target, &source.binding.clone(), action),
+            apply_action(&mut target, &cloned_active_binding(&source), action),
             Ok(ActionResult::NoResult)
         );
     }
@@ -1462,7 +1478,7 @@ fn apply_capability_from_other_flow(
     source: &VerifierFlow,
     target: &mut VerifierFlow,
 ) -> Result<(), TransitionError> {
-    let binding = source.binding.clone();
+    let binding = cloned_active_binding(source);
     match gate {
         GateKind::Challenge => {
             target.record_challenge_authenticated(ChallengeAuthenticated { binding })
@@ -1528,7 +1544,7 @@ fn flow_with_private_sentinels() -> VerifierFlow {
 
 fn private_flow_for_model_state(state: ModelState) -> VerifierFlow {
     let flow = flow_with_private_sentinels();
-    let other_binding = flow_fixture(86).binding;
+    let other_binding = cloned_active_binding(&flow_fixture(86));
     advance_flow_to_model_state(flow, state, &other_binding)
 }
 
@@ -1561,7 +1577,7 @@ fn push_result_diagnostics(result: &AppraisalResult, diagnostics: &mut Vec<Strin
 
 fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
     let mut diagnostics = Vec::new();
-    let binding = flow.binding.clone();
+    let binding = cloned_active_binding(flow);
 
     let binding_diagnostic = format!("{binding:?}");
     assert!(
@@ -1776,7 +1792,7 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
 }
 
 fn assert_every_action_rejected(flow: &mut VerifierFlow) {
-    let other_binding = flow_fixture(250).binding;
+    let other_binding = cloned_active_binding(&flow_fixture(250));
     let current_phase = flow.phase();
     for action in ALL_24_MATRIX_ACTIONS {
         let before = flow_snapshot(flow);
@@ -2367,7 +2383,8 @@ fn assert_action_matches_model(
 #[test]
 fn canonical_full_path_returns_one_bound_verified_capability() {
     let mut flow = flow_fixture(7);
-    let binding = flow.binding.clone();
+    let attempt = attempt_record_weak(&flow);
+    let binding = cloned_active_binding(&flow);
     assert_eq!(
         flow.record_challenge_authenticated(ChallengeAuthenticated {
             binding: binding.clone(),
@@ -2416,7 +2433,7 @@ fn canonical_full_path_returns_one_bound_verified_capability() {
         Ok(value) => value,
         Err(error) => panic!("canonical path rejected: {error:?}"),
     };
-    assert!(verified.binding.matches(&flow.binding));
+    assert!(attempt.upgrade().is_some());
     assert_eq!(verified.allowed, AllowedClass::Full);
     assert_eq!(flow.phase(), VerificationPhase::Verified);
     assert_eq!(
@@ -2457,6 +2474,23 @@ fn completed_capability_converts_once_to_exact_full_result() {
         }
         _ => panic!("full completion returned the wrong view"),
     }
+}
+
+#[test]
+fn successful_completion_moves_the_only_attempt_owner_into_the_capability() {
+    let mut flow = policy_ready_flow(7, accepted_profile(), session_key_id(7), AllowedClass::Full);
+    let attempt = attempt_record_weak(&flow);
+
+    let verified = match flow.complete() {
+        Ok(value) => value,
+        Err(error) => panic!("canonical test path rejected: {error:?}"),
+    };
+    assert!(attempt.upgrade().is_some());
+
+    let result = verified.into_appraisal_result();
+    assert!(attempt.upgrade().is_none());
+    assert_eq!(flow.phase(), VerificationPhase::Verified);
+    assert_eq!(result.decision(), Decision::Allow);
 }
 
 #[test]
@@ -2508,7 +2542,7 @@ fn equal_request_from_another_flow_rejects_challenge_capability() {
     assert_eq!(action.binding_mode(), Some(BindingMode::OtherFlow));
 
     assert_eq!(
-        apply_action(&mut target, &source.binding, action),
+        apply_action(&mut target, active_binding(&source), action),
         Err(TransitionError::CapabilityRejected {
             action: VerificationAction::RecordChallengeAuthenticated,
         })
@@ -2586,7 +2620,7 @@ fn every_failure_class_is_terminal_and_releases_the_request() {
         ),
     ] {
         let mut flow = flow_for_model_state(state, 31);
-        let other_binding = flow_fixture(31).binding;
+        let other_binding = cloned_active_binding(&flow_fixture(31));
         let before = flow_snapshot(&flow);
         assert_eq!(
             apply_action(&mut flow, &other_binding, action),
@@ -2699,7 +2733,7 @@ fn all_336_phase_action_pairs_match_the_independent_model() {
                     "required-phase oracle mismatch: {state:?} {action:?}"
                 );
             }
-            let other_binding = flow_fixture(54).binding;
+            let other_binding = cloned_active_binding(&flow_fixture(54));
             let actual = apply_action(&mut flow, &other_binding, action);
             let after = flow_snapshot(&flow);
             match expected {
@@ -2740,7 +2774,7 @@ fn omitting_each_gate_prevents_completion() {
     let mut omissions = 0usize;
     for (index, omitted) in ALL_7_GATE_KINDS.into_iter().enumerate() {
         let mut flow = flow_fixture(70 + index as u8);
-        let other_binding = flow_fixture(90 + index as u8).binding;
+        let other_binding = cloned_active_binding(&flow_fixture(90 + index as u8));
         for gate in ALL_7_GATE_KINDS {
             if gate == omitted {
                 continue;
@@ -2778,7 +2812,7 @@ fn gate_permutations_require_the_one_canonical_order() {
 
     permute_gates(&mut gates, 0, &mut |ordering| {
         let mut flow = flow_fixture(101);
-        let other_binding = flow_fixture(102).binding;
+        let other_binding = cloned_active_binding(&flow_fixture(102));
         for gate in ordering.iter().copied() {
             let action = gate.matching_action(AllowedClass::Full);
             assert_eq!(action.public(), gate.action());
@@ -4457,7 +4491,7 @@ fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(
         (
             "struct",
             "VerifierFlow",
-            "#[must_use] pub struct VerifierFlow { binding: VerificationBinding, state: VerificationState, }",
+            "#[must_use] pub struct VerifierFlow { binding: Option<VerificationBinding>, state: VerificationState, }",
         ),
         (
             "struct",
@@ -4932,6 +4966,7 @@ fn validate_active_state_replacement(verification: &str) -> Result<(), String> {
                 | VerificationState::Revoked { .. } => { ::std::unreachable!("eligibility excluded terminal state before replacement") }
             };"#,
         ),
+        rust_tokens("drop(self.binding.take());"),
         rust_tokens(
             "Ok(AppraisalResult { context: request.expected, payload: AppraisalPayload::Failure(FailurePayload { decision, reason }), })",
         ),
@@ -5041,6 +5076,7 @@ fn validate_appraisal_allow_construction(verification: &str) -> Result<(), Strin
                 _ => return Err(self.invalid_transition(VerificationAction::Complete)),
             };"#,
             "let previous = std::mem::replace(&mut self.state, VerificationState::Verified { outcome });",
+            "let binding = self.binding.take();",
             r#"let VerificationState::PolicySatisfied {
                 request,
                 accepted_profile,
@@ -5049,13 +5085,16 @@ fn validate_appraisal_allow_construction(verification: &str) -> Result<(), Strin
             } = previous else {
                 ::std::unreachable!("phase was checked before terminal replacement")
             };"#,
-            r#"Ok(VerifiedAttestation {
-                binding: self.binding.clone(),
-                context: request.expected,
-                accepted_profile,
-                session_public_key_id,
-                allowed,
-            })"#,
+            r#"match binding {
+                Some(binding) => Ok(VerifiedAttestation {
+                    binding,
+                    context: request.expected,
+                    accepted_profile,
+                    session_public_key_id,
+                    allowed,
+                }),
+                None => Err(self.invalid_transition(VerificationAction::Complete)),
+            }"#,
         ],
     )?;
     validate_exact_method_statements(
@@ -5385,7 +5424,7 @@ fn appraisal_allow_structure_rejects_complete_order_and_decoy_bypasses() {
     let result = "Ok(VerifiedAttestation {";
     let extra = source.replacen(
         result,
-        "let extra = VerifiedAttestation { binding: self.binding.clone(), context: request.expected.clone(), accepted_profile: accepted_profile.clone(), session_public_key_id, allowed };\n        drop(extra);\n        Ok(VerifiedAttestation {",
+        "let extra = VerifiedAttestation { binding: binding.clone(), context: request.expected.clone(), accepted_profile: accepted_profile.clone(), session_public_key_id, allowed };\n        drop(extra);\n        Ok(VerifiedAttestation {",
         1,
     );
     assert_ne!(extra, source);
@@ -6600,7 +6639,7 @@ fn one_million_actions_match_the_independent_verifier_model() {
     let mut rng = Lcg(0x4f47_4952_4d31_3031);
     let mut coverage = Coverage::default();
     let mut flow = flow_fixture(101);
-    let mut other_binding = flow_fixture(101).binding;
+    let mut other_binding = cloned_active_binding(&flow_fixture(101));
     let mut model = ModelState::EvidenceReceived;
     let mut arbitrary_action_counts = [0usize; 24];
     let mut arbitrary_terminal_resets = 0usize;
@@ -6636,7 +6675,7 @@ fn one_million_actions_match_the_independent_verifier_model() {
         if reset_before {
             let seed = seed_for_index(index);
             flow = flow_fixture(seed);
-            other_binding = flow_fixture(seed).binding;
+            other_binding = cloned_active_binding(&flow_fixture(seed));
             model = ModelState::EvidenceReceived;
         }
         let model_before = model;
@@ -6716,7 +6755,7 @@ fn arbitrary_tail_uses_both_binding_modes_and_advances_active_state() {
 fn history_projection_captures_exact_failure_context_and_view() {
     let mut flow = flow_fixture_with_context_tag(90, 9);
     let before = flow_snapshot(&flow);
-    let other_binding = flow_fixture(91).binding;
+    let other_binding = cloned_active_binding(&flow_fixture(91));
     let action = TestAction::MarkMalformed;
     let actual = apply_action(&mut flow, &other_binding, action);
 
@@ -6741,7 +6780,7 @@ fn history_projection_captures_exact_full_and_restricted_allows() {
             allowed,
         );
         let before = flow_snapshot(&flow);
-        let other_binding = flow_fixture(93).binding;
+        let other_binding = cloned_active_binding(&flow_fixture(93));
         let action = TestAction::Complete;
         let actual = apply_action(&mut flow, &other_binding, action);
 
@@ -6759,7 +6798,7 @@ fn history_projection_captures_exact_full_and_restricted_allows() {
 #[test]
 fn successful_history_transitions_carry_and_add_exact_values() {
     let mut flow = flow_fixture_with_context_tag(94, 11);
-    let other_binding = flow_fixture(95).binding;
+    let other_binding = cloned_active_binding(&flow_fixture(95));
     let mut model = ModelState::EvidenceReceived;
 
     for action in MATCHING_GATE_PREFIX {
@@ -6916,7 +6955,7 @@ fn failure_mapping(action: TestAction) -> (VerificationPhase, Decision, ReasonCo
 
 fn flow_for_active_state_with_context(state: ModelState, seed: u8, tag: u8) -> VerifierFlow {
     let flow = VerifierFlow::begin(request_fixture_with_context_tag(seed, tag));
-    let other_binding = flow_fixture(seed.wrapping_add(1)).binding;
+    let other_binding = cloned_active_binding(&flow_fixture(seed.wrapping_add(1)));
     advance_flow_to_model_state(flow, state, &other_binding)
 }
 
@@ -6968,6 +7007,21 @@ fn failure_after_session_binding_discards_all_accepted_claims() {
     assert_eq!(flow.phase(), VerificationPhase::Revoked);
     assert_eq!(flow_snapshot(&flow).accepted_profile, None);
     assert_eq!(flow_snapshot(&flow).session_public_key_id, None);
+}
+
+#[test]
+fn failure_releases_the_attempt_allocation_while_terminal_flow_remains_alive() {
+    let mut flow = flow_for_active_state_with_context(ModelState::SessionBound, 41, 1);
+    let attempt = attempt_record_weak(&flow);
+
+    let result = match flow.mark_revoked() {
+        Ok(value) => value,
+        Err(error) => panic!("eligible revocation rejected: {error:?}"),
+    };
+
+    assert!(attempt.upgrade().is_none());
+    assert_eq!(flow.phase(), VerificationPhase::Revoked);
+    assert_eq!(result.decision(), Decision::Deny);
 }
 
 #[test]

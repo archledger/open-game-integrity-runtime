@@ -1197,7 +1197,7 @@ impl Error for TransitionError {}
 /// ```
 #[must_use]
 pub struct VerifierFlow {
-    binding: VerificationBinding,
+    binding: Option<VerificationBinding>,
     state: VerificationState,
 }
 
@@ -1206,7 +1206,7 @@ impl VerifierFlow {
     pub fn begin(request: VerificationRequest) -> Self {
         let binding = VerificationBinding::new(&request.challenge);
         Self {
-            binding,
+            binding: Some(binding),
             state: VerificationState::EvidenceReceived { request },
         }
     }
@@ -1514,6 +1514,7 @@ impl VerifierFlow {
             _ => return Err(self.invalid_transition(VerificationAction::Complete)),
         };
         let previous = std::mem::replace(&mut self.state, VerificationState::Verified { outcome });
+        let binding = self.binding.take();
         let VerificationState::PolicySatisfied {
             request,
             accepted_profile,
@@ -1523,13 +1524,16 @@ impl VerifierFlow {
         else {
             ::std::unreachable!("phase was checked before terminal replacement")
         };
-        Ok(VerifiedAttestation {
-            binding: self.binding.clone(),
-            context: request.expected,
-            accepted_profile,
-            session_public_key_id,
-            allowed,
-        })
+        match binding {
+            Some(binding) => Ok(VerifiedAttestation {
+                binding,
+                context: request.expected,
+                accepted_profile,
+                session_public_key_id,
+                allowed,
+            }),
+            None => Err(self.invalid_transition(VerificationAction::Complete)),
+        }
     }
 
     /// Terminates this attempt because its input was malformed.
@@ -1651,6 +1655,7 @@ impl VerifierFlow {
                 ::std::unreachable!("eligibility excluded terminal state before replacement")
             }
         };
+        drop(self.binding.take());
 
         Ok(AppraisalResult {
             context: request.expected,
@@ -1670,7 +1675,11 @@ impl VerifierFlow {
         action: VerificationAction,
         candidate: &VerificationBinding,
     ) -> Result<(), TransitionError> {
-        if self.binding.matches(candidate) {
+        if self
+            .binding
+            .as_ref()
+            .is_some_and(|binding| binding.matches(candidate))
+        {
             Ok(())
         } else {
             Err(TransitionError::CapabilityRejected { action })
