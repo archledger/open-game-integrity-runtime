@@ -3323,6 +3323,47 @@ fn validate_appraisal_allow_construction(verification: &str) -> Result<(), Strin
     )
 }
 
+fn validate_appraisal_failure_methods(verification: &str) -> Result<(), String> {
+    let tokens = rust_tokens(verification);
+    for (method_name, signature, statement) in [
+        (
+            "mark_malformed",
+            "pub fn mark_malformed(&mut self) -> Result<AppraisalResult, TransitionError> {",
+            "self.emit_failure(FailureKind::Malformed)",
+        ),
+        (
+            "mark_unsupported",
+            "pub fn mark_unsupported(&mut self, requirement: UnsupportedRequirement,) -> Result<AppraisalResult, TransitionError> {",
+            "self.emit_failure(FailureKind::Unsupported(requirement))",
+        ),
+        (
+            "mark_retryable",
+            "pub fn mark_retryable(&mut self, reason: RetryReason,) -> Result<AppraisalResult, TransitionError> {",
+            "self.emit_failure(FailureKind::Retry(reason))",
+        ),
+        (
+            "deny",
+            "pub fn deny(&mut self, reason: DenialReason) -> Result<AppraisalResult, TransitionError> {",
+            "self.emit_failure(FailureKind::Deny(reason))",
+        ),
+        (
+            "mark_revoked",
+            "pub fn mark_revoked(&mut self) -> Result<AppraisalResult, TransitionError> {",
+            "self.emit_failure(FailureKind::Revoked)",
+        ),
+    ] {
+        validate_exact_method_statements(
+            &tokens,
+            "VerifierFlow",
+            method_name,
+            "",
+            signature,
+            &[statement],
+        )?;
+    }
+    Ok(())
+}
+
 #[test]
 fn structural_rust_tokens_ignore_decoys_and_preserve_lifetimes() {
     let source = r###"
@@ -3695,6 +3736,87 @@ fn appraisal_allow_structure_does_not_misattribute_neighbor_attributes() {
 fn appraisal_allow_structure_accepts_production_methods() {
     if let Err(error) = validate_appraisal_allow_construction(include_str!("../verification.rs")) {
         panic!("appraisal allow construction drifted: {error}");
+    }
+}
+
+#[test]
+fn appraisal_failure_structure_rejects_attribute_signature_and_delegation_drift() {
+    let source = include_str!("../verification.rs");
+    let malformed =
+        "    pub fn mark_malformed(&mut self) -> Result<AppraisalResult, TransitionError> {";
+    let cfg_malformed = source.replacen(malformed, &format!("    #[cfg(test)]\n{malformed}"), 1);
+    assert_ne!(cfg_malformed, source);
+    assert!(validate_appraisal_failure_methods(&cfg_malformed).is_err());
+
+    let deny = "pub fn deny(&mut self, reason: DenialReason) -> Result<AppraisalResult, TransitionError> {";
+    let raw_decision = source.replacen(deny, &deny.replace("DenialReason", "Decision"), 1);
+    assert_ne!(raw_decision, source);
+    assert!(validate_appraisal_failure_methods(&raw_decision).is_err());
+
+    let retry = "reason: RetryReason,";
+    let raw_reason = source.replacen(retry, "reason: ReasonCode,", 1);
+    assert_ne!(raw_reason, source);
+    assert!(validate_appraisal_failure_methods(&raw_reason).is_err());
+
+    let typed = "self.emit_failure(FailureKind::Unsupported(requirement))";
+    let alternate = source.replacen(
+        typed,
+        "self.emit_failure(FailureKind::Unsupported(UnsupportedRequirement::UnknownCriticalRequirement))",
+        1,
+    );
+    assert_ne!(alternate, source);
+    assert!(validate_appraisal_failure_methods(&alternate).is_err());
+
+    let revoked = "self.emit_failure(FailureKind::Revoked)";
+    let extra = source.replacen(
+        revoked,
+        "let action = VerificationAction::MarkRevoked;\n        drop(action);\n        self.emit_failure(FailureKind::Revoked)",
+        1,
+    );
+    assert_ne!(extra, source);
+    assert!(validate_appraisal_failure_methods(&extra).is_err());
+
+    let indirect = source.replacen(
+        "self.emit_failure(FailureKind::Malformed)",
+        "self.emit_malformed_failure()",
+        1,
+    );
+    assert_ne!(indirect, source);
+    assert!(validate_appraisal_failure_methods(&indirect).is_err());
+}
+
+#[test]
+fn appraisal_failure_structure_rejects_target_decoys_but_ignores_neighbors() {
+    let source = include_str!("../verification.rs");
+    let retry = "self.emit_failure(FailureKind::Retry(reason))";
+    let nested = source.replacen(
+        retry,
+        "if false { self.emit_failure(FailureKind::Retry(reason)); }\n        self.emit_failure(FailureKind::Retry(reason))",
+        1,
+    );
+    assert_ne!(nested, source);
+    assert!(validate_appraisal_failure_methods(&nested).is_err());
+
+    let same_name = source.replacen(
+        "impl VerifierFlow {",
+        "impl VerifierFlow { pub fn mark_revoked(&mut self) -> Result<AppraisalResult, TransitionError> { stringify!(self.emit_failure(FailureKind::Revoked)); unreachable!() }",
+        1,
+    );
+    assert_ne!(same_name, source);
+    assert!(validate_appraisal_failure_methods(&same_name).is_err());
+
+    let neighbors = format!(
+        "{source}\n/// `#[cfg(test)] pub fn mark_malformed(&mut self) {{ self.emit_failure(FailureKind::Malformed) }}`\nimpl FailureMethodDecoy {{ #[cfg(test)] pub fn mark_malformed(&mut self) {{ stringify!(self.emit_failure(FailureKind::Malformed)); }} }}"
+    );
+    if let Err(error) = validate_appraisal_failure_methods(&neighbors) {
+        panic!("neighbor failure-method decoys were misattributed: {error}");
+    }
+}
+
+#[test]
+fn appraisal_failure_structure_accepts_production_methods() {
+    if let Err(error) = validate_appraisal_failure_methods(include_str!("../verification.rs")) {
+        panic!("appraisal failure methods drifted: {error}");
     }
 }
 

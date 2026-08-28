@@ -10,8 +10,9 @@ use ogir_model::{
 };
 use ogir_protocol::EvidenceBundle;
 use ogir_verifier::{
-    AcceptedClaims, AppraisalResult, AppraisalResultView, ExpectedContext, TransitionError,
-    VerificationPhase, VerificationRequest, VerifiedAttestation, VerifierFlow,
+    AcceptedClaims, AppraisalResult, AppraisalResultView, DenialReason, ExpectedContext,
+    RetryReason, TransitionError, UnsupportedRequirement, VerificationPhase, VerificationRequest,
+    VerifiedAttestation, VerifierFlow,
 };
 
 fn identifier<T>(value: &str) -> T
@@ -90,6 +91,18 @@ fn appraisal_result_public_accessors_type_check() {
     let _: fn(&AcceptedClaims) = inspect_claims;
     let _: fn(&mut VerifierFlow) -> Result<VerifiedAttestation, TransitionError> =
         VerifierFlow::complete;
+    let _: fn(&mut VerifierFlow) -> Result<AppraisalResult, TransitionError> =
+        VerifierFlow::mark_malformed;
+    let _: fn(
+        &mut VerifierFlow,
+        UnsupportedRequirement,
+    ) -> Result<AppraisalResult, TransitionError> = VerifierFlow::mark_unsupported;
+    let _: fn(&mut VerifierFlow, RetryReason) -> Result<AppraisalResult, TransitionError> =
+        VerifierFlow::mark_retryable;
+    let _: fn(&mut VerifierFlow, DenialReason) -> Result<AppraisalResult, TransitionError> =
+        VerifierFlow::deny;
+    let _: fn(&mut VerifierFlow) -> Result<AppraisalResult, TransitionError> =
+        VerifierFlow::mark_revoked;
     let _: fn(VerifiedAttestation) -> AppraisalResult = VerifiedAttestation::into_appraisal_result;
 }
 
