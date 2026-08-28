@@ -102,14 +102,15 @@ Define what OGIR means before deciding how bytes are encoded or which libraries 
 - `SessionId`
 - `SessionPublicKeyId`
 - `EvidenceProfile`
-- `AttestationResult`
+- `AppraisalResult`
 - `ReasonCode`
 - `RevocationTarget`
 
 `SessionPublicKeyId` is completed as M1-007F, a bounded identifier follow-up to
-task 7. It is a non-authoritative lookup handle only. Task 11 remains the
-separate result/reason-code taxonomy that later consumes a key reference under
-the complete signed context.
+task 7. It is a non-authoritative lookup handle only. Task 11 defines the
+unsigned semantic `AppraisalResult` and reason-code taxonomy that later consume
+a key reference as an accepted claim. M2 separately owns protected
+`AttestationResult` issuance, integrity protection, and validity.
 
 ### State machines
 

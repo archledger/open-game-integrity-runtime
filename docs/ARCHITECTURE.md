@@ -363,7 +363,7 @@ the exact policy already present in `ExpectedContext`, never fallback or policy
 substitution after full-policy failure.
 
 Entering `Unsupported` consumes a typed `UnsupportedRequirement`; an
-`UnknownMandatoryGate` observation is distinct from an unsupported
+`UnknownCriticalRequirement` observation is distinct from an unsupported
 version/profile and cannot be silently omitted, while both remain
 non-disciplinary unsupported reports.
 
@@ -373,8 +373,10 @@ future protected `AttestationResult`. Every result retains exact
 accepted profile and session public-key handle. Each eligible failure action
 returns its typed unsuccessful result directly with exactly one coarse reason
 and no accepted claims. All success and failure terminals are installed by
-whole-state terminal-first replacement, so staged claims are discarded and one
-terminal emits at most one result.
+whole-state terminal-first replacement. Failure transitions discard staged
+claims; successful completion moves the exact context, accepted profile,
+session public-key handle, and selected class into the consuming
+`VerifiedAttestation`. Each terminal emits at most one result.
 
 The capability binding is process-local, nonserializable, and not restart-
 durable. Allocation identity proves association with one flow, not

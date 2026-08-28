@@ -109,7 +109,7 @@ work selects commitment, signature, wire, and validation behavior.
 ## Consequences
 
 Future work receives a small semantic outcome interface with valid shape and
-one-use allow provenance. Phase-specific reasons cannot be emitted from
+one-use allow construction. Phase-specific reasons cannot be emitted from
 unrelated gates, and failure paths retain no accepted claims.
 
 The change is source-breaking for `ReasonCode::None`, reason access,

@@ -152,8 +152,8 @@ after those checks, and consume the completed capability as the sole allow
 construction path. Eligible failure actions return one typed unsigned
 `AppraisalResult` directly; terminal-first whole-state replacement discards all
 staged claims, and all six terminals reject all twenty-four semantic actions. A
-typed `UnsupportedRequirement::UnknownMandatoryGate` observation is eligible at
-every active phase and maps to Unsupported with
+typed `UnsupportedRequirement::UnknownCriticalRequirement` observation is
+eligible at every active phase and maps to Unsupported with
 `UnsupportedCriticalRequirement`.
 
 Every unsigned Appraisal Result retains exact relying-party context, and only
