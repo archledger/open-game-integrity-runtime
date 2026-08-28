@@ -1,5 +1,5 @@
 # M1-011: Define the Appraisal Result and reason-code taxonomy
-<!-- labels: type: architecture,area: model,area: verifier,area: privacy,risk: trusted-computing-base,risk: privacy,status: ready -->
+<!-- labels: type: architecture,area: model,area: verifier,area: privacy,risk: trusted-computing-base,risk: privacy,status: needs-review -->
 <!-- milestone: M1 Domain Model -->
 
 ## Problem
@@ -301,3 +301,64 @@ boundaries remain unchanged.
   https://doc.rust-lang.org/1.98.0/reference/visibility-and-privacy.html
 - Rust 1.98 ownership and moves:
   https://doc.rust-lang.org/1.98.0/book/ch04-01-what-is-ownership.html
+
+## Implementation evidence
+
+This evidence is time-bounded to the clean reviewed implementation head
+`ec21f23e1f0c341551ed599829fcfd10b818040e`, tree
+`fd8c5c79f99bd8c1050147b68b776fb4f4a158a6`, before this later local
+documentation-only evidence commit. The implementation range from merged base
+`955c88e372cffa13f15953085f15887165be62b5` through that reviewed head contains
+33 commits. Those commits and this evidence update are unsigned and contain no
+DCO trailer; certification, publication, remote review, and merge remain
+pending.
+
+Fresh normal and optimized all-feature gates at the reviewed head passed
+`./scripts/check.sh` and `cargo test --workspace --all-features --release` with
+225 runtime/integration tests, 111 doctests, 14 validated attack scenarios, and
+9 indexed ADRs. The finite verifier model covers all `14 * 24 = 336`
+phase/action pairs: 50 successful edges, comprising 9 gate/completion edges and
+41 phase-eligible failure edges, plus 286 state-preserving rejections. All 5,040
+gate permutations admit exactly one canonical ordering and reject the other
+5,039. Seven gate omissions and seven equal-data, different-flow capability
+substitutions are covered.
+
+The deterministic history proof checks exactly 1,048,576 actions. Its 2,048
+scheduled actions are partitioned as
+`256 + 864 + 576 + 35 + 312 + 5`; another 1,046,528 fixed-seed actions exercise
+arbitrary histories. The arbitrary tail contains exactly 175,120 matching-gate
+actions, 174,585 different-flow gate actions, and 21,965 accepted active-state
+advances. The public authority proof contains one compile-pass case and 70
+single-cause compile-fail doctests.
+
+The frozen mutation campaign ran at exact head `ec21f23` and killed all
+`41 + 15 + 27 + 13 + 6 + 19 + 4 + 15 + 14 = 154` one-cause probes. Its report
+contains 154 exact-base records and 154 cleanup records, no survivor or invalid
+row, and SHA-256
+`720fff3ec741338e58069eaf54fd3112c494ceea903db0ff0002024f12247dcc`.
+This later issue-only evidence commit does not move the campaign head; the
+verifier runtime and test blobs remain respectively
+`a392774b96df58d3bca0468a0721318756671b91` and
+`daa35bc5845362e0c2adfc32a401876c2c2389ea`.
+
+Separate fresh controller-owned trusted-computing-base and privacy re-reviews
+of exact head `ec21f23` reported no Critical, Important, or Minor findings and
+returned `Readiness: Yes`. Their residual limitations remain part of this
+checkpoint: source-token proofs are not a Rust parser; allocation identity
+proves flow association, not payload truth; dropped values are not securely
+erased or allocator-zeroized; retained context, profile, and key-handle values
+are correlation-sensitive; the unsigned result has no intrinsic expiry or
+deletion enforcement; and a publicly constructible failure report does not
+establish trusted provenance for future signing.
+
+This pure research-scaffold result establishes no cryptographic payload
+provenance, trusted failure provenance, intrinsic validity, signer or signing
+interface, protected result, permit, proof of possession, matchmaking
+admission, parser or serializer, cryptography, I/O, persistence, or production
+adapter. It is not authorized for production enforcement or discipline.
+
+The local issue source is now `status: needs-review`. The live issue remains
+OPEN with `status: ready` and its prior ready body because the required separate
+issue-edit authorization has not been granted. No GitHub read, edit, remote
+access, push, pull request, or other publication action was performed for this
+checkpoint.
