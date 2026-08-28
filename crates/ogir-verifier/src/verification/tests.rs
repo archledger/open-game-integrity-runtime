@@ -2958,6 +2958,142 @@ fn validate_active_state_replacement(verification: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn inherent_impl_tokens<'a>(tokens: &'a [String], type_name: &str) -> Result<&'a [String], String> {
+    let mut delimiters = Vec::new();
+    let mut starts = Vec::new();
+    for (index, token) in tokens.iter().enumerate() {
+        if delimiters.is_empty()
+            && tokens.get(index).map(String::as_str) == Some("impl")
+            && tokens.get(index + 1).map(String::as_str) == Some(type_name)
+            && tokens.get(index + 2).map(String::as_str) == Some("{")
+        {
+            starts.push(index);
+        }
+        match token.as_str() {
+            "(" => delimiters.push(")"),
+            "[" => delimiters.push("]"),
+            "{" => delimiters.push("}"),
+            ")" | "]" | "}" if delimiters.pop() != Some(token.as_str()) => {
+                return Err(format!(
+                    "mismatched source delimiter {token} at token {index}"
+                ));
+            }
+            _ => {}
+        }
+    }
+    if !delimiters.is_empty() {
+        return Err("unclosed delimiter in verification source".to_owned());
+    }
+    if starts.len() != 1 {
+        return Err(format!(
+            "expected one top-level inherent impl {type_name}, found {}",
+            starts.len()
+        ));
+    }
+    let start = starts[0];
+    let end = matching_delimiter(tokens, start + 2)
+        .ok_or_else(|| format!("impl {type_name} has an unbalanced body"))?;
+    Ok(&tokens[start..=end])
+}
+
+fn validate_exact_method_statements(
+    tokens: &[String],
+    type_name: &str,
+    method_name: &str,
+    signature: &str,
+    statements: &[&str],
+) -> Result<(), String> {
+    let implementation = inherent_impl_tokens(tokens, type_name)?;
+    let function = function_tokens(implementation, method_name)?;
+    let body = function
+        .iter()
+        .position(|token| token == "{")
+        .ok_or_else(|| format!("function {method_name} has no isolated body"))?;
+    let actual_signature = &function[..=body];
+    let expected_signature = rust_tokens(signature);
+    if actual_signature != expected_signature {
+        return Err(format!(
+            "{type_name}::{method_name} signature drifted; expected {expected_signature:?}, found {actual_signature:?}"
+        ));
+    }
+    let end = matching_delimiter(function, body)
+        .ok_or_else(|| format!("function {method_name} has an unbalanced isolated body"))?;
+    let actual = top_level_statements(&function[body + 1..end])?;
+    let expected = statements
+        .iter()
+        .map(|statement| rust_tokens(statement))
+        .collect::<Vec<_>>();
+    if actual.len() != expected.len()
+        || actual
+            .iter()
+            .zip(&expected)
+            .any(|(actual, expected)| *actual != expected)
+    {
+        return Err(format!(
+            "{type_name}::{method_name} top-level statements drifted; expected {expected:?}, found {actual:?}"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_appraisal_allow_construction(verification: &str) -> Result<(), String> {
+    let tokens = rust_tokens(verification);
+    validate_exact_method_statements(
+        &tokens,
+        "VerifierFlow",
+        "complete",
+        "pub fn complete(&mut self) -> Result<VerifiedAttestation, TransitionError> {",
+        &[
+            r#"let outcome = match &self.state {
+                VerificationState::PolicySatisfied { allowed: AllowedClass::FULL, .. } => VerificationOutcome::allowed_full(),
+                VerificationState::PolicySatisfied { allowed: AllowedClass::RESTRICTED, .. } => VerificationOutcome::allowed_restricted(),
+                _ => return Err(self.invalid_transition(VerificationAction::Complete)),
+            };"#,
+            "let previous = std::mem::replace(&mut self.state, VerificationState::Verified { outcome });",
+            r#"let VerificationState::PolicySatisfied {
+                request,
+                accepted_profile,
+                session_public_key_id,
+                allowed,
+            } = previous else {
+                unreachable!("phase was checked before terminal replacement")
+            };"#,
+            r#"Ok(VerifiedAttestation {
+                binding: self.binding.clone(),
+                context: request.expected,
+                accepted_profile,
+                session_public_key_id,
+                allowed,
+            })"#,
+        ],
+    )?;
+    validate_exact_method_statements(
+        &tokens,
+        "VerifiedAttestation",
+        "into_appraisal_result",
+        "pub fn into_appraisal_result(self) -> AppraisalResult {",
+        &[
+            r#"let Self {
+                binding,
+                context,
+                accepted_profile,
+                session_public_key_id,
+                allowed,
+            } = self;"#,
+            "drop(binding);",
+            r#"let claims = AcceptedClaims {
+                accepted_profile,
+                session_public_key_id,
+            };"#,
+            r#"let payload = match allowed {
+                AllowedClass::FULL => AppraisalPayload::Allow(claims),
+                AllowedClass::RESTRICTED => AppraisalPayload::AllowRestricted(claims),
+            };"#,
+            "AppraisalResult { context, payload }",
+        ],
+    )
+}
+
 #[test]
 fn structural_rust_tokens_ignore_decoys_and_preserve_lifetimes() {
     let source = r###"
@@ -3175,6 +3311,117 @@ fn active_replacement_rejects_sequence_nested_under_unreachable_block() {
 #[test]
 fn active_replacement_accepts_production_shaped_top_level_sequence() {
     assert!(validate_active_state_replacement(include_str!("../verification.rs")).is_ok());
+}
+
+#[test]
+fn appraisal_allow_structure_rejects_complete_order_and_decoy_bypasses() {
+    let source = include_str!("../verification.rs");
+    let outcome = r#"let outcome = match &self.state {
+            VerificationState::PolicySatisfied {
+                allowed: AllowedClass::FULL,
+                ..
+            } => VerificationOutcome::allowed_full(),
+            VerificationState::PolicySatisfied {
+                allowed: AllowedClass::RESTRICTED,
+                ..
+            } => VerificationOutcome::allowed_restricted(),
+            _ => return Err(self.invalid_transition(VerificationAction::Complete)),
+        };"#;
+    let terminal = "let previous = std::mem::replace(&mut self.state, VerificationState::Verified { outcome });";
+    let ordered = format!("{outcome}\n        {terminal}");
+    let reordered = source.replacen(&ordered, &format!("{terminal}\n        {outcome}"), 1);
+    assert_ne!(reordered, source);
+    assert!(validate_appraisal_allow_construction(&reordered).is_err());
+
+    let intermediate = source.replacen(
+        terminal,
+        "let terminal = VerificationState::Verified { outcome };\n        let previous = std::mem::replace(&mut self.state, terminal);",
+        1,
+    );
+    assert_ne!(intermediate, source);
+    assert!(validate_appraisal_allow_construction(&intermediate).is_err());
+
+    let cloned = source.replacen(
+        "context: request.expected,",
+        "context: request.expected.clone(),",
+        1,
+    );
+    assert_ne!(cloned, source);
+    assert!(validate_appraisal_allow_construction(&cloned).is_err());
+
+    let result = "Ok(VerifiedAttestation {";
+    let extra = source.replacen(
+        result,
+        "let extra = VerifiedAttestation { binding: self.binding.clone(), context: request.expected.clone(), accepted_profile: accepted_profile.clone(), session_public_key_id, allowed };\n        drop(extra);\n        Ok(VerifiedAttestation {",
+        1,
+    );
+    assert_ne!(extra, source);
+    assert!(validate_appraisal_allow_construction(&extra).is_err());
+
+    let correct = function_tokens(&rust_tokens(source), "complete")
+        .unwrap_or_else(|error| panic!("failed to isolate production complete: {error}"))
+        .join(" ");
+    let decoy = format!(
+        "{source}\n/// `{correct}`\nimpl CompleteDecoy {{ pub fn complete(&mut self) {{ stringify!({correct}); if false {{ {correct} }} }} }}"
+    );
+    let bypass = decoy.replacen(terminal, "let previous = self.take_policy_state();", 1);
+    assert_ne!(bypass, decoy);
+    assert!(validate_appraisal_allow_construction(&bypass).is_err());
+}
+
+#[test]
+fn appraisal_allow_structure_rejects_conversion_refill_and_decoy_bypasses() {
+    let source = include_str!("../verification.rs");
+    let ordered = r#"drop(binding);
+        let claims = AcceptedClaims {
+            accepted_profile,
+            session_public_key_id,
+        };"#;
+    let reordered = source.replacen(
+        ordered,
+        r#"let claims = AcceptedClaims {
+            accepted_profile,
+            session_public_key_id,
+        };
+        drop(binding);"#,
+        1,
+    );
+    assert_ne!(reordered, source);
+    assert!(validate_appraisal_allow_construction(&reordered).is_err());
+
+    let cloned = source.replacen(
+        "accepted_profile,\n            session_public_key_id,",
+        "accepted_profile: accepted_profile.clone(),\n            session_public_key_id,",
+        1,
+    );
+    assert_ne!(cloned, source);
+    assert!(validate_appraisal_allow_construction(&cloned).is_err());
+
+    let result = "AppraisalResult { context, payload }";
+    let extra = source.replacen(
+        result,
+        "let extra = AppraisalResult { context: context.clone(), payload };\n        drop(extra);\n        AppraisalResult { context, payload: AppraisalPayload::Allow(claims) }",
+        1,
+    );
+    assert_ne!(extra, source);
+    assert!(validate_appraisal_allow_construction(&extra).is_err());
+
+    let correct = function_tokens(&rust_tokens(source), "into_appraisal_result")
+        .unwrap_or_else(|error| panic!("failed to isolate production conversion: {error}"))
+        .join(" ");
+    let decoy = format!(
+        "{source}\n/// `{correct}`\nimpl ConversionDecoy {{ pub fn into_appraisal_result(self) {{ stringify!({correct}); if false {{ {correct} }} }} }}"
+    );
+    let bypass = decoy.replacen(result, "self.refill_appraisal_result()", 1);
+    assert_ne!(bypass, decoy);
+    assert!(validate_appraisal_allow_construction(&bypass).is_err());
+}
+
+#[test]
+fn appraisal_allow_structure_accepts_production_methods() {
+    if let Err(error) = validate_appraisal_allow_construction(include_str!("../verification.rs")) {
+        panic!("appraisal allow construction drifted: {error}");
+    }
 }
 
 #[test]
