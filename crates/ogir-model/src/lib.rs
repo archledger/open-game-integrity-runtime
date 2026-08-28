@@ -626,6 +626,9 @@ mod tests {
     #[test]
     fn debug_output_redacts_nonce_bytes() {
         let nonce = Nonce::from_bytes([0xAA; 32]);
-        assert_eq!(format!("{nonce:?}"), "Nonce([REDACTED; 32])");
+        assert!(
+            format!("{nonce:?}") == "Nonce([REDACTED; 32])",
+            "private diagnostic mismatch"
+        );
     }
 }

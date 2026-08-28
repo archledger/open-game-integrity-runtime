@@ -1587,9 +1587,9 @@ fn all_8192_position_value_cases_round_trip_without_normalization() {
             assert_eq!(identifier.as_bytes(), &bytes);
             assert_eq!(copied, identifier);
             assert_eq!(value_hash(copied), value_hash(identifier));
-            assert_eq!(
-                format!("{identifier:?}"),
-                "SessionPublicKeyId([REDACTED; 32])"
+            assert!(
+                format!("{identifier:?}") == "SessionPublicKeyId([REDACTED; 32])",
+                "private diagnostic mismatch"
             );
             case_count += 1;
         }
@@ -1604,7 +1604,10 @@ fn debug_is_exact_fixed_redaction_for_real_sentinel_bytes() {
     let diagnostic = format!("{identifier:?}");
     let raw = format!("{PRIVATE_SENTINEL:?}");
 
-    assert_eq!(diagnostic, "SessionPublicKeyId([REDACTED; 32])");
+    assert!(
+        diagnostic == "SessionPublicKeyId([REDACTED; 32])",
+        "private diagnostic mismatch"
+    );
     assert!(!diagnostic.contains(&raw));
     assert!(!diagnostic.contains("0x"));
 }
