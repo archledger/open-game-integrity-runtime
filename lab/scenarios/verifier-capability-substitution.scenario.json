@@ -5,10 +5,10 @@
   "owner": "initial-maintainer",
   "required_assurance_profile": "all-protected-modes",
   "assets": ["protected_session_authorization", "verifier_freshness_state"],
-  "preconditions": ["two verifier flows contain equal cloned request data"],
+  "preconditions": ["two verifier flows contain equal cloned request data and distinct process-local attempt allocations"],
   "steps": [
-    "obtain a valid opaque gate capability bound to flow-A",
-    "submit that capability to flow-B at the otherwise correct phase"
+    "obtain valid profile-bearing and session-key-bearing capabilities bound to flow-A",
+    "submit each capability to flow-B at its otherwise correct phase"
   ],
   "expected": {
     "decision": "deny",
@@ -17,7 +17,8 @@
   },
   "invariants": [
     "capability identity uses the exact process-local attempt allocation rather than request equality",
-    "rejection preserves phase outcome and request ownership"
+    "wrong-flow profile and session-key capabilities reject before phase claims or request ownership mutate",
+    "allocation binding proves exact-flow association rather than cryptographic truth of a capability payload"
   ],
-  "residual_risk": ["trusted producer code can still lie about which operation it performed"]
+  "residual_risk": ["a trusted producer can put a copied or dishonest payload in a correctly bound capability and remains inside the verifier TCB"]
 }

@@ -352,25 +352,44 @@ capability carries one private `Arc` allocation identity plus the redacted
 replay registration; `Arc::ptr_eq` rejects a capability from an equal but
 distinct flow. Phase and binding checks precede mutation.
 
-Only `PolicySatisfied -> Verified` emits one non-cloneable
-`VerifiedAttestation`. `Decision`, `ReasonCode`, and `VerificationOutcome` are
-reporting views and cannot substitute for that capability. Restricted success
-is a separately selected and satisfied relying-party policy, never fallback
-after full-policy failure.
+Claim-bearing gates accumulate the accepted `EvidenceProfile` and
+`SessionPublicKeyId` only after phase and exact-allocation binding checks. Only
+`PolicySatisfied -> Verified` emits one non-cloneable `VerifiedAttestation`.
+Its consuming `into_appraisal_result()` conversion is the sole allowed-result
+path and accepts no context or claim refill input. `Decision`, `ReasonCode`,
+`VerificationOutcome`, and `AppraisalResultView` are reporting views and cannot
+substitute for that capability. Restricted success is a class selected under
+the exact policy already present in `ExpectedContext`, never fallback or policy
+substitution after full-policy failure.
 
 Entering `Unsupported` consumes a typed `UnsupportedRequirement`; an
 `UnknownMandatoryGate` observation is distinct from an unsupported
 version/profile and cannot be silently omitted, while both remain
 non-disciplinary unsupported reports.
 
-The capability currently carries only the attempt binding and allowed class.
-It is process-local, nonserializable, and not restart-durable. Future result
-work must add typed verified claims under the same binding and consume the
-capability; raw request fields cannot be refilled into an unrelated signed
-result. Active request ownership ends at every terminal without claiming
-secure memory erasure. M1-010 adds no signature, evidence, identity,
-session-key, revocation, policy, result-signing, permit, network, or persistence
-adapter.
+M1-011 defines an opaque, unsigned semantic `AppraisalResult`, distinct from the
+future protected `AttestationResult`. Every result retains exact
+`ExpectedContext`; only allows retain opaque `AcceptedClaims` containing the
+accepted profile and session public-key handle. Each eligible failure action
+returns its typed unsuccessful result directly with exactly one coarse reason
+and no accepted claims. All success and failure terminals are installed by
+whole-state terminal-first replacement, so staged claims are discarded and one
+terminal emits at most one result.
+
+The capability binding is process-local, nonserializable, and not restart-
+durable. Allocation identity proves association with one flow, not
+cryptographic provenance or truth of copyable claim payloads; trusted gate
+producers remain verifier-TCB code. Publicly reachable failure results establish
+a valid shape, not provenance sufficient for future signing. Active request
+ownership ends at every terminal without claiming secure memory erasure.
+
+M1-012 owns the semantic binding-transcript inputs. Later M2 protocol work owns
+commitment representation and algorithm identifiers, signature or other
+integrity protection, wire encoding and parsing, validation, issued-at and
+expiry, and the trusted protected-result issuer. Permit issuance and
+validation, session-key resolution and proof of possession, matchmaking
+admission, persistence, renewal, and retention enforcement remain outside
+M1-011.
 
 ### 7.1 PublisherChallenge
 
@@ -456,9 +475,14 @@ metadata:
 
 Claims must identify whether they are directly TPM-certified, reconstructed from measured logs, or observed by trusted software.
 
-### 7.4 AttestationResult
+### 7.4 AppraisalResult and protected AttestationResult
 
-The verifier returns a signed result rather than raw local truth:
+The in-process M1-011 `AppraisalResult` is unsigned semantic output. It is not a
+wire object, generic signer input, permit, proof, admission decision, or
+disciplinary conclusion. A later trusted issuer may produce a protected
+`AttestationResult` only after its deferred commitment, validity, protection,
+wire, and validation contracts are defined. The intended protected object
+eventually contains:
 
 ```text
 allow-ranked | allow-restricted | deny | unsupported | retry

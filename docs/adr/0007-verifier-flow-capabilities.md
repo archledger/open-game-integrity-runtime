@@ -189,7 +189,9 @@ documentation boundaries are unchanged.
 
 ## Validation
 
-Completed executable evidence compares 14 phases × 13 actions = 182 pairs
+### Historical M1-010 evidence
+
+Completed M1-010 executable evidence compares 14 phases × 13 actions = 182 pairs
 against an independent literal model, with exactly 48 successes and 134
 state-preserving rejections. Seven omissions and all 7! = 5,040 gate orderings
 admit exactly one canonical ordering. All seven capability types reject equal
@@ -214,6 +216,14 @@ transition-error Debug and exact outcome Debug; request presence is checked in
 all 14 phases. A typed unknown-mandatory-gate observation is exercised
 separately from ordinary version/profile unsupported state. Five verifier
 scenarios are part of the 14-scenario validated aggregate.
+
+### M1-011 refinement
+
+ADR-0009 and M1-011 replace the earlier all-failure-actions-from-all-active-
+phases rule with typed phase eligibility and direct unsuccessful
+`AppraisalResult` emission. This is a later semantic refinement, not an error in
+the historical M1-010 `182/48/134` evidence above. Current M1-011 evidence is
+recorded in ADR-0009 and does not rewrite the earlier action domain.
 
 Completion of M1-010 additionally requires the exact 93 disposable-worktree
 mutations and separate fresh trusted-computing-base and privacy reviews. Those

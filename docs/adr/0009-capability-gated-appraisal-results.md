@@ -156,16 +156,38 @@ Existing Apache-2.0 boundaries remain unchanged.
 
 ## Validation
 
-The implementation plan must independently re-enumerate the typed action domain
-and freeze new exact model/history counts before runtime edits. Validation also
-retains all gate permutations, omissions, phase-before-binding, and equal-flow
-capability checks; adds complete mapping/eligibility/result tests;
-structurally proves whole active-state ownership; and freezes one-cause
-mutations for every new authority, eligibility, transfer, discard, terminal,
-and redaction path.
+### Current M1-011 implementation evidence
+
+The implemented independent model exhausts 14 phases × 24 semantic actions =
+336 pairs. Nine gate/completion edges plus 41 phase-eligible failure edges give
+exactly 50 successes and 286 state-preserving rejections; the complementary
+failure table contains exactly 79 ineligible cells. Direct typed failure results
+are compared by exact context, decision, reason, and borrowed view. Successful
+completion compares exact context, accepted profile, session-key handle, and
+full or restricted class before consuming the sole allow capability.
+
+All 7! = 5,040 gate permutations, seven omissions, seven equal-data wrong-flow
+capability substitutions, phase-before-binding behavior, and all six terminal ×
+24 action cells remain covered. The deterministic history schedule is exactly
+`256 + 864 + 576 + 35 + 312 + 5 = 2,048`, followed by 1,046,528 arbitrary
+fixed-seed actions, for exactly 1,048,576 oracle-checked actions. Complete result
+and state equality is required before coverage counters advance.
+
+Structural and compile-fail evidence pins whole active-state ownership,
+terminal-first replacement, sole consuming allow construction, exact failure
+entry points, fixed redaction, and the distinction between flow association and
+payload provenance. These source-token proofs intentionally enforce a closed
+current inventory and do not claim Rust-parser completeness, macro-expansion
+semantics, cryptographic authenticity, or secure erasure.
+
+The implementation plan freezes exactly 154 one-cause mutations for authority,
+eligibility, mapping, claim transfer/discard, terminal, one-use, and redaction
+paths. That Task 10 campaign and its separate fresh TCB/privacy reviews remain
+required; this ADR does not claim they are complete.
 
 Normal and optimized all-feature checks plus fresh independent TCB and privacy
-reviews must pass. No byte fuzzer is added because there is no wire/parser.
+reviews must pass before publication. No byte fuzzer is added because there is
+no wire/parser.
 
 ## Rollback
 

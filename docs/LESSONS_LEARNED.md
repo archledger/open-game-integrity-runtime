@@ -577,3 +577,32 @@ Do not use this document to expose embargoed vulnerability details before coordi
 - **Documentation or agent-policy updates:** Issue #18, its design/plan, and the
   test strategy record the assertion rule; no production or threat-model change
   is implied.
+
+## 2026-08-28 — Source-token authority proofs need closed expansion boundaries
+
+- **Context:** M1-011 Task 8 review of Appraisal Result authority and privacy
+  structure.
+- **Mistaken assumption:** Inspecting direct root declarations and
+  authority-named tokens was sufficient to prove the complete construction and
+  method surface of opaque result types.
+- **Observed failure:** Nested modules, aliases, imports, generic macros,
+  `include!`, declaration attributes, parent-module expansion, relative `std`
+  macro paths, and crate-local `std` bindings could create or redirect an
+  authority-bearing path outside the inspected inventory.
+- **Security or quality impact:** A source change could expand result
+  construction, conversion, failure issuance, or diagnostic behavior while the
+  claimed structural proof stayed green. Runtime behavior was not shown to be
+  exploitable; the defect was in the completeness of the test evidence.
+- **Permanent regression test:** The recursive literal-preserving authority
+  inventory rejects unapproved module sources, aliases, imports, definitions,
+  invocations, attributes, and reserved bindings; pins the complete parent
+  module inventory; and requires exact absolute `::std::matches!` and
+  `::std::unreachable!` calls. Isolated physical mutations exercise each layer.
+- **New prevention rule:** A source-token proof must enumerate every source and
+  expansion mechanism in scope, establish an otherwise-valid positive baseline
+  before each negative probe, and fail closed on uninspected mechanisms. It must
+  also state that it is not a Rust parser, macro-expansion engine,
+  cryptographic proof, or secure-erasure proof.
+- **Documentation or agent-policy updates:** ADR-0009 and the M1-011 Task 8
+  report record the closed inventory, layered regressions, and explicit proof
+  limits.

@@ -5,11 +5,12 @@
   "owner": "initial-maintainer",
   "required_assurance_profile": "all-protected-modes",
   "assets": ["player_privacy", "verifier_freshness_state"],
-  "preconditions": ["a verifier flow owns privacy-sensitive request and evidence data"],
+  "preconditions": ["a verifier flow or AppraisalResult owns privacy-sensitive context evidence profile accepted claims or session-key-handle data"],
   "steps": [
-    "format the request flow capabilities errors outcomes binding and final capability",
-    "format EvidenceBundle directly",
-    "search output for identifiers nonce time evidence payload pointer values paths or control text"
+    "format the request flow capabilities errors outcomes binding VerifiedAttestation AppraisalResult AppraisalResultView and AcceptedClaims",
+    "format EvidenceBundle and profile or key-handle-bearing result views directly",
+    "emit a failure after profile or session-key acceptance and check that staged accepted claims were discarded",
+    "search output for identifiers nonce time evidence profile key handle payload pointer values paths or control text"
   ],
   "expected": {
     "decision": "deny",
@@ -17,8 +18,9 @@
     "automatic_ban": false
   },
   "invariants": [
-    "default aggregate diagnostics contain only fixed redaction markers and approved safe enums",
-    "terminal entry releases owned raw request data without claiming allocator zeroization"
+    "default AppraisalResult AppraisalResultView AcceptedClaims and verifier aggregate diagnostics use fixed redaction markers or approved safe enums",
+    "failure terminal replacement discards staged profile and key-handle claims while retaining only exact result context",
+    "terminal entry releases owned raw request data without claiming secure erasure or allocator zeroization"
   ],
-  "residual_risk": ["explicit trusted value accessors and future operator telemetry require separate privacy review"]
+  "residual_risk": ["explicit trusted value accessors and future protected-result storage telemetry retention confidentiality and deletion require separate privacy review"]
 }
