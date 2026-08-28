@@ -1533,18 +1533,27 @@ fn private_flow_for_model_state(state: ModelState) -> VerifierFlow {
 
 fn push_result_diagnostics(result: &AppraisalResult, diagnostics: &mut Vec<String>) {
     let diagnostic = format!("{result:?}");
-    assert_eq!(diagnostic, "AppraisalResult([REDACTED])");
+    assert!(
+        diagnostic == "AppraisalResult([REDACTED])",
+        "appraisal result diagnostic was not the fixed redaction marker"
+    );
     diagnostics.push(diagnostic);
 
     let view = result.view();
     let diagnostic = format!("{view:?}");
-    assert_eq!(diagnostic, "AppraisalResultView([REDACTED])");
+    assert!(
+        diagnostic == "AppraisalResultView([REDACTED])",
+        "appraisal result view diagnostic was not the fixed redaction marker"
+    );
     diagnostics.push(diagnostic);
 
     if let AppraisalResultView::Allow(claims) | AppraisalResultView::AllowRestricted(claims) = view
     {
         let diagnostic = format!("{claims:?}");
-        assert_eq!(diagnostic, "AcceptedClaims([REDACTED])");
+        assert!(
+            diagnostic == "AcceptedClaims([REDACTED])",
+            "accepted claims diagnostic was not the fixed redaction marker"
+        );
         diagnostics.push(diagnostic);
     }
 }
@@ -3166,32 +3175,130 @@ fn matching_delimiter(tokens: &[String], open: usize) -> Option<usize> {
     None
 }
 
-fn item_visibility_start(tokens: &[String], keyword: usize) -> usize {
-    if keyword > 0 && tokens[keyword - 1] == "pub" {
-        return keyword - 1;
+fn item_core_start(tokens: &[String]) -> Result<usize, String> {
+    let mut cursor = outer_attributes_end(tokens)?;
+    if tokens.get(cursor).map(String::as_str) == Some("pub") {
+        cursor += 1;
+        if tokens.get(cursor).map(String::as_str) == Some("(") {
+            cursor = matching_delimiter(tokens, cursor)
+                .ok_or_else(|| "unbalanced restricted visibility".to_owned())?
+                + 1;
+        }
     }
-    if keyword > 0 && tokens[keyword - 1] == ")" {
-        let mut depth = 1_usize;
-        let mut cursor = keyword - 1;
-        while cursor > 0 {
-            cursor -= 1;
-            match tokens[cursor].as_str() {
-                ")" => depth += 1,
-                "(" => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return if cursor > 0 && tokens[cursor - 1] == "pub" {
-                            cursor - 1
-                        } else {
-                            keyword
-                        };
+    Ok(cursor)
+}
+
+fn outer_attributes_end(tokens: &[String]) -> Result<usize, String> {
+    let mut cursor = 0;
+    while tokens.get(cursor).map(String::as_str) == Some("#")
+        && tokens.get(cursor + 1).map(String::as_str) == Some("[")
+    {
+        cursor = matching_delimiter(tokens, cursor + 1)
+            .ok_or_else(|| "unbalanced outer item attribute".to_owned())?
+            + 1;
+    }
+    Ok(cursor)
+}
+
+fn item_body_open(tokens: &[String]) -> Option<usize> {
+    let mut delimiters = Vec::new();
+    for (index, token) in tokens.iter().enumerate() {
+        match token.as_str() {
+            "{" if delimiters.is_empty() => return Some(index),
+            "(" => delimiters.push(")"),
+            "[" => delimiters.push("]"),
+            "{" => delimiters.push("}"),
+            ")" | "]" | "}" if delimiters.pop() != Some(token.as_str()) => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
+fn is_braced_item(tokens: &[String], mut core: usize) -> bool {
+    if matches!(
+        tokens.get(core).map(String::as_str),
+        Some("const" | "async" | "unsafe")
+    ) {
+        core += 1;
+    }
+    let module_has_body = tokens.get(core).map(String::as_str) == Some("mod")
+        && tokens
+            .iter()
+            .skip(core + 2)
+            .find(|token| matches!(token.as_str(), "{" | ";"))
+            .is_some_and(|token| token == "{");
+    matches!(
+        tokens.get(core).map(String::as_str),
+        Some("struct" | "enum" | "impl" | "fn" | "trait" | "union" | "extern" | "macro_rules")
+    ) || (tokens.get(core).is_some() && tokens.get(core + 1).map(String::as_str) == Some("!"))
+        || module_has_body
+}
+
+fn direct_items(tokens: &[String]) -> Result<Vec<&[String]>, String> {
+    let mut items = Vec::new();
+    let mut start = 0;
+    while start < tokens.len() {
+        let core = start + item_core_start(&tokens[start..])?;
+        let braced = is_braced_item(tokens, core);
+        let macro_invocation = tokens.get(core + 1).map(String::as_str) == Some("!");
+        let mut delimiters = Vec::new();
+        let mut end = None;
+        for index in start..tokens.len() {
+            match tokens[index].as_str() {
+                "(" => delimiters.push(")"),
+                "[" => delimiters.push("]"),
+                "{" => delimiters.push("}"),
+                ")" | "]" | "}" => {
+                    if delimiters.pop() != Some(tokens[index].as_str()) {
+                        return Err(format!(
+                            "mismatched module item delimiter {} at token {index}",
+                            tokens[index]
+                        ));
                     }
+                    if braced && delimiters.is_empty() && (tokens[index] == "}" || macro_invocation)
+                    {
+                        let mut item_end = index + 1;
+                        if tokens.get(item_end).map(String::as_str) == Some(";") {
+                            item_end += 1;
+                        }
+                        end = Some(item_end);
+                        break;
+                    }
+                }
+                ";" if delimiters.is_empty() => {
+                    end = Some(index + 1);
+                    break;
                 }
                 _ => {}
             }
         }
+        let end = end.ok_or_else(|| format!("unterminated direct item at token {start}"))?;
+        items.push(&tokens[start..end]);
+        start = end;
     }
-    keyword
+    Ok(items)
+}
+
+fn direct_item_header(item: &[String]) -> Result<&[String], String> {
+    let end = item_body_open(item)
+        .or_else(|| item.iter().position(|token| token == ";"))
+        .ok_or_else(|| "direct item has no body or semicolon".to_owned())?;
+    Ok(&item[..end])
+}
+
+fn direct_item_body(item: &[String]) -> Result<&[String], String> {
+    let open = item_body_open(item).ok_or_else(|| "direct item has no body".to_owned())?;
+    let close = matching_delimiter(item, open)
+        .ok_or_else(|| "direct item has an unbalanced body".to_owned())?;
+    Ok(&item[open + 1..close])
+}
+
+fn item_is_named(item: &[String], keyword: &str, name: &str) -> Result<bool, String> {
+    let header = direct_item_header(item)?;
+    let core = item_core_start(header)?;
+    Ok(header.get(core).map(String::as_str) == Some(keyword)
+        && header.get(core + 1).map(String::as_str) == Some(name))
 }
 
 fn named_item_tokens<'a>(
@@ -3199,40 +3306,24 @@ fn named_item_tokens<'a>(
     keyword: &str,
     name: &str,
 ) -> Result<&'a [String], String> {
-    let starts = tokens
-        .windows(2)
-        .enumerate()
-        .filter_map(|(index, window)| (window == [keyword, name]).then_some(index))
+    let items = direct_items(tokens)?;
+    let matching = items
+        .into_iter()
+        .filter_map(|item| {
+            item_is_named(item, keyword, name)
+                .ok()
+                .filter(|matches| *matches)
+                .map(|_| item)
+        })
         .collect::<Vec<_>>();
-    if starts.len() != 1 {
+    if matching.len() != 1 {
         return Err(format!(
             "expected one {keyword} {name} item, found {}",
-            starts.len()
+            matching.len()
         ));
     }
-    let keyword_start = starts[0];
-    let start = item_visibility_start(tokens, keyword_start);
-    let delimiter = tokens
-        .iter()
-        .enumerate()
-        .skip(keyword_start + 2)
-        .find_map(|(index, token)| matches!(token.as_str(), "(" | "{" | ";").then_some(index))
-        .ok_or_else(|| format!("{keyword} {name} has no item delimiter"))?;
-    let end = if tokens[delimiter] == ";" {
-        delimiter + 1
-    } else {
-        let close = matching_delimiter(tokens, delimiter)
-            .ok_or_else(|| format!("{keyword} {name} has unbalanced delimiters"))?;
-        if tokens[delimiter] == "(" {
-            if tokens.get(close + 1).map(String::as_str) != Some(";") {
-                return Err(format!("tuple {keyword} {name} lacks a semicolon"));
-            }
-            close + 2
-        } else {
-            close + 1
-        }
-    };
-    Ok(&tokens[start..end])
+    let start = outer_attributes_end(matching[0])?;
+    Ok(&matching[0][start..])
 }
 
 fn require_exact_item(
@@ -3248,6 +3339,277 @@ fn require_exact_item(
     } else {
         Err(format!(
             "{keyword} {name} token inventory drifted; expected {expected:?}, found {actual:?}"
+        ))
+    }
+}
+
+fn validate_inherent_method_inventory(
+    tokens: &[String],
+    type_name: &str,
+    expected_signatures: &[&str],
+) -> Result<(), String> {
+    let implementation = inherent_impl_tokens(tokens, type_name)?;
+    let methods = direct_items(direct_item_body(implementation)?)?;
+    let actual = methods
+        .iter()
+        .map(|method| direct_item_header(method).map(<[String]>::to_vec))
+        .collect::<Result<Vec<_>, _>>()?;
+    let expected = expected_signatures
+        .iter()
+        .map(|signature| rust_tokens(signature))
+        .collect::<Vec<_>>();
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "{type_name} inherent method inventory drifted; expected {expected:?}, found {actual:?}"
+        ))
+    }
+}
+
+fn validate_authority_method_inventories(tokens: &[String]) -> Result<(), String> {
+    validate_inherent_method_inventory(
+        tokens,
+        "AppraisalResult",
+        &[
+            "#[must_use] pub const fn context(&self) -> &ExpectedContext",
+            "#[must_use] pub const fn decision(&self) -> Decision",
+            "#[must_use] pub const fn reason(&self) -> Option<ReasonCode>",
+            "#[must_use] pub const fn view(&self) -> AppraisalResultView<'_>",
+        ],
+    )?;
+    validate_inherent_method_inventory(
+        tokens,
+        "AcceptedClaims",
+        &[
+            "#[must_use] pub const fn accepted_profile(&self) -> &EvidenceProfile",
+            "#[must_use] pub const fn session_public_key_id(&self) -> &SessionPublicKeyId",
+        ],
+    )?;
+    validate_inherent_method_inventory(
+        tokens,
+        "VerifiedAttestation",
+        &[
+            r#"#[must_use = "the appraisal result carries the completed verifier outcome"] pub fn into_appraisal_result(self) -> AppraisalResult"#,
+        ],
+    )?;
+    validate_inherent_method_inventory(
+        tokens,
+        "VerifierFlow",
+        &[
+            "pub fn begin(request: VerificationRequest) -> Self",
+            "#[must_use] pub const fn phase(&self) -> VerificationPhase",
+            "#[must_use] pub const fn outcome(&self) -> Option<VerificationOutcome>",
+            "pub fn record_challenge_authenticated(&mut self, capability: ChallengeAuthenticated,) -> Result<(), TransitionError>",
+            "pub fn record_freshness_checked(&mut self, capability: FreshnessChecked,) -> Result<(), TransitionError>",
+            "pub fn record_identity_checked(&mut self, capability: IdentityChecked,) -> Result<(), TransitionError>",
+            "pub fn record_evidence_appraised(&mut self, capability: EvidenceAppraised,) -> Result<(), TransitionError>",
+            "pub fn record_session_bound(&mut self, capability: SessionBound,) -> Result<(), TransitionError>",
+            "pub fn record_revocation_checked(&mut self, capability: RevocationChecked,) -> Result<(), TransitionError>",
+            "pub fn record_policy_satisfied(&mut self, capability: PolicySatisfied,) -> Result<(), TransitionError>",
+            "pub fn complete(&mut self) -> Result<VerifiedAttestation, TransitionError>",
+            "pub fn mark_malformed(&mut self) -> Result<AppraisalResult, TransitionError>",
+            "pub fn mark_unsupported(&mut self, requirement: UnsupportedRequirement,) -> Result<AppraisalResult, TransitionError>",
+            "pub fn mark_retryable(&mut self, reason: RetryReason,) -> Result<AppraisalResult, TransitionError>",
+            "pub fn deny(&mut self, reason: DenialReason) -> Result<AppraisalResult, TransitionError>",
+            "pub fn mark_revoked(&mut self) -> Result<AppraisalResult, TransitionError>",
+            "fn emit_failure(&mut self, failure: FailureKind) -> Result<AppraisalResult, TransitionError>",
+            "fn invalid_transition(&self, action: VerificationAction) -> TransitionError",
+            "fn ensure_binding(&self, action: VerificationAction, candidate: &VerificationBinding,) -> Result<(), TransitionError>",
+        ],
+    )
+}
+
+fn header_mentions_authority_target(header: &[String]) -> bool {
+    header.iter().any(|token| {
+        matches!(
+            token.as_str(),
+            "AppraisalResult" | "AcceptedClaims" | "VerifiedAttestation"
+        )
+    })
+}
+
+fn validate_authority_trait_impls(tokens: &[String]) -> Result<(), String> {
+    let expected = rust_tokens(
+        r#"impl fmt::Debug for VerifiedAttestation {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                let _redacted_binding = &self.binding;
+                let _redacted_allowed = self.allowed;
+                formatter.write_str("VerifiedAttestation([REDACTED])")
+            }
+        }"#,
+    );
+    let relevant = direct_items(tokens)?
+        .into_iter()
+        .filter_map(|item| {
+            let header = direct_item_header(item).ok()?;
+            let core = item_core_start(header).ok()?;
+            (header.get(core).map(String::as_str) == Some("impl")
+                && header.iter().any(|token| token == "for")
+                && header_mentions_authority_target(item))
+            .then_some(item)
+        })
+        .collect::<Vec<_>>();
+    if relevant.len() == 1 && relevant[0] == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "authority trait implementation inventory drifted; found {relevant:?}"
+        ))
+    }
+}
+
+fn validate_redacted_debug_macro_inventory(tokens: &[String]) -> Result<(), String> {
+    let actual = direct_items(tokens)?
+        .into_iter()
+        .filter(|item| {
+            let Ok(header) = direct_item_header(item) else {
+                return false;
+            };
+            let Ok(core) = item_core_start(header) else {
+                return false;
+            };
+            header.get(core).map(String::as_str) == Some("impl_redacted_debug")
+                && header.get(core + 1).map(String::as_str) == Some("!")
+        })
+        .map(<[String]>::to_vec)
+        .collect::<Vec<_>>();
+    let expected = [
+        r#"impl_redacted_debug!(ChallengeAuthenticated, "ChallengeAuthenticated([REDACTED])");"#,
+        r#"impl_redacted_debug!(IdentityChecked, "IdentityChecked([REDACTED])");"#,
+        r#"impl_redacted_debug!(EvidenceAppraised, "EvidenceAppraised([REDACTED])");"#,
+        r#"impl_redacted_debug!(SessionBound, "SessionBound([REDACTED])");"#,
+        r#"impl_redacted_debug!(RevocationChecked, "RevocationChecked([REDACTED])");"#,
+        r#"impl_redacted_debug!(PolicySatisfied, "PolicySatisfied([REDACTED])");"#,
+        r#"impl_redacted_debug!(AppraisalResult, "AppraisalResult([REDACTED])");"#,
+        r#"impl_redacted_debug!(AcceptedClaims, "AcceptedClaims([REDACTED])");"#,
+        r#"impl_redacted_debug!(AppraisalResultView<'_>, "AppraisalResultView([REDACTED])");"#,
+    ]
+    .map(rust_tokens)
+    .to_vec();
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "redacted Debug macro invocation inventory drifted; expected {expected:?}, found {actual:?}"
+        ))
+    }
+}
+
+fn function_name(function: &[String]) -> Result<&str, String> {
+    let header = direct_item_header(function)?;
+    let mut core = item_core_start(header)?;
+    if matches!(
+        header.get(core).map(String::as_str),
+        Some("const" | "async" | "unsafe")
+    ) {
+        core += 1;
+    }
+    if header.get(core).map(String::as_str) != Some("fn") {
+        return Err("concrete function inventory contained a non-function".to_owned());
+    }
+    header
+        .get(core + 1)
+        .map(String::as_str)
+        .ok_or_else(|| "function lacks a name".to_owned())
+}
+
+fn construction_count(function: &[String], type_name: &str) -> Result<usize, String> {
+    Ok(direct_item_body(function)?
+        .windows(2)
+        .filter(|window| window[0] == type_name && window[1] == "{")
+        .count())
+}
+
+fn validate_authority_constructions(tokens: &[String]) -> Result<(), String> {
+    let mut actual = Vec::new();
+    for function in concrete_functions(tokens)? {
+        let counts = (
+            construction_count(function, "AppraisalResult")?,
+            construction_count(function, "AcceptedClaims")?,
+            construction_count(function, "VerifiedAttestation")?,
+        );
+        if counts != (0, 0, 0) {
+            actual.push((function_name(function)?.to_owned(), counts));
+        }
+    }
+    let expected = vec![
+        ("into_appraisal_result".to_owned(), (1, 1, 0)),
+        ("complete".to_owned(), (0, 0, 1)),
+        ("emit_failure".to_owned(), (1, 0, 0)),
+    ];
+    if actual != expected {
+        return Err(format!(
+            "authority construction inventory drifted; expected {expected:?}, found {actual:?}"
+        ));
+    }
+
+    for item in direct_items(tokens)? {
+        let header = direct_item_header(item)?;
+        let core = item_core_start(header)?;
+        let is_macro = header.get(core).map(String::as_str) == Some("macro_rules")
+            || header.get(core + 1).map(String::as_str) == Some("!");
+        if is_macro {
+            for target in ["AppraisalResult", "AcceptedClaims", "VerifiedAttestation"] {
+                for (index, window) in item.windows(2).enumerate() {
+                    if window == [target, "{"]
+                        && !matches!(
+                            index
+                                .checked_sub(1)
+                                .and_then(|previous| item.get(previous))
+                                .map(String::as_str),
+                            Some("struct" | "enum" | "union")
+                        )
+                    {
+                        return Err(format!(
+                            "macro item contains authority construction for {target}"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_authority_free_functions(tokens: &[String]) -> Result<(), String> {
+    for item in direct_items(tokens)? {
+        let header = direct_item_header(item)?;
+        let core = item_core_start(header)?;
+        if header.get(core).map(String::as_str) == Some("fn")
+            && header_mentions_authority_target(header)
+        {
+            return Err(format!(
+                "free function mentions authority target in signature: {header:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_exact_failure_entry_points(tokens: &[String]) -> Result<(), String> {
+    let implementation = inherent_impl_tokens(tokens, "VerifierFlow")?;
+    let actual = direct_items(direct_item_body(implementation)?)?
+        .into_iter()
+        .filter_map(|method| {
+            let header = direct_item_header(method).ok()?;
+            (header.iter().any(|token| token == "pub")
+                && header.iter().any(|token| token == "AppraisalResult"))
+            .then(|| function_name(method).ok().map(str::to_owned))?
+        })
+        .collect::<Vec<_>>();
+    let expected = [
+        "mark_malformed",
+        "mark_unsupported",
+        "mark_retryable",
+        "deny",
+        "mark_revoked",
+    ];
+    if actual.iter().map(String::as_str).eq(expected) {
+        Ok(())
+    } else {
+        Err(format!(
+            "public failure entry-point inventory drifted; expected {expected:?}, found {actual:?}"
         ))
     }
 }
@@ -3375,35 +3737,12 @@ fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(
     ] {
         require_exact_item(&tokens, keyword, name, expected)?;
     }
-
-    for forbidden in [
-        &["request", ":", "Option"][..],
-        &["accepted_profile", ":", "Option"][..],
-        &["session_public_key_id", ":", "Option"][..],
-        &["pub", "fn", "new"][..],
-        &["pub", "const", "fn", "new"][..],
-        &["fn", "builder"][..],
-        &[
-            "impl",
-            "From",
-            "<",
-            "VerificationOutcome",
-            ">",
-            "for",
-            "AppraisalResult",
-        ][..],
-        &["impl", "From", "<", "AppraisalResultView"][..],
-        &["fn", "sign"][..],
-        &["fn", "permit"][..],
-        &["fn", "proof"][..],
-        &["fn", "admit"][..],
-    ] {
-        if sequence_start(&tokens, forbidden).is_some() {
-            return Err(format!(
-                "forbidden authority expansion tokens: {forbidden:?}"
-            ));
-        }
-    }
+    validate_authority_method_inventories(&tokens)?;
+    validate_authority_trait_impls(&tokens)?;
+    validate_redacted_debug_macro_inventory(&tokens)?;
+    validate_authority_constructions(&tokens)?;
+    validate_authority_free_functions(&tokens)?;
+    validate_exact_failure_entry_points(&tokens)?;
 
     let freshness_tokens = rust_tokens(freshness);
     require_exact_item(
@@ -3423,67 +3762,45 @@ fn sequence_start(tokens: &[String], expected: &[&str]) -> Option<usize> {
     })
 }
 
-fn outer_attribute_start(tokens: &[String], item_start: usize) -> usize {
-    let mut start = item_start;
-    while start >= 3 && tokens[start - 1] == "]" {
-        let mut depth = 1_usize;
-        let mut cursor = start - 1;
-        let mut open = None;
-        while cursor > 0 {
-            cursor -= 1;
-            match tokens[cursor].as_str() {
-                "]" => depth += 1,
-                "[" => {
-                    depth -= 1;
-                    if depth == 0 {
-                        open = Some(cursor);
-                        break;
-                    }
+fn concrete_functions(tokens: &[String]) -> Result<Vec<&[String]>, String> {
+    let mut functions = Vec::new();
+    for item in direct_items(tokens)? {
+        let header = direct_item_header(item)?;
+        let core = item_core_start(header)?;
+        if header.get(core).map(String::as_str) == Some("fn") {
+            functions.push(item);
+        } else if header.get(core).map(String::as_str) == Some("impl") {
+            for method in direct_items(direct_item_body(item)?)? {
+                let method_header = direct_item_header(method)?;
+                let mut method_core = item_core_start(method_header)?;
+                if matches!(
+                    method_header.get(method_core).map(String::as_str),
+                    Some("const" | "async" | "unsafe")
+                ) {
+                    method_core += 1;
                 }
-                _ => {}
+                if method_header.get(method_core).map(String::as_str) == Some("fn") {
+                    functions.push(method);
+                }
             }
         }
-        let Some(open) = open else {
-            break;
-        };
-        if open == 0 || tokens[open - 1] != "#" {
-            break;
-        }
-        start = open - 1;
     }
-    start
+    Ok(functions)
 }
 
 fn function_tokens<'a>(tokens: &'a [String], name: &str) -> Result<&'a [String], String> {
     let marker = ["pub", "fn", name];
-    let starts = tokens
-        .windows(marker.len())
-        .enumerate()
-        .filter_map(|(index, window)| {
-            window
-                .iter()
-                .zip(marker)
-                .all(|(actual, expected)| actual == expected)
-                .then_some(index)
-        })
+    let matching = concrete_functions(tokens)?
+        .into_iter()
+        .filter(|function| sequence_start(function, &marker).is_some())
         .collect::<Vec<_>>();
-    if starts.len() != 1 {
+    if matching.len() != 1 {
         return Err(format!(
             "expected one public function {name}, found {}",
-            starts.len()
+            matching.len()
         ));
     }
-    let function_start = starts[0];
-    let body = tokens
-        .iter()
-        .enumerate()
-        .skip(function_start + marker.len())
-        .find_map(|(index, token)| (token == "{").then_some(index))
-        .ok_or_else(|| format!("function {name} has no body"))?;
-    let end = matching_delimiter(tokens, body)
-        .ok_or_else(|| format!("function {name} has an unbalanced body"))?;
-    let start = outer_attribute_start(tokens, function_start);
-    Ok(&tokens[start..=end])
+    Ok(matching[0])
 }
 
 fn function_body_tokens<'a>(tokens: &'a [String], name: &str) -> Result<&'a [String], String> {
@@ -3507,26 +3824,35 @@ fn private_function_body_tokens<'a>(
     name: &str,
 ) -> Result<&'a [String], String> {
     let marker = ["fn", name];
-    let starts = tokens
-        .windows(marker.len())
-        .enumerate()
-        .filter_map(|(index, window)| (window == marker).then_some(index))
+    let matching = concrete_functions(tokens)?
+        .into_iter()
+        .filter(|function| {
+            let Ok(header) = direct_item_header(function) else {
+                return false;
+            };
+            let Ok(core) = item_core_start(header) else {
+                return false;
+            };
+            header.get(core).map(String::as_str) == Some("fn")
+                && header.get(core + 1).map(String::as_str) == Some(name)
+        })
         .collect::<Vec<_>>();
-    if starts.len() != 1 {
+    if matching.len() != 1 {
         return Err(format!(
             "expected one private function {name}, found {}",
-            starts.len()
+            matching.len()
         ));
     }
-    let body = tokens
+    let function = matching[0];
+    let body = function
         .iter()
         .enumerate()
-        .skip(starts[0] + marker.len())
+        .skip(marker.len())
         .find_map(|(index, token)| (token == "{").then_some(index))
         .ok_or_else(|| format!("private function {name} has no body"))?;
-    let end = matching_delimiter(tokens, body)
+    let end = matching_delimiter(function, body)
         .ok_or_else(|| format!("private function {name} has an unbalanced body"))?;
-    Ok(&tokens[body + 1..end])
+    Ok(&function[body + 1..end])
 }
 
 fn require_exact_private_function(
@@ -3534,34 +3860,32 @@ fn require_exact_private_function(
     name: &str,
     expected_source: &str,
 ) -> Result<(), String> {
-    let marker = ["fn", name];
-    let starts = tokens
-        .windows(marker.len())
-        .enumerate()
-        .filter_map(|(index, window)| (window == marker).then_some(index))
+    let actual = concrete_functions(tokens)?
+        .into_iter()
+        .filter(|function| {
+            let Ok(header) = direct_item_header(function) else {
+                return false;
+            };
+            let Ok(core) = item_core_start(header) else {
+                return false;
+            };
+            header.get(core).map(String::as_str) == Some("fn")
+                && header.get(core + 1).map(String::as_str) == Some(name)
+        })
         .collect::<Vec<_>>();
-    if starts.len() != 1 {
+    if actual.len() != 1 {
         return Err(format!(
             "expected one private function {name}, found {}",
-            starts.len()
+            actual.len()
         ));
     }
-    let start = starts[0];
-    let body = tokens
-        .iter()
-        .enumerate()
-        .skip(start + marker.len())
-        .find_map(|(index, token)| (token == "{").then_some(index))
-        .ok_or_else(|| format!("private function {name} has no body"))?;
-    let end = matching_delimiter(tokens, body)
-        .ok_or_else(|| format!("private function {name} has an unbalanced body"))?;
-    let actual = &tokens[start..=end];
     let expected = rust_tokens(expected_source);
-    if actual == expected {
+    if actual[0] == expected {
         Ok(())
     } else {
         Err(format!(
-            "private function {name} token inventory drifted; expected {expected:?}, found {actual:?}"
+            "private function {name} token inventory drifted; expected {expected:?}, found {:?}",
+            actual[0]
         ))
     }
 }
@@ -3804,41 +4128,27 @@ fn validate_active_state_replacement(verification: &str) -> Result<(), String> {
 }
 
 fn inherent_impl_tokens<'a>(tokens: &'a [String], type_name: &str) -> Result<&'a [String], String> {
-    let mut delimiters = Vec::new();
-    let mut starts = Vec::new();
-    for (index, token) in tokens.iter().enumerate() {
-        if delimiters.is_empty()
-            && tokens.get(index).map(String::as_str) == Some("impl")
-            && tokens.get(index + 1).map(String::as_str) == Some(type_name)
-            && tokens.get(index + 2).map(String::as_str) == Some("{")
-        {
-            starts.push(index);
-        }
-        match token.as_str() {
-            "(" => delimiters.push(")"),
-            "[" => delimiters.push("]"),
-            "{" => delimiters.push("}"),
-            ")" | "]" | "}" if delimiters.pop() != Some(token.as_str()) => {
-                return Err(format!(
-                    "mismatched source delimiter {token} at token {index}"
-                ));
-            }
-            _ => {}
-        }
-    }
-    if !delimiters.is_empty() {
-        return Err("unclosed delimiter in verification source".to_owned());
-    }
-    if starts.len() != 1 {
+    let matching = direct_items(tokens)?
+        .into_iter()
+        .filter(|item| {
+            let Ok(header) = direct_item_header(item) else {
+                return false;
+            };
+            let Ok(core) = item_core_start(header) else {
+                return false;
+            };
+            header.get(core).map(String::as_str) == Some("impl")
+                && header.get(core + 1).map(String::as_str) == Some(type_name)
+                && !header.iter().any(|token| token == "for")
+        })
+        .collect::<Vec<_>>();
+    if matching.len() != 1 {
         return Err(format!(
             "expected one top-level inherent impl {type_name}, found {}",
-            starts.len()
+            matching.len()
         ));
     }
-    let start = starts[0];
-    let end = matching_delimiter(tokens, start + 2)
-        .ok_or_else(|| format!("impl {type_name} has an unbalanced body"))?;
-    Ok(&tokens[start..=end])
+    Ok(matching[0])
 }
 
 fn validate_exact_method_statements(
@@ -4536,6 +4846,163 @@ fn authority_structure_rejects_result_authority_expansion_and_decoys() {
         "{source}\n// pub fn sign(self) {{}}\nconst DECOY: &str = \"impl From<VerificationOutcome> for AppraisalResult\";"
     );
     assert!(validate_authority_structure(&decoys, include_str!("../freshness.rs")).is_ok());
+}
+
+#[test]
+fn authority_inventory_rejects_macro_definition_target_decoy() {
+    let source = include_str!("../verification.rs");
+    let declaration = "pub struct AppraisalResult {\n    context: ExpectedContext,\n    payload: AppraisalPayload,\n}";
+    let macro_definition = source.replacen(
+        declaration,
+        &format!("macro_rules! decoy {{ () => {{ {declaration} }}; }}"),
+        1,
+    );
+    assert_ne!(macro_definition, source);
+    assert!(
+        validate_authority_structure(&macro_definition, include_str!("../freshness.rs")).is_err()
+    );
+
+    let macro_invocation = source.replacen(declaration, &format!("decoy! {{ {declaration} }}"), 1);
+    assert_ne!(macro_invocation, source);
+    assert!(
+        validate_authority_structure(&macro_invocation, include_str!("../freshness.rs")).is_err()
+    );
+
+    let function = "    pub fn mark_malformed(&mut self) -> Result<AppraisalResult, TransitionError> {\n        self.emit_failure(FailureKind::Malformed)\n    }";
+    for replacement in [
+        format!("    macro_rules! decoy_method {{ () => {{ {function} }}; }}"),
+        format!("    decoy_method! {{ {function} }}"),
+    ] {
+        let mutation = source.replacen(function, &replacement, 1);
+        assert_ne!(mutation, source);
+        assert!(
+            validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err(),
+            "macro-contained method satisfied a concrete method inventory"
+        );
+    }
+}
+
+#[test]
+fn authority_inventory_rejects_differently_named_target_method() {
+    let source = include_str!("../verification.rs");
+    for method in [
+        "from_parts",
+        "duplicate",
+        "protect",
+        "authorize",
+        "issue_attestation",
+        "sign_result",
+        "assemble",
+        "refill",
+    ] {
+        let mutation = source.replacen(
+            "impl AppraisalResult {",
+            &format!("impl AppraisalResult {{\n    pub fn {method}(self) -> Self {{ self }}"),
+            1,
+        );
+        assert_ne!(mutation, source);
+        assert!(
+            validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err(),
+            "extra target method was accepted"
+        );
+    }
+}
+
+#[test]
+fn authority_inventory_rejects_free_result_constructor() {
+    let source = include_str!("../verification.rs");
+    for function in ["issue_attestation", "protect", "authorize", "from_parts"] {
+        let mutation = format!(
+            "{source}\nfn {function}(context: ExpectedContext, payload: AppraisalPayload) -> AppraisalResult {{ AppraisalResult {{ context, payload }} }}"
+        );
+        assert!(
+            validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err(),
+            "authority-returning free function was accepted"
+        );
+    }
+}
+
+#[test]
+fn authority_inventory_rejects_result_trait_conversion() {
+    let source = include_str!("../verification.rs");
+    for implementation in [
+        "impl From<VerifiedAttestation> for AppraisalResult { fn from(value: VerifiedAttestation) -> Self { value.into_appraisal_result() } }",
+        "impl Into<AppraisalResult> for VerifiedAttestation { fn into(self) -> AppraisalResult { self.into_appraisal_result() } }",
+        "impl Protect<AppraisalResult> for VerifiedAttestation { fn protect(self) -> AppraisalResult { self.into_appraisal_result() } }",
+        "impl Authorize for AcceptedClaims { type Output = AppraisalResult; }",
+        "impl Clone for VerifiedAttestation { fn clone(&self) -> Self { unreachable!() } }",
+        "impl Clone for AppraisalResult { fn clone(&self) -> Self { unreachable!() } }",
+    ] {
+        let mutation = format!("{source}\n{implementation}");
+        assert!(
+            validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err(),
+            "authority-related trait implementation was accepted"
+        );
+    }
+}
+
+#[test]
+fn authority_inventory_rejects_sixth_failure_entry_point() {
+    let source = include_str!("../verification.rs");
+    let mutation = source.replacen(
+        "    fn emit_failure(",
+        "    pub fn abort_appraisal(&mut self) -> Result<AppraisalResult, TransitionError> { self.emit_failure(FailureKind::Malformed) }\n\n    fn emit_failure(",
+        1,
+    );
+    assert_ne!(mutation, source);
+    assert!(validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_extra_result_construction_expression() {
+    let source = include_str!("../verification.rs");
+    let mutation = source.replacen(
+        "    pub const fn context(&self) -> &ExpectedContext {\n        &self.context",
+        "    pub const fn context(&self) -> &ExpectedContext {\n        if false { let _ = AppraisalResult { context: self.context.clone(), payload: AppraisalPayload::Failure(FailurePayload { decision: FailureDecision::Deny, reason: ReasonCode::Malformed }) }; }\n        &self.context",
+        1,
+    );
+    assert_ne!(mutation, source);
+    assert!(validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err());
+
+    let macro_construction = format!(
+        "{source}\nmacro_rules! construct_result {{ ($context:expr, $payload:expr) => {{ AppraisalResult {{ context: $context, payload: $payload }} }}; }}"
+    );
+    assert!(
+        validate_authority_structure(&macro_construction, include_str!("../freshness.rs")).is_err()
+    );
+}
+
+#[test]
+fn private_diagnostic_assertions_never_print_formatted_values() {
+    let source = include_str!("tests.rs");
+    let tokens = rust_tokens(source);
+    let body = private_function_body_tokens(&tokens, "push_result_diagnostics")
+        .unwrap_or_else(|error| panic!("failed to isolate private diagnostic helper: {error}"));
+    for value_printing_assertion in [["assert_eq", "!"], ["assert_ne", "!"]] {
+        assert!(
+            sequence_start(body, &value_printing_assertion).is_none(),
+            "private diagnostic helper must use boolean assertions with fixed messages"
+        );
+    }
+}
+
+#[test]
+fn authority_inventory_distinguishes_direct_items_from_nested_and_unrelated_controls() {
+    let source = include_str!("../verification.rs");
+    let positive = format!(
+        "{source}\nmod nested_decoys {{ pub struct AppraisalResult {{ pub exposed: usize }} impl AppraisalResult {{ pub fn protect(self) -> Self {{ self }} }} }}\nstruct Unrelated; impl Unrelated {{ pub fn protect(self) -> Self {{ self }} pub fn authorize(self) -> Self {{ self }} }}\nmacro_rules! unused_declarations {{ () => {{ pub fn issue_attestation() {{}} }}; }}"
+    );
+    assert!(
+        validate_authority_structure(&positive, include_str!("../freshness.rs")).is_ok(),
+        "nested or unrelated controls affected target-bound inventory"
+    );
+
+    let direct_duplicate = format!(
+        "{source}\npub struct AppraisalResult {{ context: ExpectedContext, payload: AppraisalPayload }}"
+    );
+    assert!(
+        validate_authority_structure(&direct_duplicate, include_str!("../freshness.rs")).is_err()
+    );
 }
 
 #[test]
