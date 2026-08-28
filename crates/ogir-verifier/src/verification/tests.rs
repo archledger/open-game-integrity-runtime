@@ -1517,7 +1517,10 @@ fn canonical_full_path_returns_one_bound_verified_capability() {
         flow.outcome().map(VerificationOutcome::reason),
         Some(ReasonCode::None)
     );
-    assert_eq!(format!("{verified:?}"), "VerifiedAttestation([REDACTED])");
+    assert!(
+        format!("{verified:?}") == "VerifiedAttestation([REDACTED])",
+        "private diagnostic mismatch"
+    );
 }
 
 #[test]
