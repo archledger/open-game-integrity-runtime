@@ -3337,8 +3337,18 @@ fn path_start(tokens: &[String], end: usize) -> usize {
     while start >= 3
         && tokens.get(start - 1).map(String::as_str) == Some(":")
         && tokens.get(start - 2).map(String::as_str) == Some(":")
+        && tokens
+            .get(start - 3)
+            .and_then(|token| token.chars().next())
+            .is_some_and(is_identifier_start)
     {
         start -= 3;
+    }
+    if start >= 2
+        && tokens.get(start - 1).map(String::as_str) == Some(":")
+        && tokens.get(start - 2).map(String::as_str) == Some(":")
+    {
+        start -= 2;
     }
     start
 }
@@ -3461,9 +3471,9 @@ fn approved_macro_definition() -> Vec<String> {
 
 fn approved_macro_invocations() -> Vec<Vec<String>> {
     [
-        r#"std::matches!(phase, VerificationPhase::EvidenceReceived | VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::IdentityChecked | VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied)"#,
-        r#"std::matches!(phase, VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::EvidenceAppraised)"#,
-        r#"std::matches!(phase, VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied)"#,
+        r#"::std::matches!(phase, VerificationPhase::EvidenceReceived | VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::IdentityChecked | VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied)"#,
+        r#"::std::matches!(phase, VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::EvidenceAppraised)"#,
+        r#"::std::matches!(phase, VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied)"#,
         r#"impl_redacted_debug!(ChallengeAuthenticated, "ChallengeAuthenticated([REDACTED])")"#,
         r#"impl_redacted_debug!(IdentityChecked, "IdentityChecked([REDACTED])")"#,
         r#"impl_redacted_debug!(EvidenceAppraised, "EvidenceAppraised([REDACTED])")"#,
@@ -3473,22 +3483,22 @@ fn approved_macro_invocations() -> Vec<Vec<String>> {
         r#"impl_redacted_debug!(AppraisalResult, "AppraisalResult([REDACTED])")"#,
         r#"impl_redacted_debug!(AcceptedClaims, "AcceptedClaims([REDACTED])")"#,
         r#"impl_redacted_debug!(AppraisalResultView<'_>, "AppraisalResultView([REDACTED])")"#,
-        r#"std::matches!(&self.state, VerificationState::EvidenceReceived { .. })"#,
-        r#"std::unreachable!("phase was checked before active-state replacement")"#,
-        r#"std::matches!(&self.state, VerificationState::ChallengeAuthenticated { .. })"#,
-        r#"std::unreachable!("phase was checked before active-state replacement")"#,
-        r#"std::matches!(&self.state, VerificationState::FreshnessChecked { .. })"#,
-        r#"std::unreachable!("phase was checked before active-state replacement")"#,
-        r#"std::matches!(&self.state, VerificationState::IdentityChecked { .. })"#,
-        r#"std::unreachable!("phase was checked before active-state replacement")"#,
-        r#"std::matches!(&self.state, VerificationState::EvidenceAppraised { .. })"#,
-        r#"std::unreachable!("phase was checked before active-state replacement")"#,
-        r#"std::matches!(&self.state, VerificationState::SessionBound { .. })"#,
-        r#"std::unreachable!("phase was checked before active-state replacement")"#,
-        r#"std::matches!(&self.state, VerificationState::RevocationChecked { .. })"#,
-        r#"std::unreachable!("phase was checked before active-state replacement")"#,
-        r#"std::unreachable!("phase was checked before terminal replacement")"#,
-        r#"std::unreachable!("eligibility excluded terminal state before replacement")"#,
+        r#"::std::matches!(&self.state, VerificationState::EvidenceReceived { .. })"#,
+        r#"::std::unreachable!("phase was checked before active-state replacement")"#,
+        r#"::std::matches!(&self.state, VerificationState::ChallengeAuthenticated { .. })"#,
+        r#"::std::unreachable!("phase was checked before active-state replacement")"#,
+        r#"::std::matches!(&self.state, VerificationState::FreshnessChecked { .. })"#,
+        r#"::std::unreachable!("phase was checked before active-state replacement")"#,
+        r#"::std::matches!(&self.state, VerificationState::IdentityChecked { .. })"#,
+        r#"::std::unreachable!("phase was checked before active-state replacement")"#,
+        r#"::std::matches!(&self.state, VerificationState::EvidenceAppraised { .. })"#,
+        r#"::std::unreachable!("phase was checked before active-state replacement")"#,
+        r#"::std::matches!(&self.state, VerificationState::SessionBound { .. })"#,
+        r#"::std::unreachable!("phase was checked before active-state replacement")"#,
+        r#"::std::matches!(&self.state, VerificationState::RevocationChecked { .. })"#,
+        r#"::std::unreachable!("phase was checked before active-state replacement")"#,
+        r#"::std::unreachable!("phase was checked before terminal replacement")"#,
+        r#"::std::unreachable!("eligibility excluded terminal state before replacement")"#,
     ]
     .map(rust_tokens_with_literals)
     .to_vec()
@@ -3562,6 +3572,45 @@ fn semicolon_terminated_slice(tokens: &[String], start: usize) -> Result<&[Strin
     Err(format!(
         "item-like statement at token {start} is unterminated"
     ))
+}
+
+fn validate_no_std_bindings(tokens: &[String]) -> Result<(), String> {
+    for (index, token) in tokens.iter().enumerate() {
+        match token.as_str() {
+            "use" => {
+                let statement = semicolon_terminated_slice(tokens, index)?;
+                for std_index in statement
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, token)| (token == "std").then_some(index))
+                {
+                    let previous = std_index
+                        .checked_sub(1)
+                        .and_then(|previous| statement.get(previous))
+                        .map(String::as_str);
+                    let next = statement.get(std_index + 1).map(String::as_str);
+                    if previous == Some("as") || !matches!(next, Some(":" | "as")) {
+                        return Err(format!("use declaration binds std: {statement:?}"));
+                    }
+                }
+            }
+            "extern" if tokens.get(index + 1).map(String::as_str) == Some("crate") => {
+                let statement = semicolon_terminated_slice(tokens, index)?;
+                let name = statement.get(2).map(String::as_str);
+                let alias = statement
+                    .windows(2)
+                    .find_map(|pair| (pair[0] == "as").then_some(pair[1].as_str()));
+                if alias == Some("std") || (alias.is_none() && name == Some("std")) {
+                    return Err(format!("extern crate declaration binds std: {statement:?}"));
+                }
+            }
+            "type" | "mod" if tokens.get(index + 1).map(String::as_str) == Some("std") => {
+                return Err(format!("{} declaration binds std", token));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 fn validate_nested_aliases_and_imports(
@@ -4312,6 +4361,8 @@ fn validate_private_diagnostic_assertions(source: &str) -> Result<(), String> {
 }
 
 fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(), String> {
+    validate_no_std_bindings(&rust_tokens_with_literals(verification))?;
+    validate_sibling_macro_surface(freshness)?;
     let authority_scope = validate_recursive_authority_inventory(verification)?;
     let authority_scopes = std::slice::from_ref(&authority_scope);
     let literal_tokens = rust_tokens_with_literals(verification);
@@ -4455,38 +4506,73 @@ fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(
     )
 }
 
-fn validate_parent_verification_source(source: &str) -> Result<(), String> {
+fn validate_sibling_macro_surface(source: &str) -> Result<(), String> {
     let tokens = rust_tokens_with_literals(source);
-    let crate_attributes = rust_tokens_with_literals("#![forbid(unsafe_code)]");
-    if !tokens.starts_with(&crate_attributes) {
-        return Err("parent crate attributes drifted".to_owned());
-    }
-    let items = direct_items(&tokens[crate_attributes.len()..])?;
-    let modules = items
-        .iter()
-        .copied()
-        .filter(|item| is_module_item(item).unwrap_or(false))
-        .map(<[String]>::to_vec)
-        .collect::<Vec<_>>();
-    let expected_modules = ["mod freshness;", "mod verification;"]
-        .map(rust_tokens_with_literals)
-        .to_vec();
-    if modules != expected_modules {
-        return Err(format!(
-            "parent module inventory drifted; expected {expected_modules:?}, found {modules:?}"
-        ));
-    }
-    let body = &tokens[crate_attributes.len()..];
-    if !macro_definitions(body)?.is_empty() {
-        return Err("parent source contains a macro definition".to_owned());
-    }
-    validate_macro_imports(body)?;
-    if let Some(invocation) = macro_invocations(body)?.first() {
-        return Err(format!(
-            "parent source contains an unapproved macro invocation: {invocation:?}"
-        ));
+    for (index, token) in tokens.iter().enumerate() {
+        if token == "#" && tokens.get(index + 1).map(String::as_str) == Some("[") {
+            let close = matching_delimiter(&tokens, index + 1)
+                .ok_or_else(|| format!("unbalanced sibling attribute at token {index}"))?;
+            if tokens.get(index + 2).map(String::as_str) == Some("macro_export") {
+                return Err(format!(
+                    "sibling source exports a macro: {:?}",
+                    &tokens[index..=close]
+                ));
+            }
+        }
+        if token == "macro_rules"
+            && tokens.get(index + 1).map(String::as_str) == Some("!")
+            && tokens
+                .get(index + 2)
+                .is_some_and(|name| matches!(name.as_str(), "matches" | "unreachable"))
+        {
+            return Err(format!(
+                "sibling source defines reserved macro {}",
+                tokens[index + 2]
+            ));
+        }
+        if token == "macro"
+            && tokens
+                .get(index + 1)
+                .is_some_and(|name| matches!(name.as_str(), "matches" | "unreachable"))
+        {
+            return Err(format!(
+                "sibling source defines reserved macro {}",
+                tokens[index + 1]
+            ));
+        }
     }
     Ok(())
+}
+
+fn validate_parent_verification_source(source: &str) -> Result<(), String> {
+    let tokens = rust_tokens_with_literals(source);
+    validate_no_std_bindings(&tokens)?;
+    let expected = rust_tokens_with_literals(
+        r#"
+            #![forbid(unsafe_code)]
+            mod freshness;
+            mod verification;
+            pub use freshness::{
+                ChallengeBinding, FreshnessChecked, FreshnessGuard, ReplayKey,
+                ReplayRegistration, ReplayStore,
+            };
+            pub use verification::{
+                AcceptedClaims, AppraisalResult, AppraisalResultView, ChallengeAuthenticated,
+                DenialReason, EvidenceAppraised, ExpectedContext, IdentityChecked, PolicySatisfied,
+                RetryReason, RevocationChecked, SessionBound, TransitionError,
+                UnsupportedRequirement, VerificationAction, VerificationOutcome,
+                VerificationPhase, VerificationRequest, VerifiedAttestation, VerifierFlow,
+                verify_research_structure,
+            };
+        "#,
+    );
+    if tokens == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "parent root item inventory drifted; expected {expected:?}, found {tokens:?}"
+        ))
+    }
 }
 
 fn sequence_start(tokens: &[String], expected: &[&str]) -> Option<usize> {
@@ -4632,7 +4718,7 @@ fn validate_failure_eligibility(verification: &str) -> Result<(), String> {
         &tokens,
         "is_active_phase",
         r#"fn is_active_phase(phase: VerificationPhase) -> bool {
-            std::matches!(phase, VerificationPhase::EvidenceReceived
+            ::std::matches!(phase, VerificationPhase::EvidenceReceived
                 | VerificationPhase::ChallengeAuthenticated
                 | VerificationPhase::FreshnessChecked
                 | VerificationPhase::IdentityChecked
@@ -4659,14 +4745,14 @@ fn validate_failure_eligibility(verification: &str) -> Result<(), String> {
                     phase == VerificationPhase::EvidenceReceived
                 }
                 FailureKind::Deny(DenialReason::NotYetValid | DenialReason::Expired | DenialReason::ReplayDetected,) => phase == VerificationPhase::ChallengeAuthenticated,
-                FailureKind::Deny(DenialReason::ContextBindingMismatch) => std::matches!(phase, VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::EvidenceAppraised),
+                FailureKind::Deny(DenialReason::ContextBindingMismatch) => ::std::matches!(phase, VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::EvidenceAppraised),
                 FailureKind::Deny(DenialReason::EvidenceInvalid) => {
                     phase == VerificationPhase::IdentityChecked
                 }
                 FailureKind::Deny(DenialReason::PolicyDenied) => {
                     phase == VerificationPhase::RevocationChecked
                 }
-                FailureKind::Deny(DenialReason::ProtectedSessionLost) => std::matches!(phase, VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied),
+                FailureKind::Deny(DenialReason::ProtectedSessionLost) => ::std::matches!(phase, VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied),
                 FailureKind::Revoked => phase == VerificationPhase::SessionBound,
             }
         }"#,
@@ -4741,51 +4827,51 @@ fn validate_active_state_replacement(verification: &str) -> Result<(), String> {
     for (method_name, phase, binding, extraction, assignment) in [
         (
             "record_challenge_authenticated",
-            "if !std::matches!(&self.state, VerificationState::EvidenceReceived { .. }) { return Err(self.invalid_transition(VerificationAction::RecordChallengeAuthenticated)); }",
+            "if !::std::matches!(&self.state, VerificationState::EvidenceReceived { .. }) { return Err(self.invalid_transition(VerificationAction::RecordChallengeAuthenticated)); }",
             "self.ensure_binding(VerificationAction::RecordChallengeAuthenticated, &capability.binding,)?;",
-            "let VerificationState::EvidenceReceived { request } = previous else { std::unreachable!(\"phase was checked before active-state replacement\") };",
+            "let VerificationState::EvidenceReceived { request } = previous else { ::std::unreachable!(\"phase was checked before active-state replacement\") };",
             "self.state = VerificationState::ChallengeAuthenticated { request };",
         ),
         (
             "record_freshness_checked",
-            "if !std::matches!(&self.state, VerificationState::ChallengeAuthenticated { .. }) { return Err(self.invalid_transition(VerificationAction::RecordFreshnessChecked)); }",
+            "if !::std::matches!(&self.state, VerificationState::ChallengeAuthenticated { .. }) { return Err(self.invalid_transition(VerificationAction::RecordFreshnessChecked)); }",
             "self.ensure_binding(VerificationAction::RecordFreshnessChecked, capability.binding(),)?;",
-            "let VerificationState::ChallengeAuthenticated { request } = previous else { std::unreachable!(\"phase was checked before active-state replacement\") };",
+            "let VerificationState::ChallengeAuthenticated { request } = previous else { ::std::unreachable!(\"phase was checked before active-state replacement\") };",
             "self.state = VerificationState::FreshnessChecked { request };",
         ),
         (
             "record_identity_checked",
-            "if !std::matches!(&self.state, VerificationState::FreshnessChecked { .. }) { return Err(self.invalid_transition(VerificationAction::RecordIdentityChecked)); }",
+            "if !::std::matches!(&self.state, VerificationState::FreshnessChecked { .. }) { return Err(self.invalid_transition(VerificationAction::RecordIdentityChecked)); }",
             "self.ensure_binding(VerificationAction::RecordIdentityChecked, &capability.binding,)?;",
-            "let VerificationState::FreshnessChecked { request } = previous else { std::unreachable!(\"phase was checked before active-state replacement\") };",
+            "let VerificationState::FreshnessChecked { request } = previous else { ::std::unreachable!(\"phase was checked before active-state replacement\") };",
             "self.state = VerificationState::IdentityChecked { request };",
         ),
         (
             "record_evidence_appraised",
-            "if !std::matches!(&self.state, VerificationState::IdentityChecked { .. }) { return Err(self.invalid_transition(VerificationAction::RecordEvidenceAppraised)); }",
+            "if !::std::matches!(&self.state, VerificationState::IdentityChecked { .. }) { return Err(self.invalid_transition(VerificationAction::RecordEvidenceAppraised)); }",
             "self.ensure_binding(VerificationAction::RecordEvidenceAppraised, &capability.binding,)?;",
-            "let VerificationState::IdentityChecked { request } = previous else { std::unreachable!(\"phase was checked before active-state replacement\") };",
+            "let VerificationState::IdentityChecked { request } = previous else { ::std::unreachable!(\"phase was checked before active-state replacement\") };",
             "self.state = VerificationState::EvidenceAppraised { request, accepted_profile: capability.accepted_profile, };",
         ),
         (
             "record_session_bound",
-            "if !std::matches!(&self.state, VerificationState::EvidenceAppraised { .. }) { return Err(self.invalid_transition(VerificationAction::RecordSessionBound)); }",
+            "if !::std::matches!(&self.state, VerificationState::EvidenceAppraised { .. }) { return Err(self.invalid_transition(VerificationAction::RecordSessionBound)); }",
             "self.ensure_binding(VerificationAction::RecordSessionBound, &capability.binding)?;",
-            "let VerificationState::EvidenceAppraised { request, accepted_profile, } = previous else { std::unreachable!(\"phase was checked before active-state replacement\") };",
+            "let VerificationState::EvidenceAppraised { request, accepted_profile, } = previous else { ::std::unreachable!(\"phase was checked before active-state replacement\") };",
             "self.state = VerificationState::SessionBound { request, accepted_profile, session_public_key_id: capability.session_public_key_id, };",
         ),
         (
             "record_revocation_checked",
-            "if !std::matches!(&self.state, VerificationState::SessionBound { .. }) { return Err(self.invalid_transition(VerificationAction::RecordRevocationChecked)); }",
+            "if !::std::matches!(&self.state, VerificationState::SessionBound { .. }) { return Err(self.invalid_transition(VerificationAction::RecordRevocationChecked)); }",
             "self.ensure_binding(VerificationAction::RecordRevocationChecked, &capability.binding,)?;",
-            "let VerificationState::SessionBound { request, accepted_profile, session_public_key_id, } = previous else { std::unreachable!(\"phase was checked before active-state replacement\") };",
+            "let VerificationState::SessionBound { request, accepted_profile, session_public_key_id, } = previous else { ::std::unreachable!(\"phase was checked before active-state replacement\") };",
             "self.state = VerificationState::RevocationChecked { request, accepted_profile, session_public_key_id, };",
         ),
         (
             "record_policy_satisfied",
-            "if !std::matches!(&self.state, VerificationState::RevocationChecked { .. }) { return Err(self.invalid_transition(VerificationAction::RecordPolicySatisfied)); }",
+            "if !::std::matches!(&self.state, VerificationState::RevocationChecked { .. }) { return Err(self.invalid_transition(VerificationAction::RecordPolicySatisfied)); }",
             "self.ensure_binding(VerificationAction::RecordPolicySatisfied, &capability.binding,)?;",
-            "let VerificationState::RevocationChecked { request, accepted_profile, session_public_key_id, } = previous else { std::unreachable!(\"phase was checked before active-state replacement\") };",
+            "let VerificationState::RevocationChecked { request, accepted_profile, session_public_key_id, } = previous else { ::std::unreachable!(\"phase was checked before active-state replacement\") };",
             "self.state = VerificationState::PolicySatisfied { request, accepted_profile, session_public_key_id, allowed: capability.allowed, };",
         ),
     ] {
@@ -4843,7 +4929,7 @@ fn validate_active_state_replacement(verification: &str) -> Result<(), String> {
                 | VerificationState::Unsupported { .. }
                 | VerificationState::Retryable { .. }
                 | VerificationState::Denied { .. }
-                | VerificationState::Revoked { .. } => { std::unreachable!("eligibility excluded terminal state before replacement") }
+                | VerificationState::Revoked { .. } => { ::std::unreachable!("eligibility excluded terminal state before replacement") }
             };"#,
         ),
         rust_tokens(
@@ -4961,7 +5047,7 @@ fn validate_appraisal_allow_construction(verification: &str) -> Result<(), Strin
                 session_public_key_id,
                 allowed,
             } = previous else {
-                std::unreachable!("phase was checked before terminal replacement")
+                ::std::unreachable!("phase was checked before terminal replacement")
             };"#,
             r#"Ok(VerifiedAttestation {
                 binding: self.binding.clone(),
@@ -5206,7 +5292,7 @@ fn active_replacement_rejects_direct_assignment_with_stringify_sequence_decoy() 
             },
         );
         let VerificationState::EvidenceReceived { request } = previous else {
-            std::unreachable!("phase was checked before active-state replacement")
+            ::std::unreachable!("phase was checked before active-state replacement")
         };
         self.state = VerificationState::ChallengeAuthenticated { request };"#;
     let bypass = r#"        self.state = match &self.state {
@@ -5245,7 +5331,7 @@ fn active_replacement_rejects_sequence_nested_under_unreachable_block() {
             },
         );
         let VerificationState::EvidenceReceived { request } = previous else {
-            std::unreachable!("phase was checked before active-state replacement")
+            ::std::unreachable!("phase was checked before active-state replacement")
         };
         self.state = VerificationState::ChallengeAuthenticated { request };"#;
     let nested = format!("        if false {{\n{correct}\n        }}");
@@ -6101,13 +6187,25 @@ fn authority_inventory_pins_existing_macro_names_and_counts() {
 }
 
 #[test]
+fn macro_invocation_scanner_retains_absolute_root() {
+    let tokens = rust_tokens_with_literals("::std::matches!(true, true)");
+    let invocations = macro_invocations(&tokens)
+        .unwrap_or_else(|error| panic!("absolute macro invocation did not parse: {error}"));
+
+    assert_eq!(
+        invocations,
+        [rust_tokens_with_literals("::std::matches!(true, true)")]
+    );
+}
+
+#[test]
 fn authority_inventory_rejects_macro_definition_or_invocation_drift() {
     let source = include_str!("../verification.rs");
     for mutation in [
         source.replacen("$type_name:ty", "$type_name:path", 1),
         source.replacen(
-            "std::matches!(\n        phase,",
-            "std::matches!(\n        VerificationPhase::EvidenceReceived,",
+            "::std::matches!(\n        phase,",
+            "::std::matches!(\n        VerificationPhase::EvidenceReceived,",
             1,
         ),
     ] {
@@ -6133,9 +6231,9 @@ fn authority_inventory_requires_qualified_standard_macros() {
             .get(bang - 1)
             .unwrap_or_else(|| panic!("macro invocation did not have a name: {invocation:?}"));
         if matches!(name.as_str(), "matches" | "unreachable") {
-            let target = if invocation.get(bang.wrapping_sub(4)).map(String::as_str) == Some("std")
-                && invocation.get(bang - 3).map(String::as_str) == Some(":")
-                && invocation.get(bang - 2).map(String::as_str) == Some(":")
+            let target = if invocation
+                .get(..bang)
+                .is_some_and(|path| path.starts_with(&rust_tokens("::std::")))
             {
                 &mut qualified
             } else {
@@ -6152,6 +6250,78 @@ fn authority_inventory_requires_qualified_standard_macros() {
         unqualified.is_empty(),
         "unqualified macros: {unqualified:?}"
     );
+}
+
+#[test]
+fn authority_inventory_rejects_relative_standard_macro_paths() {
+    let source = include_str!("../verification.rs");
+    if let Err(error) = validate_authority_structure(source, include_str!("../freshness.rs")) {
+        panic!("absolute production macro paths were rejected before mutation: {error}");
+    }
+    for name in ["matches", "unreachable"] {
+        let absolute = format!("::std::{name}!");
+        let relative = format!("std::{name}!");
+        let mutation = source.replacen(&absolute, &relative, 1);
+        assert_ne!(mutation, source);
+        assert!(
+            validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err(),
+            "relative standard macro path was accepted: {relative}"
+        );
+    }
+}
+
+#[test]
+fn authority_inventory_rejects_std_aliases_in_verification_source() {
+    let source = include_str!("../verification.rs").to_owned();
+    if let Err(error) = validate_authority_structure(&source, include_str!("../freshness.rs")) {
+        panic!("absolute-path control source was rejected before std alias mutation: {error}");
+    }
+    for mutation in [
+        format!("use crate as std;\n{source}"),
+        source.replacen(
+            "    pub const fn context(&self) -> &ExpectedContext {",
+            "    pub const fn context(&self) -> &ExpectedContext {\n        use crate as std;",
+            1,
+        ),
+    ] {
+        assert_ne!(mutation, source);
+        assert!(
+            validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err(),
+            "std alias in verification source was accepted"
+        );
+    }
+}
+
+#[test]
+fn std_binding_inventory_rejects_every_binding_form_at_every_depth() {
+    for source in [
+        "use crate as std;",
+        "use crate::std;",
+        "extern crate self as std;",
+        "extern crate std;",
+        "type std = usize;",
+        "mod std {}",
+        "fn nested() { use crate as std; }",
+        "fn nested() { use crate::std; }",
+        "fn nested() { extern crate self as std; }",
+        "fn nested() { type std = usize; }",
+        "fn nested() { mod std {} }",
+    ] {
+        assert!(
+            validate_no_std_bindings(&rust_tokens_with_literals(source)).is_err(),
+            "std binding was accepted: {source}"
+        );
+    }
+    for source in [
+        "use std::fmt;",
+        "use std::{fmt, sync::Arc};",
+        "use std as standard_library;",
+        "use crate::std as standard_library;",
+    ] {
+        if let Err(error) = validate_no_std_bindings(&rust_tokens_with_literals(source)) {
+            panic!("non-binding std path was rejected for {source}: {error}");
+        }
+    }
 }
 
 #[test]
@@ -6174,6 +6344,24 @@ fn authority_inventory_rejects_parent_macro_shadowing() {
 }
 
 #[test]
+fn authority_inventory_rejects_parent_std_bindings() {
+    let source = include_str!("../lib.rs");
+    for binding in [
+        "extern crate self as std;",
+        "use crate as std;",
+        "type std = usize;",
+        "mod std {}",
+    ] {
+        let mutation = source.replacen("mod freshness;", &format!("{binding}\nmod freshness;"), 1);
+        assert_ne!(mutation, source);
+        assert!(
+            validate_parent_verification_source(&mutation).is_err(),
+            "parent std binding was accepted: {binding}"
+        );
+    }
+}
+
+#[test]
 fn authority_inventory_pins_parent_verification_source() {
     let source = include_str!("../lib.rs");
     if let Err(error) = validate_parent_verification_source(source) {
@@ -6188,9 +6376,54 @@ fn authority_inventory_pins_parent_verification_source() {
         source.replacen("mod verification;", "#[cfg(test)] mod verification;", 1),
         source.replacen("mod verification;", "include!(\"verification.rs\");", 1),
         source.replacen("mod verification;", "#[macro_use] mod verification;", 1),
+        source.replacen("#![forbid(unsafe_code)]", "#![deny(unsafe_code)]", 1),
+        source.replacen(
+            "pub use freshness::{",
+            "pub use freshness::ReplayKey;\npub use freshness::{",
+            1,
+        ),
+        format!("{source}\nconst UNKNOWN_PARENT_ITEM: () = ();"),
     ] {
         assert_ne!(mutation, source);
         assert!(validate_parent_verification_source(&mutation).is_err());
+    }
+}
+
+#[test]
+fn authority_inventory_rejects_sibling_standard_macro_exports() {
+    let verification = include_str!("../verification.rs").to_owned();
+    let freshness = include_str!("../freshness.rs");
+    if let Err(error) = validate_authority_structure(&verification, freshness) {
+        panic!("absolute-path control source was rejected before sibling mutation: {error}");
+    }
+    for name in ["matches", "unreachable"] {
+        let mutation = format!(
+            "{freshness}\n#[macro_export]\nmacro_rules! {name} {{ ($($tokens:tt)*) => {{ false }}; }}"
+        );
+        assert!(
+            validate_authority_structure(&verification, &mutation).is_err(),
+            "sibling exported {name} macro was accepted"
+        );
+    }
+}
+
+#[test]
+fn sibling_macro_surface_pins_exports_and_reserved_definitions_independently() {
+    let source = include_str!("../freshness.rs");
+    if let Err(error) = validate_sibling_macro_surface(source) {
+        panic!("current sibling macro surface was rejected: {error}");
+    }
+    for mutation in [
+        format!("{source}\n#[macro_export]\nmacro_rules! unrelated {{ () => {{ true }}; }}"),
+        format!("{source}\nmacro_rules! matches {{ ($($tokens:tt)*) => {{ false }}; }}"),
+        format!("{source}\nmacro_rules! unreachable {{ ($($tokens:tt)*) => {{ loop {{}} }}; }}"),
+        format!("{source}\npub macro matches() {{ false }}"),
+        format!("{source}\npub macro unreachable() {{ loop {{}} }}"),
+    ] {
+        assert!(
+            validate_sibling_macro_surface(&mutation).is_err(),
+            "unapproved sibling macro surface was accepted"
+        );
     }
 }
 

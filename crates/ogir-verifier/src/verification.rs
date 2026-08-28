@@ -647,7 +647,7 @@ impl FailureKind {
 }
 
 fn is_active_phase(phase: VerificationPhase) -> bool {
-    std::matches!(
+    ::std::matches!(
         phase,
         VerificationPhase::EvidenceReceived
             | VerificationPhase::ChallengeAuthenticated
@@ -677,7 +677,7 @@ fn failure_is_eligible(phase: VerificationPhase, failure: FailureKind) -> bool {
         FailureKind::Deny(
             DenialReason::NotYetValid | DenialReason::Expired | DenialReason::ReplayDetected,
         ) => phase == VerificationPhase::ChallengeAuthenticated,
-        FailureKind::Deny(DenialReason::ContextBindingMismatch) => std::matches!(
+        FailureKind::Deny(DenialReason::ContextBindingMismatch) => ::std::matches!(
             phase,
             VerificationPhase::ChallengeAuthenticated
                 | VerificationPhase::FreshnessChecked
@@ -689,7 +689,7 @@ fn failure_is_eligible(phase: VerificationPhase, failure: FailureKind) -> bool {
         FailureKind::Deny(DenialReason::PolicyDenied) => {
             phase == VerificationPhase::RevocationChecked
         }
-        FailureKind::Deny(DenialReason::ProtectedSessionLost) => std::matches!(
+        FailureKind::Deny(DenialReason::ProtectedSessionLost) => ::std::matches!(
             phase,
             VerificationPhase::EvidenceAppraised
                 | VerificationPhase::SessionBound
@@ -1256,7 +1256,7 @@ impl VerifierFlow {
         &mut self,
         capability: ChallengeAuthenticated,
     ) -> Result<(), TransitionError> {
-        if !std::matches!(&self.state, VerificationState::EvidenceReceived { .. }) {
+        if !::std::matches!(&self.state, VerificationState::EvidenceReceived { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordChallengeAuthenticated));
         }
         self.ensure_binding(
@@ -1270,7 +1270,7 @@ impl VerifierFlow {
             },
         );
         let VerificationState::EvidenceReceived { request } = previous else {
-            std::unreachable!("phase was checked before active-state replacement")
+            ::std::unreachable!("phase was checked before active-state replacement")
         };
         self.state = VerificationState::ChallengeAuthenticated { request };
         Ok(())
@@ -1286,7 +1286,7 @@ impl VerifierFlow {
         &mut self,
         capability: FreshnessChecked,
     ) -> Result<(), TransitionError> {
-        if !std::matches!(
+        if !::std::matches!(
             &self.state,
             VerificationState::ChallengeAuthenticated { .. }
         ) {
@@ -1303,7 +1303,7 @@ impl VerifierFlow {
             },
         );
         let VerificationState::ChallengeAuthenticated { request } = previous else {
-            std::unreachable!("phase was checked before active-state replacement")
+            ::std::unreachable!("phase was checked before active-state replacement")
         };
         self.state = VerificationState::FreshnessChecked { request };
         Ok(())
@@ -1319,7 +1319,7 @@ impl VerifierFlow {
         &mut self,
         capability: IdentityChecked,
     ) -> Result<(), TransitionError> {
-        if !std::matches!(&self.state, VerificationState::FreshnessChecked { .. }) {
+        if !::std::matches!(&self.state, VerificationState::FreshnessChecked { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordIdentityChecked));
         }
         self.ensure_binding(
@@ -1333,7 +1333,7 @@ impl VerifierFlow {
             },
         );
         let VerificationState::FreshnessChecked { request } = previous else {
-            std::unreachable!("phase was checked before active-state replacement")
+            ::std::unreachable!("phase was checked before active-state replacement")
         };
         self.state = VerificationState::IdentityChecked { request };
         Ok(())
@@ -1349,7 +1349,7 @@ impl VerifierFlow {
         &mut self,
         capability: EvidenceAppraised,
     ) -> Result<(), TransitionError> {
-        if !std::matches!(&self.state, VerificationState::IdentityChecked { .. }) {
+        if !::std::matches!(&self.state, VerificationState::IdentityChecked { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordEvidenceAppraised));
         }
         self.ensure_binding(
@@ -1363,7 +1363,7 @@ impl VerifierFlow {
             },
         );
         let VerificationState::IdentityChecked { request } = previous else {
-            std::unreachable!("phase was checked before active-state replacement")
+            ::std::unreachable!("phase was checked before active-state replacement")
         };
         self.state = VerificationState::EvidenceAppraised {
             request,
@@ -1382,7 +1382,7 @@ impl VerifierFlow {
         &mut self,
         capability: SessionBound,
     ) -> Result<(), TransitionError> {
-        if !std::matches!(&self.state, VerificationState::EvidenceAppraised { .. }) {
+        if !::std::matches!(&self.state, VerificationState::EvidenceAppraised { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordSessionBound));
         }
         self.ensure_binding(VerificationAction::RecordSessionBound, &capability.binding)?;
@@ -1397,7 +1397,7 @@ impl VerifierFlow {
             accepted_profile,
         } = previous
         else {
-            std::unreachable!("phase was checked before active-state replacement")
+            ::std::unreachable!("phase was checked before active-state replacement")
         };
         self.state = VerificationState::SessionBound {
             request,
@@ -1417,7 +1417,7 @@ impl VerifierFlow {
         &mut self,
         capability: RevocationChecked,
     ) -> Result<(), TransitionError> {
-        if !std::matches!(&self.state, VerificationState::SessionBound { .. }) {
+        if !::std::matches!(&self.state, VerificationState::SessionBound { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordRevocationChecked));
         }
         self.ensure_binding(
@@ -1436,7 +1436,7 @@ impl VerifierFlow {
             session_public_key_id,
         } = previous
         else {
-            std::unreachable!("phase was checked before active-state replacement")
+            ::std::unreachable!("phase was checked before active-state replacement")
         };
         self.state = VerificationState::RevocationChecked {
             request,
@@ -1456,7 +1456,7 @@ impl VerifierFlow {
         &mut self,
         capability: PolicySatisfied,
     ) -> Result<(), TransitionError> {
-        if !std::matches!(&self.state, VerificationState::RevocationChecked { .. }) {
+        if !::std::matches!(&self.state, VerificationState::RevocationChecked { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordPolicySatisfied));
         }
         self.ensure_binding(
@@ -1475,7 +1475,7 @@ impl VerifierFlow {
             session_public_key_id,
         } = previous
         else {
-            std::unreachable!("phase was checked before active-state replacement")
+            ::std::unreachable!("phase was checked before active-state replacement")
         };
         self.state = VerificationState::PolicySatisfied {
             request,
@@ -1512,7 +1512,7 @@ impl VerifierFlow {
             allowed,
         } = previous
         else {
-            std::unreachable!("phase was checked before terminal replacement")
+            ::std::unreachable!("phase was checked before terminal replacement")
         };
         Ok(VerifiedAttestation {
             binding: self.binding.clone(),
@@ -1639,7 +1639,7 @@ impl VerifierFlow {
             | VerificationState::Retryable { .. }
             | VerificationState::Denied { .. }
             | VerificationState::Revoked { .. } => {
-                std::unreachable!("eligibility excluded terminal state before replacement")
+                ::std::unreachable!("eligibility excluded terminal state before replacement")
             }
         };
 
