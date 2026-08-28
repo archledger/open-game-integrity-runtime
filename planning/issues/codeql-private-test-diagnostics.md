@@ -157,12 +157,12 @@ or toolchain version changes.
 ## Implementation evidence
 
 - Verified base: `25030e1af6a437472e27c5e842f4251222d4c6fe`.
-- Verified implementation head before this evidence-only update:
-  `19eaefb082de3bf627a5525b5aa3bb633ac61156`.
-- The base-to-implementation-head diff contains 13 approved planning, test, and
+- Verified fix head before the final evidence-only update:
+  `be0cb565038ad05e80d1c53e0972bf88a9ade2f2`.
+- The base-to-fix-head diff contains 13 approved planning, test, and
   documentation paths: the eight test locations named by the plan,
   `docs/TEST_STRATEGY.md`, `docs/LESSONS_LEARNED.md`, this issue, the approved
-  design, and the implementation plan. It contains 956 insertions and 31
+  design, and the implementation plan. It contains 1,061 insertions and 47
   deletions. The production/configuration path guard passed; the only model
   source diff is inside its existing `#[cfg(test)]` module, the agent and
   verifier `src/` diffs are dedicated test modules, and `.github/**`,
@@ -181,25 +181,32 @@ or toolchain version changes.
   fixtures, formatting, Clippy, rustdoc, and cargo-deny also passed.
   `cargo test --workspace --all-features --release` passed with the same 123
   runtime/integration tests and 80 doctests. `git diff --check` passed.
-- Focused word-diff review confirmed 19 new fixed mismatch messages, three new
+- Focused word-diff review confirmed 33 new fixed mismatch messages, three new
   fixed forbidden-value messages, and one new fixed missing-marker message;
   the edited predicates, expected strings, forbidden sets, fixtures, loops,
   and unrelated functional/state-machine assertions remain unchanged.
-- The focused variant acceptance criterion is not yet satisfied.
-  `diagnostics_for_every_surface`, called before the changed forbidden-value
-  loop in `every_flow_capability_outcome_and_error_diagnostic_is_redacted`,
-  still uses privacy-bearing `assert_eq!` comparisons for binding, capability,
-  request, expected-context, evidence, and private-flow diagnostics. A
-  redaction regression can therefore print an actual private diagnostic before
-  the fixed-message containment checks execute. These same-root-cause variants
-  are at `crates/ogir-verifier/src/verification/tests.rs:733-839` and require a
-  separately authorized correction before this work can pass final privacy
-  review.
+- Fix round 1 converted the 14 remaining privacy-bearing equality sites in
+  `diagnostics_for_every_surface` to the same fixed-message boolean shape. The
+  actual and expected expressions, order, pushes, fixtures, arrays, and loops
+  remain unchanged. The four type-constrained transition-error comparisons and
+  one outcome comparison remain unchanged. Focused variant review now finds no
+  value-emitting assertion form on a privacy-bearing diagnostic in the eight
+  reviewed test locations.
+- The independent failure-path mutant cycle passed. Before the fix, temporarily
+  formatting `VerificationBinding` as the literal synthetic marker
+  `VerificationBinding(private-account)` made the exact verifier privacy test
+  fail first through `assert_eq!` and print that marker. With the 14 test-only
+  changes applied, the same mutant made the same exact test fail with only
+  `private diagnostic mismatch` in the captured failure stream and no
+  `private-account`. The mutant was never committed; `verification.rs` was
+  restored after each run and is byte-identical to both merged base and the
+  pre-fix head (SHA-256
+  `924088c3a6df903af3d8f24fd8ea805594c9cd665610d7c35a2efe2fb093d8f2`).
 - Before this section was appended, the local issue body was byte-equal to live
   issue #18. This local evidence update is intentionally not synchronized;
   GitHub issue state, labels, milestone, body, and alerts remain unchanged.
 - Limitations and pending gates: the normal and release suites exercise passing
-  behavior, not assertion-failure confidentiality. No independent reviewer was
-  dispatched under the Task 5 controller ruling. Controller review, correction
-  and re-verification of the unresolved variants, exact DCO certification and
+  behavior; the separate mutant cycle supplies assertion-failure
+  confidentiality evidence. No independent reviewer was dispatched under the
+  Task 5 controller ruling. Controller review, exact DCO certification and
   rewrite, publication, and post-publication CodeQL GREEN all remain pending.
