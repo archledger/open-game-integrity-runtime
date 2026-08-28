@@ -293,6 +293,10 @@ struct FlowSnapshot {
     accepted_profile: Option<EvidenceProfile>,
     session_public_key_id: Option<SessionPublicKeyId>,
     allowed: Option<AllowedClass>,
+    has_request: bool,
+    has_profile: bool,
+    has_session_key: bool,
+    has_allowed_class: bool,
 }
 
 fn flow_snapshot(flow: &VerifierFlow) -> FlowSnapshot {
@@ -355,6 +359,10 @@ fn flow_snapshot(flow: &VerifierFlow) -> FlowSnapshot {
     FlowSnapshot {
         phase: flow.phase(),
         outcome: flow.outcome(),
+        has_request: request.is_some(),
+        has_profile: accepted_profile.is_some(),
+        has_session_key: session_public_key_id.is_some(),
+        has_allowed_class: allowed.is_some(),
         request,
         context,
         accepted_profile,
@@ -363,7 +371,7 @@ fn flow_snapshot(flow: &VerifierFlow) -> FlowSnapshot {
     }
 }
 
-const ALL_13_MATRIX_ACTIONS: [TestAction; 13] = [
+const ALL_24_MATRIX_ACTIONS: [TestAction; 24] = [
     TestAction::Challenge(BindingMode::Matching),
     TestAction::Freshness(BindingMode::Matching),
     TestAction::Identity(BindingMode::Matching),
@@ -371,11 +379,22 @@ const ALL_13_MATRIX_ACTIONS: [TestAction; 13] = [
     TestAction::Session(BindingMode::Matching),
     TestAction::Revocation(BindingMode::Matching),
     TestAction::Policy(AllowedClass::Full, BindingMode::Matching),
+    TestAction::Policy(AllowedClass::Restricted, BindingMode::Matching),
     TestAction::Complete,
     TestAction::MarkMalformed,
     TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
+    TestAction::MarkUnsupported(UnsupportedRequirement::Platform),
+    TestAction::MarkUnsupported(UnsupportedRequirement::UnknownCriticalRequirement),
     TestAction::MarkRetryable(RetryReason::AttestationUnavailable),
+    TestAction::MarkRetryable(RetryReason::TransientFailure),
+    TestAction::Deny(DenialReason::ChallengeAuthenticationFailed),
+    TestAction::Deny(DenialReason::NotYetValid),
+    TestAction::Deny(DenialReason::Expired),
+    TestAction::Deny(DenialReason::ReplayDetected),
+    TestAction::Deny(DenialReason::ContextBindingMismatch),
+    TestAction::Deny(DenialReason::EvidenceInvalid),
     TestAction::Deny(DenialReason::PolicyDenied),
+    TestAction::Deny(DenialReason::ProtectedSessionLost),
     TestAction::MarkRevoked,
 ];
 
@@ -450,8 +469,8 @@ enum ModelState {
     PolicySatisfied(AllowedClass),
     Verified(AllowedClass),
     Malformed,
-    Unsupported,
-    Retryable,
+    Unsupported(UnsupportedRequirement),
+    Retryable(RetryReason),
     Denied(DenialReason),
     Revoked,
 }
@@ -467,8 +486,8 @@ const ALL_14_MODEL_STATES: [ModelState; 14] = [
     ModelState::PolicySatisfied(AllowedClass::Full),
     ModelState::Verified(AllowedClass::Full),
     ModelState::Malformed,
-    ModelState::Unsupported,
-    ModelState::Retryable,
+    ModelState::Unsupported(UnsupportedRequirement::VersionOrProfile),
+    ModelState::Retryable(RetryReason::AttestationUnavailable),
     ModelState::Denied(DenialReason::PolicyDenied),
     ModelState::Revoked,
 ];
@@ -493,112 +512,205 @@ fn model_transition(state: ModelState, action: TestAction) -> Option<ModelState>
         (ModelState::SessionBound, TestAction::Revocation(BindingMode::Matching)) => {
             Some(ModelState::RevocationChecked)
         }
-        (ModelState::RevocationChecked, TestAction::Policy(class, BindingMode::Matching)) => {
-            Some(ModelState::PolicySatisfied(class))
-        }
+        (
+            ModelState::RevocationChecked,
+            TestAction::Policy(AllowedClass::Full, BindingMode::Matching),
+        ) => Some(ModelState::PolicySatisfied(AllowedClass::Full)),
+        (
+            ModelState::RevocationChecked,
+            TestAction::Policy(AllowedClass::Restricted, BindingMode::Matching),
+        ) => Some(ModelState::PolicySatisfied(AllowedClass::Restricted)),
         (ModelState::PolicySatisfied(class), TestAction::Complete) => {
             Some(ModelState::Verified(class))
         }
-        (state, TestAction::MarkMalformed) if model_is_nonterminal(state) => {
-            Some(ModelState::Malformed)
-        }
-        (state, TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile))
-            if model_is_nonterminal(state) =>
-        {
-            Some(ModelState::Unsupported)
-        }
-        (_, TestAction::MarkUnsupported(UnsupportedRequirement::Platform))
-        | (_, TestAction::MarkUnsupported(UnsupportedRequirement::UnknownCriticalRequirement))
-        | (_, TestAction::MarkRetryable(RetryReason::TransientFailure))
-        | (
-            _,
-            TestAction::Deny(
-                DenialReason::ChallengeAuthenticationFailed
-                | DenialReason::NotYetValid
+        (
+            ModelState::EvidenceReceived,
+            action @ (TestAction::MarkMalformed
+            | TestAction::Deny(DenialReason::ChallengeAuthenticationFailed)
+            | TestAction::MarkRetryable(
+                RetryReason::AttestationUnavailable | RetryReason::TransientFailure,
+            )
+            | TestAction::MarkUnsupported(
+                UnsupportedRequirement::UnknownCriticalRequirement,
+            )),
+        ) => Some(model_failure_terminal(action)),
+        (
+            ModelState::ChallengeAuthenticated,
+            action @ (TestAction::MarkUnsupported(
+                UnsupportedRequirement::VersionOrProfile
+                | UnsupportedRequirement::UnknownCriticalRequirement,
+            )
+            | TestAction::Deny(
+                DenialReason::NotYetValid
                 | DenialReason::Expired
                 | DenialReason::ReplayDetected
-                | DenialReason::ContextBindingMismatch
-                | DenialReason::EvidenceInvalid
-                | DenialReason::ProtectedSessionLost,
-            ),
-        ) => None,
-        (state, TestAction::MarkRetryable(RetryReason::AttestationUnavailable))
-            if model_is_nonterminal(state) =>
-        {
-            Some(ModelState::Retryable)
-        }
-        (state, TestAction::Deny(DenialReason::PolicyDenied)) if model_is_nonterminal(state) => {
-            Some(ModelState::Denied(DenialReason::PolicyDenied))
-        }
-        (state, TestAction::MarkRevoked) if model_is_nonterminal(state) => {
-            Some(ModelState::Revoked)
-        }
+                | DenialReason::ContextBindingMismatch,
+            )
+            | TestAction::MarkRetryable(
+                RetryReason::AttestationUnavailable | RetryReason::TransientFailure,
+            )),
+        ) => Some(model_failure_terminal(action)),
+        (
+            ModelState::FreshnessChecked,
+            action @ (TestAction::Deny(DenialReason::ContextBindingMismatch)
+            | TestAction::MarkRetryable(
+                RetryReason::AttestationUnavailable | RetryReason::TransientFailure,
+            )
+            | TestAction::MarkUnsupported(
+                UnsupportedRequirement::UnknownCriticalRequirement,
+            )),
+        ) => Some(model_failure_terminal(action)),
+        (
+            ModelState::IdentityChecked,
+            action @ (TestAction::MarkUnsupported(
+                UnsupportedRequirement::Platform
+                | UnsupportedRequirement::UnknownCriticalRequirement,
+            )
+            | TestAction::Deny(DenialReason::EvidenceInvalid)
+            | TestAction::MarkRetryable(
+                RetryReason::AttestationUnavailable | RetryReason::TransientFailure,
+            )),
+        ) => Some(model_failure_terminal(action)),
+        (
+            ModelState::EvidenceAppraised,
+            action @ (TestAction::Deny(
+                DenialReason::ContextBindingMismatch | DenialReason::ProtectedSessionLost,
+            )
+            | TestAction::MarkRetryable(
+                RetryReason::AttestationUnavailable | RetryReason::TransientFailure,
+            )
+            | TestAction::MarkUnsupported(
+                UnsupportedRequirement::UnknownCriticalRequirement,
+            )),
+        ) => Some(model_failure_terminal(action)),
+        (
+            ModelState::SessionBound,
+            action @ (TestAction::MarkRevoked
+            | TestAction::Deny(DenialReason::ProtectedSessionLost)
+            | TestAction::MarkRetryable(
+                RetryReason::AttestationUnavailable | RetryReason::TransientFailure,
+            )
+            | TestAction::MarkUnsupported(
+                UnsupportedRequirement::UnknownCriticalRequirement,
+            )),
+        ) => Some(model_failure_terminal(action)),
+        (
+            ModelState::RevocationChecked,
+            action @ (TestAction::Deny(
+                DenialReason::PolicyDenied | DenialReason::ProtectedSessionLost,
+            )
+            | TestAction::MarkRetryable(
+                RetryReason::AttestationUnavailable | RetryReason::TransientFailure,
+            )
+            | TestAction::MarkUnsupported(
+                UnsupportedRequirement::UnknownCriticalRequirement,
+            )),
+        ) => Some(model_failure_terminal(action)),
+        (
+            ModelState::PolicySatisfied(_),
+            action @ (TestAction::Deny(DenialReason::ProtectedSessionLost)
+            | TestAction::MarkRetryable(
+                RetryReason::AttestationUnavailable | RetryReason::TransientFailure,
+            )
+            | TestAction::MarkUnsupported(
+                UnsupportedRequirement::UnknownCriticalRequirement,
+            )),
+        ) => Some(model_failure_terminal(action)),
         _ => None,
     }
 }
 
-fn model_is_nonterminal(state: ModelState) -> bool {
-    matches!(
-        state,
-        ModelState::EvidenceReceived
-            | ModelState::ChallengeAuthenticated
-            | ModelState::FreshnessChecked
-            | ModelState::IdentityChecked
-            | ModelState::EvidenceAppraised
-            | ModelState::SessionBound
-            | ModelState::RevocationChecked
-            | ModelState::PolicySatisfied(_)
-    )
+fn model_failure_terminal(action: TestAction) -> ModelState {
+    match action {
+        TestAction::MarkMalformed => ModelState::Malformed,
+        TestAction::MarkUnsupported(requirement) => ModelState::Unsupported(requirement),
+        TestAction::MarkRetryable(reason) => ModelState::Retryable(reason),
+        TestAction::Deny(reason) => ModelState::Denied(reason),
+        TestAction::MarkRevoked => ModelState::Revoked,
+        TestAction::Challenge(_)
+        | TestAction::Freshness(_)
+        | TestAction::Identity(_)
+        | TestAction::Evidence(_)
+        | TestAction::Session(_)
+        | TestAction::Revocation(_)
+        | TestAction::Policy(_, _)
+        | TestAction::Complete => panic!("non-failure action in model failure mapping: {action:?}"),
+    }
 }
 
-#[test]
-fn stale_task_6_model_rejects_new_failure_variants_without_changing_old_actions() {
-    let new_actions = [
-        TestAction::MarkUnsupported(UnsupportedRequirement::Platform),
-        TestAction::MarkUnsupported(UnsupportedRequirement::UnknownCriticalRequirement),
-        TestAction::MarkRetryable(RetryReason::TransientFailure),
-        TestAction::Deny(DenialReason::ChallengeAuthenticationFailed),
-        TestAction::Deny(DenialReason::NotYetValid),
-        TestAction::Deny(DenialReason::Expired),
-        TestAction::Deny(DenialReason::ReplayDetected),
-        TestAction::Deny(DenialReason::ContextBindingMismatch),
-        TestAction::Deny(DenialReason::EvidenceInvalid),
-        TestAction::Deny(DenialReason::ProtectedSessionLost),
-    ];
-    for state in ALL_14_MODEL_STATES {
-        for action in new_actions {
-            assert_eq!(
-                model_transition(state, action),
-                None,
-                "{state:?} {action:?}"
-            );
-        }
+fn model_is_nonterminal(state: ModelState) -> bool {
+    match state {
+        ModelState::EvidenceReceived
+        | ModelState::ChallengeAuthenticated
+        | ModelState::FreshnessChecked
+        | ModelState::IdentityChecked
+        | ModelState::EvidenceAppraised
+        | ModelState::SessionBound
+        | ModelState::RevocationChecked
+        | ModelState::PolicySatisfied(_) => true,
+        ModelState::Verified(_)
+        | ModelState::Malformed
+        | ModelState::Unsupported(_)
+        | ModelState::Retryable(_)
+        | ModelState::Denied(_)
+        | ModelState::Revoked => false,
     }
+}
 
-    let old_actions = [
-        (TestAction::MarkMalformed, ModelState::Malformed),
-        (
-            TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
-            ModelState::Unsupported,
-        ),
-        (
-            TestAction::MarkRetryable(RetryReason::AttestationUnavailable),
-            ModelState::Retryable,
-        ),
-        (
-            TestAction::Deny(DenialReason::PolicyDenied),
-            ModelState::Denied(DenialReason::PolicyDenied),
-        ),
-        (TestAction::MarkRevoked, ModelState::Revoked),
-    ];
-    for state in ALL_14_MODEL_STATES {
-        for (action, terminal) in old_actions {
-            assert_eq!(
-                model_transition(state, action),
-                model_is_nonterminal(state).then_some(terminal),
-                "{state:?} {action:?}"
-            );
-        }
+fn model_has_profile(state: ModelState) -> bool {
+    match state {
+        ModelState::EvidenceAppraised
+        | ModelState::SessionBound
+        | ModelState::RevocationChecked
+        | ModelState::PolicySatisfied(_) => true,
+        ModelState::EvidenceReceived
+        | ModelState::ChallengeAuthenticated
+        | ModelState::FreshnessChecked
+        | ModelState::IdentityChecked
+        | ModelState::Verified(_)
+        | ModelState::Malformed
+        | ModelState::Unsupported(_)
+        | ModelState::Retryable(_)
+        | ModelState::Denied(_)
+        | ModelState::Revoked => false,
+    }
+}
+
+fn model_has_session_key(state: ModelState) -> bool {
+    match state {
+        ModelState::SessionBound
+        | ModelState::RevocationChecked
+        | ModelState::PolicySatisfied(_) => true,
+        ModelState::EvidenceReceived
+        | ModelState::ChallengeAuthenticated
+        | ModelState::FreshnessChecked
+        | ModelState::IdentityChecked
+        | ModelState::EvidenceAppraised
+        | ModelState::Verified(_)
+        | ModelState::Malformed
+        | ModelState::Unsupported(_)
+        | ModelState::Retryable(_)
+        | ModelState::Denied(_)
+        | ModelState::Revoked => false,
+    }
+}
+
+fn model_has_allowed_class(state: ModelState) -> bool {
+    match state {
+        ModelState::PolicySatisfied(_) => true,
+        ModelState::EvidenceReceived
+        | ModelState::ChallengeAuthenticated
+        | ModelState::FreshnessChecked
+        | ModelState::IdentityChecked
+        | ModelState::EvidenceAppraised
+        | ModelState::SessionBound
+        | ModelState::RevocationChecked
+        | ModelState::Verified(_)
+        | ModelState::Malformed
+        | ModelState::Unsupported(_)
+        | ModelState::Retryable(_)
+        | ModelState::Denied(_)
+        | ModelState::Revoked => false,
     }
 }
 
@@ -614,8 +726,8 @@ fn model_phase(state: ModelState) -> VerificationPhase {
         ModelState::PolicySatisfied(_) => VerificationPhase::PolicySatisfied,
         ModelState::Verified(_) => VerificationPhase::Verified,
         ModelState::Malformed => VerificationPhase::Malformed,
-        ModelState::Unsupported => VerificationPhase::Unsupported,
-        ModelState::Retryable => VerificationPhase::Retryable,
+        ModelState::Unsupported(_) => VerificationPhase::Unsupported,
+        ModelState::Retryable(_) => VerificationPhase::Retryable,
         ModelState::Denied(_) => VerificationPhase::Denied,
         ModelState::Revoked => VerificationPhase::Revoked,
     }
@@ -821,16 +933,33 @@ fn model_denial_reason(reason: DenialReason) -> ReasonCode {
     }
 }
 
+fn model_unsupported_reason(requirement: UnsupportedRequirement) -> ReasonCode {
+    match requirement {
+        UnsupportedRequirement::VersionOrProfile => ReasonCode::UnsupportedVersionOrProfile,
+        UnsupportedRequirement::Platform => ReasonCode::UnsupportedPlatform,
+        UnsupportedRequirement::UnknownCriticalRequirement => {
+            ReasonCode::UnsupportedCriticalRequirement
+        }
+    }
+}
+
+fn model_retry_reason(reason: RetryReason) -> ReasonCode {
+    match reason {
+        RetryReason::AttestationUnavailable => ReasonCode::AttestationUnavailable,
+        RetryReason::TransientFailure => ReasonCode::TransientFailure,
+    }
+}
+
 fn model_report(state: ModelState) -> Option<(Decision, Option<ReasonCode>)> {
     match state {
         ModelState::Verified(AllowedClass::Full) => Some((Decision::Allow, None)),
         ModelState::Verified(AllowedClass::Restricted) => Some((Decision::AllowRestricted, None)),
         ModelState::Malformed => Some((Decision::Deny, Some(ReasonCode::Malformed))),
-        ModelState::Unsupported => Some((
+        ModelState::Unsupported(requirement) => Some((
             Decision::Unsupported,
-            Some(ReasonCode::UnsupportedVersionOrProfile),
+            Some(model_unsupported_reason(requirement)),
         )),
-        ModelState::Retryable => Some((Decision::Retry, Some(ReasonCode::AttestationUnavailable))),
+        ModelState::Retryable(reason) => Some((Decision::Retry, Some(model_retry_reason(reason)))),
         ModelState::Denied(reason) => Some((Decision::Deny, Some(model_denial_reason(reason)))),
         ModelState::Revoked => Some((Decision::Deny, Some(ReasonCode::Revoked))),
         ModelState::EvidenceReceived
@@ -841,6 +970,15 @@ fn model_report(state: ModelState) -> Option<(Decision, Option<ReasonCode>)> {
         | ModelState::SessionBound
         | ModelState::RevocationChecked
         | ModelState::PolicySatisfied(_) => None,
+    }
+}
+
+fn model_action_result(state: ModelState) -> ActionResult {
+    match model_report(state) {
+        Some((Decision::Allow | Decision::AllowRestricted, None)) => ActionResult::Verified,
+        Some((decision, Some(reason))) => ActionResult::FailureResult { decision, reason },
+        Some((decision, None)) => panic!("failure model omitted its reason: {decision:?}"),
+        None => ActionResult::NoResult,
     }
 }
 
@@ -977,23 +1115,30 @@ fn advance_flow_to_model_state(
             }
             return flow;
         }
-        ModelState::Unsupported => {
-            assert_eq!(
-                apply_action(
-                    &mut flow,
-                    other_binding,
-                    TestAction::Challenge(BindingMode::Matching),
-                ),
-                Ok(ActionResult::NoResult)
-            );
-            match flow.mark_unsupported(UnsupportedRequirement::VersionOrProfile) {
+        ModelState::Unsupported(requirement) => {
+            let gate_count = match requirement {
+                UnsupportedRequirement::VersionOrProfile => 1,
+                UnsupportedRequirement::Platform => 3,
+                UnsupportedRequirement::UnknownCriticalRequirement => 0,
+            };
+            for gate in ALL_7_GATE_KINDS.into_iter().take(gate_count) {
+                assert_eq!(
+                    apply_action(
+                        &mut flow,
+                        other_binding,
+                        gate.matching_action(AllowedClass::Full),
+                    ),
+                    Ok(ActionResult::NoResult)
+                );
+            }
+            match flow.mark_unsupported(requirement) {
                 Ok(value) => drop(value),
                 Err(error) => panic!("unsupported fixture rejected: {error:?}"),
             }
             return flow;
         }
-        ModelState::Retryable => {
-            match flow.mark_retryable(RetryReason::AttestationUnavailable) {
+        ModelState::Retryable(reason) => {
+            match flow.mark_retryable(reason) {
                 Ok(value) => drop(value),
                 Err(error) => panic!("retryable fixture rejected: {error:?}"),
             }
@@ -1065,8 +1210,8 @@ fn advance_flow_to_model_state(
         ModelState::PolicySatisfied(allowed) => (7, allowed, false),
         ModelState::Verified(allowed) => (7, allowed, true),
         ModelState::Malformed
-        | ModelState::Unsupported
-        | ModelState::Retryable
+        | ModelState::Unsupported(_)
+        | ModelState::Retryable(_)
         | ModelState::Denied(_)
         | ModelState::Revoked => unreachable!("failure states returned above"),
     };
@@ -1100,10 +1245,11 @@ fn assert_flow_matches_model(flow: &VerifierFlow, state: ModelState) {
             .map(|outcome| (outcome.decision(), outcome.reason())),
         model_report(state)
     );
-    assert_eq!(
-        flow_snapshot(flow).request.is_some(),
-        model_is_nonterminal(state)
-    );
+    let snapshot = flow_snapshot(flow);
+    assert_eq!(snapshot.has_request, model_is_nonterminal(state));
+    assert_eq!(snapshot.has_profile, model_has_profile(state));
+    assert_eq!(snapshot.has_session_key, model_has_session_key(state));
+    assert_eq!(snapshot.has_allowed_class, model_has_allowed_class(state));
 }
 
 fn equal_flows_at_gate(gate: GateKind, seed: u8) -> (VerifierFlow, VerifierFlow) {
@@ -1140,6 +1286,7 @@ fn equal_flows_at_gate(gate: GateKind, seed: u8) -> (VerifierFlow, VerifierFlow)
     }
     assert_eq!(source.phase(), gate.required_phase());
     assert_eq!(target.phase(), gate.required_phase());
+    assert_eq!(flow_snapshot(&source), flow_snapshot(&target));
     (source, target)
 }
 
@@ -1159,11 +1306,11 @@ fn apply_capability_from_other_flow(
         GateKind::Identity => target.record_identity_checked(IdentityChecked { binding }),
         GateKind::Evidence => target.record_evidence_appraised(EvidenceAppraised {
             binding,
-            accepted_profile: identifier("other-flow-profile"),
+            accepted_profile: accepted_profile(),
         }),
         GateKind::Session => target.record_session_bound(SessionBound {
             binding,
-            session_public_key_id: session_key_id(251),
+            session_public_key_id: session_key_id(7),
         }),
         GateKind::Revocation => target.record_revocation_checked(RevocationChecked { binding }),
         GateKind::Policy => target.record_policy_satisfied(PolicySatisfied {
@@ -1381,8 +1528,8 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
         ModelState::Verified(AllowedClass::Full),
         ModelState::Verified(AllowedClass::Restricted),
         ModelState::Malformed,
-        ModelState::Unsupported,
-        ModelState::Retryable,
+        ModelState::Unsupported(UnsupportedRequirement::Platform),
+        ModelState::Retryable(RetryReason::TransientFailure),
         ModelState::Denied(DenialReason::NotYetValid),
         ModelState::Denied(DenialReason::Expired),
         ModelState::Denied(DenialReason::ReplayDetected),
@@ -1412,7 +1559,7 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
 fn assert_every_action_rejected(flow: &mut VerifierFlow) {
     let other_binding = flow_fixture(250).binding;
     let current_phase = flow.phase();
-    for action in ALL_13_MATRIX_ACTIONS {
+    for action in ALL_24_MATRIX_ACTIONS {
         let before = flow_snapshot(flow);
         assert_eq!(
             apply_action(flow, &other_binding, action),
@@ -1439,7 +1586,15 @@ fn permute_gates(gates: &mut [GateKind], start: usize, visit: &mut impl FnMut(&[
 
 const TOTAL_ACTIONS: usize = 1_048_576;
 const SCHEDULED_ACTIONS: usize = 2_048;
-const ARBITRARY_ACTIONS: usize = TOTAL_ACTIONS - SCHEDULED_ACTIONS;
+const ARBITRARY_ACTIONS: usize = 1_046_528;
+const CANONICAL_COMPLETION_ACTIONS: usize = 256;
+const ACTIVE_PAIR_ACTIONS: usize = 864;
+const TERMINAL_PAIR_ACTIONS: usize = 576;
+const CROSS_FLOW_ACTIONS: usize = 35;
+const EXTRA_COMPLETION_ACTIONS: usize = 312;
+const FILLER_ACTIONS: usize = 5;
+const MIN_FULL_COMPLETIONS: usize = 61;
+const MIN_RESTRICTED_COMPLETIONS: usize = 35;
 
 struct Lcg(u64);
 
@@ -1453,7 +1608,7 @@ impl Lcg {
     }
 
     fn action(&mut self) -> TestAction {
-        let action_index = (self.next() % 13) as usize;
+        let action_index = ((self.next() >> 32) % 24) as usize;
         let selector = self.next();
         arbitrary_action_from_index(action_index, selector)
     }
@@ -1462,16 +1617,6 @@ impl Lcg {
 fn seed_for_index(index: usize) -> u8 {
     (index % 200) as u8 + 1
 }
-
-const ALL_7_DENIAL_REASONS: [DenialReason; 7] = [
-    DenialReason::NotYetValid,
-    DenialReason::Expired,
-    DenialReason::ReplayDetected,
-    DenialReason::ContextBindingMismatch,
-    DenialReason::EvidenceInvalid,
-    DenialReason::PolicyDenied,
-    DenialReason::ProtectedSessionLost,
-];
 
 fn arbitrary_action_from_index(index: usize, selector: u64) -> TestAction {
     let mode = if selector & 1 == 0 {
@@ -1486,22 +1631,24 @@ fn arbitrary_action_from_index(index: usize, selector: u64) -> TestAction {
         3 => TestAction::Evidence(mode),
         4 => TestAction::Session(mode),
         5 => TestAction::Revocation(mode),
-        6 => TestAction::Policy(
-            if selector & 2 == 0 {
-                AllowedClass::Full
-            } else {
-                AllowedClass::Restricted
-            },
-            mode,
-        ),
-        7 => TestAction::Complete,
-        8 => TestAction::MarkMalformed,
-        9 => TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
-        10 => TestAction::MarkRetryable(RetryReason::AttestationUnavailable),
-        11 => TestAction::Deny(
-            ALL_7_DENIAL_REASONS[(selector % ALL_7_DENIAL_REASONS.len() as u64) as usize],
-        ),
-        12 => TestAction::MarkRevoked,
+        6 => TestAction::Policy(AllowedClass::Full, mode),
+        7 => TestAction::Policy(AllowedClass::Restricted, mode),
+        8 => TestAction::Complete,
+        9 => TestAction::MarkMalformed,
+        10 => TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
+        11 => TestAction::MarkUnsupported(UnsupportedRequirement::Platform),
+        12 => TestAction::MarkUnsupported(UnsupportedRequirement::UnknownCriticalRequirement),
+        13 => TestAction::MarkRetryable(RetryReason::AttestationUnavailable),
+        14 => TestAction::MarkRetryable(RetryReason::TransientFailure),
+        15 => TestAction::Deny(DenialReason::ChallengeAuthenticationFailed),
+        16 => TestAction::Deny(DenialReason::NotYetValid),
+        17 => TestAction::Deny(DenialReason::Expired),
+        18 => TestAction::Deny(DenialReason::ReplayDetected),
+        19 => TestAction::Deny(DenialReason::ContextBindingMismatch),
+        20 => TestAction::Deny(DenialReason::EvidenceInvalid),
+        21 => TestAction::Deny(DenialReason::PolicyDenied),
+        22 => TestAction::Deny(DenialReason::ProtectedSessionLost),
+        23 => TestAction::MarkRevoked,
         _ => panic!("arbitrary action index outside fixed domain: {index}"),
     }
 }
@@ -1539,23 +1686,6 @@ fn canonical_completion(allowed: AllowedClass) -> [TestAction; 8] {
     actions
 }
 
-const ALL_5_FAILURE_ACTIONS: [TestAction; 5] = [
-    TestAction::MarkMalformed,
-    TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
-    TestAction::MarkRetryable(RetryReason::AttestationUnavailable),
-    TestAction::Deny(DenialReason::PolicyDenied),
-    TestAction::MarkRevoked,
-];
-
-const ALL_6_TERMINAL_CONSTRUCTORS: [TestAction; 6] = [
-    TestAction::Complete,
-    TestAction::MarkMalformed,
-    TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
-    TestAction::MarkRetryable(RetryReason::AttestationUnavailable),
-    TestAction::Deny(DenialReason::PolicyDenied),
-    TestAction::MarkRevoked,
-];
-
 fn scheduled_actions() -> Vec<ScheduledStep> {
     let mut schedule = Vec::with_capacity(SCHEDULED_ACTIONS);
     let mut named_full = 0usize;
@@ -1571,32 +1701,53 @@ fn scheduled_actions() -> Vec<ScheduledStep> {
     }
     assert_eq!(named_full, 16);
     assert_eq!(named_restricted, 16);
-    assert_eq!(schedule.len(), 256);
+    assert_eq!(schedule.len(), CANONICAL_COMPLETION_ACTIONS);
 
-    let mut failure_sequences = 0usize;
+    let active_start = schedule.len();
     for phase_index in 0..8 {
-        for failure in ALL_5_FAILURE_ACTIONS {
+        for action in ALL_24_MATRIX_ACTIONS {
             let mut sequence = MATCHING_GATE_PREFIX[..phase_index].to_vec();
-            sequence.push(failure);
+            sequence.push(action);
             push_sequence(&mut schedule, &sequence);
-            failure_sequences += 1;
         }
     }
-    assert_eq!(failure_sequences, 40);
-    assert_eq!(schedule.len(), 436);
+    assert_eq!(schedule.len() - active_start, ACTIVE_PAIR_ACTIONS);
 
-    let mut denial_sequences = 0usize;
-    for phase_index in 0..8 {
-        for reason in ALL_7_DENIAL_REASONS {
-            let mut sequence = MATCHING_GATE_PREFIX[..phase_index].to_vec();
-            sequence.push(TestAction::Deny(reason));
-            push_sequence(&mut schedule, &sequence);
-            denial_sequences += 1;
-        }
+    let terminal_start = schedule.len();
+    for attempted in ALL_24_MATRIX_ACTIONS {
+        let mut verified = canonical_completion(AllowedClass::Full).to_vec();
+        verified.push(attempted);
+        push_sequence(&mut schedule, &verified);
+        push_sequence(&mut schedule, &[TestAction::MarkMalformed, attempted]);
+        push_sequence(
+            &mut schedule,
+            &[
+                TestAction::MarkUnsupported(UnsupportedRequirement::UnknownCriticalRequirement),
+                attempted,
+            ],
+        );
+        push_sequence(
+            &mut schedule,
+            &[
+                TestAction::MarkRetryable(RetryReason::AttestationUnavailable),
+                attempted,
+            ],
+        );
+        push_sequence(
+            &mut schedule,
+            &[
+                TestAction::Deny(DenialReason::ChallengeAuthenticationFailed),
+                attempted,
+            ],
+        );
+        let mut revoked = MATCHING_GATE_PREFIX[..5].to_vec();
+        revoked.push(TestAction::MarkRevoked);
+        revoked.push(attempted);
+        push_sequence(&mut schedule, &revoked);
     }
-    assert_eq!(denial_sequences, 56);
-    assert_eq!(schedule.len(), 688);
+    assert_eq!(schedule.len() - terminal_start, TERMINAL_PAIR_ACTIONS);
 
+    let cross_flow_start = schedule.len();
     let mut cross_flow_sequences = 0usize;
     for (gate_index, gate) in ALL_7_GATE_KINDS.into_iter().enumerate() {
         let mut sequence = MATCHING_GATE_PREFIX[..gate_index].to_vec();
@@ -1610,41 +1761,16 @@ fn scheduled_actions() -> Vec<ScheduledStep> {
             GateKind::Policy => TestAction::Policy(AllowedClass::Full, BindingMode::OtherFlow),
         };
         sequence.push(mismatched);
-        sequence.push(TestAction::MarkMalformed);
+        sequence.push(TestAction::MarkRetryable(RetryReason::TransientFailure));
         push_sequence(&mut schedule, &sequence);
         cross_flow_sequences += 1;
     }
     assert_eq!(cross_flow_sequences, 7);
-    assert_eq!(schedule.len(), 723);
+    assert_eq!(schedule.len() - cross_flow_start, CROSS_FLOW_ACTIONS);
 
-    let mut terminal_sequences = 0usize;
-    for constructor in ALL_6_TERMINAL_CONSTRUCTORS {
-        for attempted in ALL_13_MATRIX_ACTIONS {
-            let mut sequence = if constructor == TestAction::Complete {
-                canonical_completion(AllowedClass::Full).to_vec()
-            } else {
-                vec![constructor]
-            };
-            sequence.push(attempted);
-            push_sequence(&mut schedule, &sequence);
-            terminal_sequences += 1;
-        }
-    }
-    assert_eq!(terminal_sequences, 78);
-    assert_eq!(schedule.len(), 970);
-
-    push_sequence(
-        &mut schedule,
-        &[TestAction::MarkUnsupported(
-            UnsupportedRequirement::UnknownCriticalRequirement,
-        )],
-    );
-    let unknown_gate_sequences = 1usize;
-    assert_eq!(unknown_gate_sequences, 1);
-    assert_eq!(schedule.len(), 971);
-
+    let extra_start = schedule.len();
     let mut extra_completions = 0usize;
-    while schedule.len() + 8 <= SCHEDULED_ACTIONS {
+    while extra_completions < 39 {
         let allowed = if extra_completions.is_multiple_of(2) {
             AllowedClass::Full
         } else {
@@ -1653,15 +1779,26 @@ fn scheduled_actions() -> Vec<ScheduledStep> {
         push_sequence(&mut schedule, &canonical_completion(allowed));
         extra_completions += 1;
     }
-    assert_eq!(extra_completions, 134);
-    assert_eq!(schedule.len(), 2_043);
+    assert_eq!(extra_completions, 39);
+    assert_eq!(schedule.len() - extra_start, EXTRA_COMPLETION_ACTIONS);
 
+    let filler_start = schedule.len();
     let mut filler_sequences = 0usize;
-    while schedule.len() < SCHEDULED_ACTIONS {
+    while filler_sequences < 5 {
         push_sequence(&mut schedule, &[TestAction::MarkMalformed]);
         filler_sequences += 1;
     }
     assert_eq!(filler_sequences, 5);
+    assert_eq!(schedule.len() - filler_start, FILLER_ACTIONS);
+    assert_eq!(
+        CANONICAL_COMPLETION_ACTIONS
+            + ACTIVE_PAIR_ACTIONS
+            + TERMINAL_PAIR_ACTIONS
+            + CROSS_FLOW_ACTIONS
+            + EXTRA_COMPLETION_ACTIONS
+            + FILLER_ACTIONS,
+        SCHEDULED_ACTIONS
+    );
     assert_eq!(schedule.len(), SCHEDULED_ACTIONS);
     schedule
 }
@@ -1701,8 +1838,8 @@ fn nonterminal_index(state: ModelState) -> Option<usize> {
         ModelState::PolicySatisfied(_) => Some(7),
         ModelState::Verified(_)
         | ModelState::Malformed
-        | ModelState::Unsupported
-        | ModelState::Retryable
+        | ModelState::Unsupported(_)
+        | ModelState::Retryable(_)
         | ModelState::Denied(_)
         | ModelState::Revoked => None,
     }
@@ -1712,8 +1849,8 @@ fn terminal_index(state: ModelState) -> Option<usize> {
     match state {
         ModelState::Verified(_) => Some(0),
         ModelState::Malformed => Some(1),
-        ModelState::Unsupported => Some(2),
-        ModelState::Retryable => Some(3),
+        ModelState::Unsupported(_) => Some(2),
+        ModelState::Retryable(_) => Some(3),
         ModelState::Denied(_) => Some(4),
         ModelState::Revoked => Some(5),
         ModelState::EvidenceReceived
@@ -1730,10 +1867,20 @@ fn terminal_index(state: ModelState) -> Option<usize> {
 fn failure_index(action: TestAction) -> Option<usize> {
     match action {
         TestAction::MarkMalformed => Some(0),
-        TestAction::MarkUnsupported(_) => Some(1),
-        TestAction::MarkRetryable(_) => Some(2),
-        TestAction::Deny(_) => Some(3),
-        TestAction::MarkRevoked => Some(4),
+        TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile) => Some(1),
+        TestAction::MarkUnsupported(UnsupportedRequirement::Platform) => Some(2),
+        TestAction::MarkUnsupported(UnsupportedRequirement::UnknownCriticalRequirement) => Some(3),
+        TestAction::MarkRetryable(RetryReason::AttestationUnavailable) => Some(4),
+        TestAction::MarkRetryable(RetryReason::TransientFailure) => Some(5),
+        TestAction::Deny(DenialReason::ChallengeAuthenticationFailed) => Some(6),
+        TestAction::Deny(DenialReason::NotYetValid) => Some(7),
+        TestAction::Deny(DenialReason::Expired) => Some(8),
+        TestAction::Deny(DenialReason::ReplayDetected) => Some(9),
+        TestAction::Deny(DenialReason::ContextBindingMismatch) => Some(10),
+        TestAction::Deny(DenialReason::EvidenceInvalid) => Some(11),
+        TestAction::Deny(DenialReason::PolicyDenied) => Some(12),
+        TestAction::Deny(DenialReason::ProtectedSessionLost) => Some(13),
+        TestAction::MarkRevoked => Some(14),
         TestAction::Challenge(_)
         | TestAction::Freshness(_)
         | TestAction::Identity(_)
@@ -1742,18 +1889,6 @@ fn failure_index(action: TestAction) -> Option<usize> {
         | TestAction::Revocation(_)
         | TestAction::Policy(_, _)
         | TestAction::Complete => None,
-    }
-}
-
-fn denial_index(reason: DenialReason) -> usize {
-    match reason {
-        DenialReason::ChallengeAuthenticationFailed | DenialReason::NotYetValid => 0,
-        DenialReason::Expired => 1,
-        DenialReason::ReplayDetected => 2,
-        DenialReason::ContextBindingMismatch => 3,
-        DenialReason::EvidenceInvalid => 4,
-        DenialReason::PolicyDenied => 5,
-        DenialReason::ProtectedSessionLost => 6,
     }
 }
 
@@ -1783,13 +1918,71 @@ fn action_index(action: TestAction) -> usize {
         TestAction::Evidence(_) => 3,
         TestAction::Session(_) => 4,
         TestAction::Revocation(_) => 5,
-        TestAction::Policy(_, _) => 6,
-        TestAction::Complete => 7,
-        TestAction::MarkMalformed => 8,
-        TestAction::MarkUnsupported(_) => 9,
-        TestAction::MarkRetryable(_) => 10,
-        TestAction::Deny(_) => 11,
-        TestAction::MarkRevoked => 12,
+        TestAction::Policy(AllowedClass::Full, _) => 6,
+        TestAction::Policy(AllowedClass::Restricted, _) => 7,
+        TestAction::Complete => 8,
+        TestAction::MarkMalformed => 9,
+        TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile) => 10,
+        TestAction::MarkUnsupported(UnsupportedRequirement::Platform) => 11,
+        TestAction::MarkUnsupported(UnsupportedRequirement::UnknownCriticalRequirement) => 12,
+        TestAction::MarkRetryable(RetryReason::AttestationUnavailable) => 13,
+        TestAction::MarkRetryable(RetryReason::TransientFailure) => 14,
+        TestAction::Deny(DenialReason::ChallengeAuthenticationFailed) => 15,
+        TestAction::Deny(DenialReason::NotYetValid) => 16,
+        TestAction::Deny(DenialReason::Expired) => 17,
+        TestAction::Deny(DenialReason::ReplayDetected) => 18,
+        TestAction::Deny(DenialReason::ContextBindingMismatch) => 19,
+        TestAction::Deny(DenialReason::EvidenceInvalid) => 20,
+        TestAction::Deny(DenialReason::PolicyDenied) => 21,
+        TestAction::Deny(DenialReason::ProtectedSessionLost) => 22,
+        TestAction::MarkRevoked => 23,
+    }
+}
+
+fn success_edge_index(before: ModelState, action: TestAction, next: ModelState) -> usize {
+    match (before, action, next) {
+        (
+            ModelState::EvidenceReceived,
+            TestAction::Challenge(BindingMode::Matching),
+            ModelState::ChallengeAuthenticated,
+        ) => 0,
+        (
+            ModelState::ChallengeAuthenticated,
+            TestAction::Freshness(BindingMode::Matching),
+            ModelState::FreshnessChecked,
+        ) => 1,
+        (
+            ModelState::FreshnessChecked,
+            TestAction::Identity(BindingMode::Matching),
+            ModelState::IdentityChecked,
+        ) => 2,
+        (
+            ModelState::IdentityChecked,
+            TestAction::Evidence(BindingMode::Matching),
+            ModelState::EvidenceAppraised,
+        ) => 3,
+        (
+            ModelState::EvidenceAppraised,
+            TestAction::Session(BindingMode::Matching),
+            ModelState::SessionBound,
+        ) => 4,
+        (
+            ModelState::SessionBound,
+            TestAction::Revocation(BindingMode::Matching),
+            ModelState::RevocationChecked,
+        ) => 5,
+        (
+            ModelState::RevocationChecked,
+            TestAction::Policy(AllowedClass::Full, BindingMode::Matching),
+            ModelState::PolicySatisfied(AllowedClass::Full),
+        ) => 6,
+        (
+            ModelState::RevocationChecked,
+            TestAction::Policy(AllowedClass::Restricted, BindingMode::Matching),
+            ModelState::PolicySatisfied(AllowedClass::Restricted),
+        ) => 7,
+        (ModelState::PolicySatisfied(_), TestAction::Complete, ModelState::Verified(_)) => 8,
+        _ => panic!("unknown success edge: {before:?} {action:?} {next:?}"),
     }
 }
 
@@ -1797,12 +1990,12 @@ fn action_index(action: TestAction) -> usize {
 struct Coverage {
     full_completions: usize,
     restricted_completions: usize,
-    failure_edges: [[usize; 5]; 8],
-    denial_reasons: [usize; 7],
+    success_edges: [usize; 9],
+    eligible_failures: [[usize; 15]; 8],
+    ineligible_failures: [[usize; 15]; 8],
     matching_gates: [usize; 7],
     mismatched_gates: [usize; 7],
-    terminal_rejections: [[usize; 13]; 6],
-    unknown_gate: usize,
+    terminal_rejections: [[usize; 24]; 6],
 }
 
 impl Coverage {
@@ -1814,14 +2007,7 @@ impl Coverage {
         actual: &Result<ActionResult, TransitionError>,
     ) {
         let result_matches = match expected {
-            ExpectedAction::Allowed(next) => {
-                let expected_result = if matches!(next, ModelState::Verified(_)) {
-                    ActionResult::Verified
-                } else {
-                    ActionResult::NoResult
-                };
-                actual == &Ok(expected_result)
-            }
+            ExpectedAction::Allowed(next) => actual == &Ok(model_action_result(next)),
             ExpectedAction::InvalidTransition => {
                 actual
                     == &Err(TransitionError::InvalidTransition {
@@ -1857,24 +2043,14 @@ impl Coverage {
             }
             if let (Some(phase), Some(failure)) = (nonterminal_index(before), failure_index(action))
             {
-                self.failure_edges[phase][failure] += 1;
-            }
-            if let TestAction::Deny(reason) = action {
-                self.denial_reasons[denial_index(reason)] += 1;
+                self.eligible_failures[phase][failure] += 1;
+            } else if failure_index(action).is_none() {
+                self.success_edges[success_edge_index(before, action, next)] += 1;
             }
             if action.binding_mode() == Some(BindingMode::Matching)
                 && let Some(gate) = gate_index(action)
             {
                 self.matching_gates[gate] += 1;
-            }
-            if before == ModelState::EvidenceReceived
-                && action
-                    == TestAction::MarkUnsupported(
-                        UnsupportedRequirement::UnknownCriticalRequirement,
-                    )
-                && next == ModelState::Unsupported
-            {
-                self.unknown_gate += 1;
             }
         }
 
@@ -1890,14 +2066,33 @@ impl Coverage {
             && let Some(terminal) = terminal_index(before)
         {
             self.terminal_rejections[terminal][action_index(action)] += 1;
+        } else if expected == ExpectedAction::InvalidTransition
+            && let (Some(phase), Some(failure)) = (nonterminal_index(before), failure_index(action))
+        {
+            self.ineligible_failures[phase][failure] += 1;
         }
     }
 
     fn assert_non_vacuous(&self) {
-        assert!(self.full_completions >= 16);
-        assert!(self.restricted_completions >= 16);
-        assert!(self.failure_edges.iter().flatten().all(|count| *count > 0));
-        assert!(self.denial_reasons.iter().all(|count| *count > 0));
+        assert!(self.full_completions >= MIN_FULL_COMPLETIONS);
+        assert!(self.restricted_completions >= MIN_RESTRICTED_COMPLETIONS);
+        assert!(self.success_edges.iter().all(|count| *count > 0));
+        assert_eq!(
+            self.eligible_failures
+                .iter()
+                .flatten()
+                .filter(|count| **count > 0)
+                .count(),
+            41
+        );
+        assert_eq!(
+            self.ineligible_failures
+                .iter()
+                .flatten()
+                .filter(|count| **count > 0)
+                .count(),
+            79
+        );
         assert!(self.matching_gates.iter().all(|count| *count > 0));
         assert!(self.mismatched_gates.iter().all(|count| *count > 0));
         assert!(
@@ -1906,7 +2101,6 @@ impl Coverage {
                 .flatten()
                 .all(|count| *count > 0)
         );
-        assert!(self.unknown_gate > 0);
     }
 }
 
@@ -1920,11 +2114,7 @@ fn assert_action_matches_model(
 ) {
     match expected {
         ExpectedAction::Allowed(next) => {
-            let expected_result = if matches!(next, ModelState::Verified(_)) {
-                ActionResult::Verified
-            } else {
-                ActionResult::NoResult
-            };
+            let expected_result = model_action_result(next);
             assert_eq!(
                 actual,
                 &Ok(expected_result),
@@ -2270,11 +2460,11 @@ fn unknown_mandatory_gate_maps_to_unsupported() {
 }
 
 #[test]
-fn all_182_phase_action_pairs_match_the_independent_model() {
+fn all_336_phase_action_pairs_match_the_independent_model() {
     let mut succeeded = 0usize;
     let mut rejected = 0usize;
     for state in ALL_14_MODEL_STATES {
-        for action in ALL_13_MATRIX_ACTIONS {
+        for action in ALL_24_MATRIX_ACTIONS {
             assert_ne!(action.binding_mode(), Some(BindingMode::OtherFlow));
             let mut flow = flow_for_model_state(state, 53);
             assert_flow_matches_model(&flow, state);
@@ -2291,11 +2481,7 @@ fn all_182_phase_action_pairs_match_the_independent_model() {
             let actual = apply_action(&mut flow, &other_binding, action);
             match expected {
                 Some(next) => {
-                    let expected_result = if matches!(action, TestAction::Complete) {
-                        ActionResult::Verified
-                    } else {
-                        ActionResult::NoResult
-                    };
+                    let expected_result = model_action_result(next);
                     assert_eq!(
                         actual,
                         Ok(expected_result),
@@ -2318,8 +2504,11 @@ fn all_182_phase_action_pairs_match_the_independent_model() {
             }
         }
     }
-    assert_eq!(succeeded, 48);
-    assert_eq!(rejected, 134);
+    assert_eq!(ALL_14_MODEL_STATES.len(), 14);
+    assert_eq!(ALL_24_MATRIX_ACTIONS.len(), 24);
+    assert_eq!(succeeded, 50);
+    assert_eq!(rejected, 286);
+    assert_eq!(succeeded + rejected, 336);
 }
 
 #[test]
@@ -2495,13 +2684,14 @@ fn every_flow_capability_outcome_and_error_diagnostic_is_redacted() {
 }
 
 #[test]
-fn request_exists_only_while_flow_is_nonterminal() {
+fn request_and_claims_exist_only_in_active_states() {
     for state in ALL_14_MODEL_STATES {
         let flow = flow_for_model_state(state, 83);
-        assert_eq!(
-            flow_snapshot(&flow).request.is_some(),
-            model_is_nonterminal(state)
-        );
+        let snapshot = flow_snapshot(&flow);
+        assert_eq!(snapshot.has_request, model_is_nonterminal(state));
+        assert_eq!(snapshot.has_profile, model_has_profile(state));
+        assert_eq!(snapshot.has_session_key, model_has_session_key(state));
+        assert_eq!(snapshot.has_allowed_class, model_has_allowed_class(state));
     }
 }
 
@@ -3942,6 +4132,8 @@ fn one_million_actions_match_the_independent_verifier_model() {
     let mut flow = flow_fixture(101);
     let mut other_binding = flow_fixture(101).binding;
     let mut model = ModelState::EvidenceReceived;
+    let mut arbitrary_action_counts = [0usize; 24];
+    let mut arbitrary_terminal_resets = 0usize;
 
     let action_stream = schedule
         .iter()
@@ -3950,10 +4142,19 @@ fn one_million_actions_match_the_independent_verifier_model() {
         .chain(std::iter::repeat_n(None, ARBITRARY_ACTIONS));
     let mut executed = 0usize;
     for (index, scheduled) in action_stream.enumerate() {
+        let is_arbitrary = scheduled.is_none();
+        let should_reset_arbitrary = is_arbitrary && model_is_terminal(model);
         let (reset_before, action) = match scheduled {
             Some(step) => (step.reset_before, step.action),
             None => (model_is_terminal(model), rng.action()),
         };
+        if is_arbitrary {
+            assert_eq!(reset_before, should_reset_arbitrary);
+            arbitrary_action_counts[action_index(action)] += 1;
+            if reset_before {
+                arbitrary_terminal_resets += 1;
+            }
+        }
         if reset_before {
             let seed = seed_for_index(index);
             flow = flow_fixture(seed);
@@ -3973,7 +4174,15 @@ fn one_million_actions_match_the_independent_verifier_model() {
     }
 
     assert_eq!(executed, TOTAL_ACTIONS);
-    assert_eq!(TOTAL_ACTIONS - SCHEDULED_ACTIONS, ARBITRARY_ACTIONS);
+    assert_eq!(executed, 1_048_576);
+    assert_eq!(SCHEDULED_ACTIONS, 2_048);
+    assert_eq!(ARBITRARY_ACTIONS, 1_046_528);
+    assert_eq!(SCHEDULED_ACTIONS + ARBITRARY_ACTIONS, TOTAL_ACTIONS);
+    assert!(
+        arbitrary_action_counts.iter().all(|count| *count > 0),
+        "arbitrary action counts: {arbitrary_action_counts:?}"
+    );
+    assert!(arbitrary_terminal_resets > 0);
     coverage.assert_non_vacuous();
 }
 
