@@ -197,8 +197,12 @@ fn policy_ready_flow_with_context_tag(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ActionResult {
-    NoCapability,
+    NoResult,
     Verified,
+    FailureResult {
+        decision: Decision,
+        reason: ReasonCode,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -219,7 +223,7 @@ enum TestAction {
     Complete,
     MarkMalformed,
     MarkUnsupported(UnsupportedRequirement),
-    MarkRetryable,
+    MarkRetryable(RetryReason),
     Deny(DenialReason),
     MarkRevoked,
 }
@@ -237,7 +241,7 @@ impl TestAction {
             Self::Complete => VerificationAction::Complete,
             Self::MarkMalformed => VerificationAction::MarkMalformed,
             Self::MarkUnsupported(_) => VerificationAction::MarkUnsupported,
-            Self::MarkRetryable => VerificationAction::MarkRetryable,
+            Self::MarkRetryable(_) => VerificationAction::MarkRetryable,
             Self::Deny(_) => VerificationAction::Deny,
             Self::MarkRevoked => VerificationAction::MarkRevoked,
         }
@@ -255,7 +259,7 @@ impl TestAction {
             Self::Complete
             | Self::MarkMalformed
             | Self::MarkUnsupported(_)
-            | Self::MarkRetryable
+            | Self::MarkRetryable(_)
             | Self::Deny(_)
             | Self::MarkRevoked => None,
         }
@@ -273,7 +277,7 @@ impl TestAction {
             Self::Complete => Some(VerificationPhase::PolicySatisfied),
             Self::MarkMalformed
             | Self::MarkUnsupported(_)
-            | Self::MarkRetryable
+            | Self::MarkRetryable(_)
             | Self::Deny(_)
             | Self::MarkRevoked => None,
         }
@@ -370,7 +374,7 @@ const ALL_13_MATRIX_ACTIONS: [TestAction; 13] = [
     TestAction::Complete,
     TestAction::MarkMalformed,
     TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
-    TestAction::MarkRetryable,
+    TestAction::MarkRetryable(RetryReason::AttestationUnavailable),
     TestAction::Deny(DenialReason::PolicyDenied),
     TestAction::MarkRevoked,
 ];
@@ -501,7 +505,13 @@ fn model_transition(state: ModelState, action: TestAction) -> Option<ModelState>
         (state, TestAction::MarkUnsupported(_)) if model_is_nonterminal(state) => {
             Some(ModelState::Unsupported)
         }
-        (state, TestAction::MarkRetryable) if model_is_nonterminal(state) => {
+        (_, TestAction::MarkUnsupported(UnsupportedRequirement::Platform))
+        | (_, TestAction::MarkUnsupported(UnsupportedRequirement::UnknownCriticalRequirement))
+        | (_, TestAction::MarkRetryable(RetryReason::TransientFailure))
+        | (_, TestAction::Deny(DenialReason::ChallengeAuthenticationFailed)) => None,
+        (state, TestAction::MarkRetryable(RetryReason::AttestationUnavailable))
+            if model_is_nonterminal(state) =>
+        {
             Some(ModelState::Retryable)
         }
         (state, TestAction::Deny(reason)) if model_is_nonterminal(state) => {
@@ -798,6 +808,15 @@ fn selected_binding(
     }
 }
 
+fn failure_action_result(result: AppraisalResult) -> ActionResult {
+    let decision = result.decision();
+    let reason = match result.reason() {
+        Some(value) => value,
+        None => panic!("failure result omitted its reason"),
+    };
+    ActionResult::FailureResult { decision, reason }
+}
+
 fn apply_action(
     flow: &mut VerifierFlow,
     other_binding: &VerificationBinding,
@@ -807,17 +826,17 @@ fn apply_action(
         TestAction::Challenge(mode) => {
             let binding = selected_binding(flow, other_binding, mode);
             flow.record_challenge_authenticated(ChallengeAuthenticated { binding })?;
-            Ok(ActionResult::NoCapability)
+            Ok(ActionResult::NoResult)
         }
         TestAction::Freshness(mode) => {
             let binding = selected_binding(flow, other_binding, mode);
             flow.record_freshness_checked(crate::freshness::test_freshness_checked(binding))?;
-            Ok(ActionResult::NoCapability)
+            Ok(ActionResult::NoResult)
         }
         TestAction::Identity(mode) => {
             let binding = selected_binding(flow, other_binding, mode);
             flow.record_identity_checked(IdentityChecked { binding })?;
-            Ok(ActionResult::NoCapability)
+            Ok(ActionResult::NoResult)
         }
         TestAction::Evidence(mode) => {
             let binding = selected_binding(flow, other_binding, mode);
@@ -829,7 +848,7 @@ fn apply_action(
                 binding,
                 accepted_profile,
             })?;
-            Ok(ActionResult::NoCapability)
+            Ok(ActionResult::NoResult)
         }
         TestAction::Session(mode) => {
             let binding = selected_binding(flow, other_binding, mode);
@@ -841,17 +860,17 @@ fn apply_action(
                 binding,
                 session_public_key_id,
             })?;
-            Ok(ActionResult::NoCapability)
+            Ok(ActionResult::NoResult)
         }
         TestAction::Revocation(mode) => {
             let binding = selected_binding(flow, other_binding, mode);
             flow.record_revocation_checked(RevocationChecked { binding })?;
-            Ok(ActionResult::NoCapability)
+            Ok(ActionResult::NoResult)
         }
         TestAction::Policy(allowed, mode) => {
             let binding = selected_binding(flow, other_binding, mode);
             flow.record_policy_satisfied(PolicySatisfied { binding, allowed })?;
-            Ok(ActionResult::NoCapability)
+            Ok(ActionResult::NoResult)
         }
         TestAction::Complete => {
             let verified = flow.complete()?;
@@ -859,24 +878,24 @@ fn apply_action(
             Ok(ActionResult::Verified)
         }
         TestAction::MarkMalformed => {
-            flow.mark_malformed()?;
-            Ok(ActionResult::NoCapability)
+            let result = flow.mark_malformed()?;
+            Ok(failure_action_result(result))
         }
         TestAction::MarkUnsupported(requirement) => {
-            flow.mark_unsupported(requirement)?;
-            Ok(ActionResult::NoCapability)
+            let result = flow.mark_unsupported(requirement)?;
+            Ok(failure_action_result(result))
         }
-        TestAction::MarkRetryable => {
-            flow.mark_retryable()?;
-            Ok(ActionResult::NoCapability)
+        TestAction::MarkRetryable(retry_reason) => {
+            let result = flow.mark_retryable(retry_reason)?;
+            Ok(failure_action_result(result))
         }
         TestAction::Deny(reason) => {
-            flow.deny(reason)?;
-            Ok(ActionResult::NoCapability)
+            let result = flow.deny(reason)?;
+            Ok(failure_action_result(result))
         }
         TestAction::MarkRevoked => {
-            flow.mark_revoked()?;
-            Ok(ActionResult::NoCapability)
+            let result = flow.mark_revoked()?;
+            Ok(failure_action_result(result))
         }
     }
 }
@@ -888,26 +907,76 @@ fn advance_flow_to_model_state(
 ) -> VerifierFlow {
     match state {
         ModelState::Malformed => {
-            assert_eq!(flow.mark_malformed(), Ok(()));
+            match flow.mark_malformed() {
+                Ok(value) => drop(value),
+                Err(error) => panic!("malformed fixture rejected: {error:?}"),
+            }
             return flow;
         }
         ModelState::Unsupported => {
             assert_eq!(
-                flow.mark_unsupported(UnsupportedRequirement::VersionOrProfile),
-                Ok(())
+                apply_action(
+                    &mut flow,
+                    other_binding,
+                    TestAction::Challenge(BindingMode::Matching),
+                ),
+                Ok(ActionResult::NoResult)
             );
+            match flow.mark_unsupported(UnsupportedRequirement::VersionOrProfile) {
+                Ok(value) => drop(value),
+                Err(error) => panic!("unsupported fixture rejected: {error:?}"),
+            }
             return flow;
         }
         ModelState::Retryable => {
-            assert_eq!(flow.mark_retryable(), Ok(()));
+            match flow.mark_retryable(RetryReason::AttestationUnavailable) {
+                Ok(value) => drop(value),
+                Err(error) => panic!("retryable fixture rejected: {error:?}"),
+            }
             return flow;
         }
         ModelState::Denied(reason) => {
-            assert_eq!(flow.deny(reason), Ok(()));
+            let gate_count = match reason {
+                DenialReason::ChallengeAuthenticationFailed => 0,
+                DenialReason::NotYetValid
+                | DenialReason::Expired
+                | DenialReason::ReplayDetected
+                | DenialReason::ContextBindingMismatch => 1,
+                DenialReason::EvidenceInvalid => 3,
+                DenialReason::PolicyDenied => 6,
+                DenialReason::ProtectedSessionLost => 4,
+            };
+            for gate in ALL_7_GATE_KINDS.into_iter().take(gate_count) {
+                assert_eq!(
+                    apply_action(
+                        &mut flow,
+                        other_binding,
+                        gate.matching_action(AllowedClass::Full),
+                    ),
+                    Ok(ActionResult::NoResult)
+                );
+            }
+            match flow.deny(reason) {
+                Ok(value) => drop(value),
+                Err(error) => panic!("denied fixture rejected: {error:?}"),
+            }
             return flow;
         }
         ModelState::Revoked => {
-            assert_eq!(flow.mark_revoked(), Ok(()));
+            for gate in ALL_7_GATE_KINDS.into_iter().take(5) {
+                assert_eq!(
+                    apply_action(
+                        &mut flow,
+                        other_binding,
+                        gate.matching_action(AllowedClass::Full),
+                    ),
+                    Ok(ActionResult::NoResult)
+                );
+            }
+            match flow.mark_revoked() {
+                Ok(value) => drop(value),
+                Err(error) => panic!("revoked fixture rejected: {error:?}"),
+            }
             return flow;
         }
         ModelState::EvidenceReceived
@@ -942,7 +1011,7 @@ fn advance_flow_to_model_state(
         assert_eq!(action.public(), gate.action());
         assert_eq!(
             apply_action(&mut flow, other_binding, action),
-            Ok(ActionResult::NoCapability)
+            Ok(ActionResult::NoResult)
         );
     }
     if should_complete {
@@ -998,11 +1067,11 @@ fn equal_flows_at_gate(gate: GateKind, seed: u8) -> (VerifierFlow, VerifierFlow)
         let action = prefix_gate.matching_action(AllowedClass::Full);
         assert_eq!(
             apply_action(&mut source, &target.binding.clone(), action),
-            Ok(ActionResult::NoCapability)
+            Ok(ActionResult::NoResult)
         );
         assert_eq!(
             apply_action(&mut target, &source.binding.clone(), action),
-            Ok(ActionResult::NoCapability)
+            Ok(ActionResult::NoResult)
         );
     }
     assert_eq!(source.phase(), gate.required_phase());
@@ -1364,7 +1433,7 @@ fn arbitrary_action_from_index(index: usize, selector: u64) -> TestAction {
         7 => TestAction::Complete,
         8 => TestAction::MarkMalformed,
         9 => TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
-        10 => TestAction::MarkRetryable,
+        10 => TestAction::MarkRetryable(RetryReason::AttestationUnavailable),
         11 => TestAction::Deny(
             ALL_7_DENIAL_REASONS[(selector % ALL_7_DENIAL_REASONS.len() as u64) as usize],
         ),
@@ -1409,7 +1478,7 @@ fn canonical_completion(allowed: AllowedClass) -> [TestAction; 8] {
 const ALL_5_FAILURE_ACTIONS: [TestAction; 5] = [
     TestAction::MarkMalformed,
     TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
-    TestAction::MarkRetryable,
+    TestAction::MarkRetryable(RetryReason::AttestationUnavailable),
     TestAction::Deny(DenialReason::PolicyDenied),
     TestAction::MarkRevoked,
 ];
@@ -1418,7 +1487,7 @@ const ALL_6_TERMINAL_CONSTRUCTORS: [TestAction; 6] = [
     TestAction::Complete,
     TestAction::MarkMalformed,
     TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
-    TestAction::MarkRetryable,
+    TestAction::MarkRetryable(RetryReason::AttestationUnavailable),
     TestAction::Deny(DenialReason::PolicyDenied),
     TestAction::MarkRevoked,
 ];
@@ -1598,7 +1667,7 @@ fn failure_index(action: TestAction) -> Option<usize> {
     match action {
         TestAction::MarkMalformed => Some(0),
         TestAction::MarkUnsupported(_) => Some(1),
-        TestAction::MarkRetryable => Some(2),
+        TestAction::MarkRetryable(_) => Some(2),
         TestAction::Deny(_) => Some(3),
         TestAction::MarkRevoked => Some(4),
         TestAction::Challenge(_)
@@ -1636,7 +1705,7 @@ fn gate_index(action: TestAction) -> Option<usize> {
         TestAction::Complete
         | TestAction::MarkMalformed
         | TestAction::MarkUnsupported(_)
-        | TestAction::MarkRetryable
+        | TestAction::MarkRetryable(_)
         | TestAction::Deny(_)
         | TestAction::MarkRevoked => None,
     }
@@ -1654,7 +1723,7 @@ fn action_index(action: TestAction) -> usize {
         TestAction::Complete => 7,
         TestAction::MarkMalformed => 8,
         TestAction::MarkUnsupported(_) => 9,
-        TestAction::MarkRetryable => 10,
+        TestAction::MarkRetryable(_) => 10,
         TestAction::Deny(_) => 11,
         TestAction::MarkRevoked => 12,
     }
@@ -1685,7 +1754,7 @@ impl Coverage {
                 let expected_result = if matches!(next, ModelState::Verified(_)) {
                     ActionResult::Verified
                 } else {
-                    ActionResult::NoCapability
+                    ActionResult::NoResult
                 };
                 actual == &Ok(expected_result)
             }
@@ -1790,7 +1859,7 @@ fn assert_action_matches_model(
             let expected_result = if matches!(next, ModelState::Verified(_)) {
                 ActionResult::Verified
             } else {
-                ActionResult::NoCapability
+                ActionResult::NoResult
             };
             assert_eq!(
                 actual,
@@ -2007,43 +2076,51 @@ fn restricted_success_uses_the_same_complete_gate() {
 
 #[test]
 fn every_failure_class_is_terminal_and_releases_the_request() {
-    for (action, expected_phase, expected_decision, expected_reason) in [
+    for (state, action, expected_phase, expected_decision, expected_reason) in [
         (
+            ModelState::EvidenceReceived,
             TestAction::MarkMalformed,
             VerificationPhase::Malformed,
             Decision::Deny,
             ReasonCode::Malformed,
         ),
         (
+            ModelState::ChallengeAuthenticated,
             TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
             VerificationPhase::Unsupported,
             Decision::Unsupported,
             ReasonCode::UnsupportedVersionOrProfile,
         ),
         (
-            TestAction::MarkRetryable,
+            ModelState::EvidenceReceived,
+            TestAction::MarkRetryable(RetryReason::AttestationUnavailable),
             VerificationPhase::Retryable,
             Decision::Retry,
             ReasonCode::AttestationUnavailable,
         ),
         (
+            ModelState::RevocationChecked,
             TestAction::Deny(DenialReason::PolicyDenied),
             VerificationPhase::Denied,
             Decision::Deny,
             ReasonCode::PolicyDenied,
         ),
         (
+            ModelState::SessionBound,
             TestAction::MarkRevoked,
             VerificationPhase::Revoked,
             Decision::Deny,
             ReasonCode::Revoked,
         ),
     ] {
-        let mut flow = flow_fixture(31);
+        let mut flow = flow_for_model_state(state, 31);
         let other_binding = flow_fixture(31).binding;
         assert_eq!(
             apply_action(&mut flow, &other_binding, action),
-            Ok(ActionResult::NoCapability)
+            Ok(ActionResult::FailureResult {
+                decision: expected_decision,
+                reason: expected_reason,
+            })
         );
         assert_eq!(flow.phase(), expected_phase);
         assert_eq!(
@@ -2083,8 +2160,21 @@ fn every_denial_reason_has_its_only_valid_reporting_mapping() {
     .into_iter()
     .enumerate()
     {
-        let mut flow = flow_fixture(32 + index as u8);
-        assert_eq!(flow.deny(reason), Ok(()));
+        let action = TestAction::Deny(reason);
+        let state = match eligible_failure_edges()
+            .into_iter()
+            .find_map(|(state, candidate)| (candidate == action).then_some(state))
+        {
+            Some(value) => value,
+            None => panic!("denial reason has no eligible phase: {reason:?}"),
+        };
+        let mut flow = flow_for_model_state(state, 32 + index as u8);
+        let result = match flow.deny(reason) {
+            Ok(value) => value,
+            Err(error) => panic!("eligible denial rejected: {error:?}"),
+        };
+        assert_eq!(result.decision(), Decision::Deny);
+        assert_eq!(result.reason(), Some(expected));
         assert_eq!(
             flow.outcome().map(VerificationOutcome::decision),
             Some(Decision::Deny)
@@ -2099,14 +2189,19 @@ fn every_denial_reason_has_its_only_valid_reporting_mapping() {
 #[test]
 fn unknown_mandatory_gate_maps_to_unsupported() {
     let mut flow = flow_fixture(44);
+    let result = match flow.mark_unsupported(UnsupportedRequirement::UnknownCriticalRequirement) {
+        Ok(value) => value,
+        Err(error) => panic!("eligible unknown critical requirement rejected: {error:?}"),
+    };
+    assert_eq!(result.decision(), Decision::Unsupported);
     assert_eq!(
-        flow.mark_unsupported(UnsupportedRequirement::UnknownCriticalRequirement),
-        Ok(())
+        result.reason(),
+        Some(ReasonCode::UnsupportedCriticalRequirement)
     );
     assert_eq!(flow.phase(), VerificationPhase::Unsupported);
     assert_eq!(
         flow.outcome().map(VerificationOutcome::reason),
-        Some(Some(ReasonCode::UnsupportedVersionOrProfile))
+        Some(Some(ReasonCode::UnsupportedCriticalRequirement))
     );
 }
 
@@ -2135,7 +2230,7 @@ fn all_182_phase_action_pairs_match_the_independent_model() {
                     let expected_result = if matches!(action, TestAction::Complete) {
                         ActionResult::Verified
                     } else {
-                        ActionResult::NoCapability
+                        ActionResult::NoResult
                     };
                     assert_eq!(
                         actual,
@@ -2733,6 +2828,11 @@ fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(
             "pub struct VerifierFlow { binding: VerificationBinding, state: VerificationState, }",
         ),
         (
+            "struct",
+            "FailurePayload",
+            "struct FailurePayload { decision: FailureDecision, reason: ReasonCode, }",
+        ),
+        (
             "enum",
             "VerificationState",
             r#"
@@ -2853,6 +2953,33 @@ fn function_body_tokens<'a>(tokens: &'a [String], name: &str) -> Result<&'a [Str
     let end = matching_delimiter(function, body)
         .ok_or_else(|| format!("function {name} has an unbalanced isolated body"))?;
     Ok(&function[body + 1..end])
+}
+
+fn private_function_body_tokens<'a>(
+    tokens: &'a [String],
+    name: &str,
+) -> Result<&'a [String], String> {
+    let marker = ["fn", name];
+    let starts = tokens
+        .windows(marker.len())
+        .enumerate()
+        .filter_map(|(index, window)| (window == marker).then_some(index))
+        .collect::<Vec<_>>();
+    if starts.len() != 1 {
+        return Err(format!(
+            "expected one private function {name}, found {}",
+            starts.len()
+        ));
+    }
+    let body = tokens
+        .iter()
+        .enumerate()
+        .skip(starts[0] + marker.len())
+        .find_map(|(index, token)| (token == "{").then_some(index))
+        .ok_or_else(|| format!("private function {name} has no body"))?;
+    let end = matching_delimiter(tokens, body)
+        .ok_or_else(|| format!("private function {name} has an unbalanced body"))?;
+    Ok(&tokens[body + 1..end])
 }
 
 fn top_level_statements(tokens: &[String]) -> Result<Vec<&[String]>, String> {
@@ -2991,6 +3118,56 @@ fn validate_active_state_replacement(verification: &str) -> Result<(), String> {
                 "{method_name} top-level transition statements drifted; expected {expected:?}, found {actual:?}"
             ));
         }
+    }
+
+    let failure_body = private_function_body_tokens(&tokens, "emit_failure")?;
+    let actual = top_level_statements(failure_body)?;
+    let expected = [
+        rust_tokens("let action = failure.action();"),
+        rust_tokens(
+            "if !failure_is_eligible(self.phase(), failure) { return Err(self.invalid_transition(action)); }",
+        ),
+        rust_tokens(
+            r#"let (decision, reason, terminal) = match failure {
+                FailureKind::Malformed => (FailureDecision::Deny, ReasonCode::Malformed, VerificationState::Malformed { outcome: VerificationOutcome::malformed(), },),
+                FailureKind::Unsupported(requirement) => (FailureDecision::Unsupported, requirement.as_reason_code(), VerificationState::Unsupported { outcome: VerificationOutcome::unsupported(requirement), },),
+                FailureKind::Retry(retry_reason) => (FailureDecision::Retry, retry_reason.as_reason_code(), VerificationState::Retryable { outcome: VerificationOutcome::retryable(retry_reason), },),
+                FailureKind::Deny(denial_reason) => (FailureDecision::Deny, denial_reason.as_reason_code(), VerificationState::Denied { outcome: VerificationOutcome::denied(denial_reason), },),
+                FailureKind::Revoked => (FailureDecision::Deny, ReasonCode::Revoked, VerificationState::Revoked { outcome: VerificationOutcome::revoked(), },),
+            };"#,
+        ),
+        rust_tokens("let previous = std::mem::replace(&mut self.state, terminal);"),
+        rust_tokens(
+            r#"let request = match previous {
+                VerificationState::EvidenceReceived { request }
+                | VerificationState::ChallengeAuthenticated { request }
+                | VerificationState::FreshnessChecked { request }
+                | VerificationState::IdentityChecked { request }
+                | VerificationState::EvidenceAppraised { request, .. }
+                | VerificationState::SessionBound { request, .. }
+                | VerificationState::RevocationChecked { request, .. }
+                | VerificationState::PolicySatisfied { request, .. } => request,
+                VerificationState::Verified { .. }
+                | VerificationState::Malformed { .. }
+                | VerificationState::Unsupported { .. }
+                | VerificationState::Retryable { .. }
+                | VerificationState::Denied { .. }
+                | VerificationState::Revoked { .. } => { unreachable!("eligibility excluded terminal state before replacement") }
+            };"#,
+        ),
+        rust_tokens(
+            "Ok(AppraisalResult { context: request.expected, payload: AppraisalPayload::Failure(FailurePayload { decision, reason }), })",
+        ),
+    ];
+    if actual.len() != expected.len()
+        || actual
+            .iter()
+            .zip(&expected)
+            .any(|(actual, expected)| *actual != expected)
+    {
+        return Err(format!(
+            "emit_failure top-level statements drifted; expected {expected:?}, found {actual:?}"
+        ));
     }
     Ok(())
 }
@@ -3612,4 +3789,407 @@ fn one_million_actions_match_the_independent_verifier_model() {
     assert_eq!(executed, TOTAL_ACTIONS);
     assert_eq!(TOTAL_ACTIONS - SCHEDULED_ACTIONS, ARBITRARY_ACTIONS);
     coverage.assert_non_vacuous();
+}
+
+const ALL_8_ACTIVE_MODEL_STATES: [ModelState; 8] = [
+    ModelState::EvidenceReceived,
+    ModelState::ChallengeAuthenticated,
+    ModelState::FreshnessChecked,
+    ModelState::IdentityChecked,
+    ModelState::EvidenceAppraised,
+    ModelState::SessionBound,
+    ModelState::RevocationChecked,
+    ModelState::PolicySatisfied(AllowedClass::Full),
+];
+
+const ALL_15_FAILURE_ACTIONS: [TestAction; 15] = [
+    TestAction::MarkMalformed,
+    TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
+    TestAction::MarkUnsupported(UnsupportedRequirement::Platform),
+    TestAction::MarkUnsupported(UnsupportedRequirement::UnknownCriticalRequirement),
+    TestAction::MarkRetryable(RetryReason::AttestationUnavailable),
+    TestAction::MarkRetryable(RetryReason::TransientFailure),
+    TestAction::Deny(DenialReason::ChallengeAuthenticationFailed),
+    TestAction::Deny(DenialReason::NotYetValid),
+    TestAction::Deny(DenialReason::Expired),
+    TestAction::Deny(DenialReason::ReplayDetected),
+    TestAction::Deny(DenialReason::ContextBindingMismatch),
+    TestAction::Deny(DenialReason::EvidenceInvalid),
+    TestAction::Deny(DenialReason::PolicyDenied),
+    TestAction::Deny(DenialReason::ProtectedSessionLost),
+    TestAction::MarkRevoked,
+];
+
+fn eligible_failure_edges() -> Vec<(ModelState, TestAction)> {
+    use DenialReason::{
+        ChallengeAuthenticationFailed, ContextBindingMismatch, EvidenceInvalid, Expired,
+        NotYetValid, PolicyDenied, ProtectedSessionLost, ReplayDetected,
+    };
+    use ModelState::{
+        ChallengeAuthenticated, EvidenceAppraised, EvidenceReceived, FreshnessChecked,
+        IdentityChecked, RevocationChecked, SessionBound,
+    };
+    use RetryReason::{AttestationUnavailable, TransientFailure};
+    use TestAction::{Deny, MarkMalformed, MarkRetryable, MarkRevoked, MarkUnsupported};
+    use UnsupportedRequirement::{Platform, UnknownCriticalRequirement, VersionOrProfile};
+
+    let retry = [
+        MarkRetryable(AttestationUnavailable),
+        MarkRetryable(TransientFailure),
+    ];
+    let unknown = MarkUnsupported(UnknownCriticalRequirement);
+    let mut edges = vec![
+        (EvidenceReceived, MarkMalformed),
+        (EvidenceReceived, Deny(ChallengeAuthenticationFailed)),
+        (EvidenceReceived, retry[0]),
+        (EvidenceReceived, retry[1]),
+        (EvidenceReceived, unknown),
+        (ChallengeAuthenticated, MarkUnsupported(VersionOrProfile)),
+        (ChallengeAuthenticated, Deny(NotYetValid)),
+        (ChallengeAuthenticated, Deny(Expired)),
+        (ChallengeAuthenticated, Deny(ReplayDetected)),
+        (ChallengeAuthenticated, Deny(ContextBindingMismatch)),
+        (ChallengeAuthenticated, retry[0]),
+        (ChallengeAuthenticated, retry[1]),
+        (ChallengeAuthenticated, unknown),
+        (FreshnessChecked, Deny(ContextBindingMismatch)),
+        (FreshnessChecked, retry[0]),
+        (FreshnessChecked, retry[1]),
+        (FreshnessChecked, unknown),
+        (IdentityChecked, MarkUnsupported(Platform)),
+        (IdentityChecked, Deny(EvidenceInvalid)),
+        (IdentityChecked, retry[0]),
+        (IdentityChecked, retry[1]),
+        (IdentityChecked, unknown),
+        (EvidenceAppraised, Deny(ContextBindingMismatch)),
+        (EvidenceAppraised, Deny(ProtectedSessionLost)),
+        (EvidenceAppraised, retry[0]),
+        (EvidenceAppraised, retry[1]),
+        (EvidenceAppraised, unknown),
+        (SessionBound, MarkRevoked),
+        (SessionBound, Deny(ProtectedSessionLost)),
+        (SessionBound, retry[0]),
+        (SessionBound, retry[1]),
+        (SessionBound, unknown),
+        (RevocationChecked, Deny(PolicyDenied)),
+        (RevocationChecked, Deny(ProtectedSessionLost)),
+        (RevocationChecked, retry[0]),
+        (RevocationChecked, retry[1]),
+        (RevocationChecked, unknown),
+    ];
+    for action in [Deny(ProtectedSessionLost), retry[0], retry[1], unknown] {
+        edges.push((ModelState::PolicySatisfied(AllowedClass::Full), action));
+    }
+    edges
+}
+
+fn failure_mapping(action: TestAction) -> (VerificationPhase, Decision, ReasonCode) {
+    match action {
+        TestAction::MarkMalformed => (
+            VerificationPhase::Malformed,
+            Decision::Deny,
+            ReasonCode::Malformed,
+        ),
+        TestAction::MarkUnsupported(requirement) => (
+            VerificationPhase::Unsupported,
+            Decision::Unsupported,
+            match requirement {
+                UnsupportedRequirement::VersionOrProfile => ReasonCode::UnsupportedVersionOrProfile,
+                UnsupportedRequirement::Platform => ReasonCode::UnsupportedPlatform,
+                UnsupportedRequirement::UnknownCriticalRequirement => {
+                    ReasonCode::UnsupportedCriticalRequirement
+                }
+            },
+        ),
+        TestAction::MarkRetryable(reason) => (
+            VerificationPhase::Retryable,
+            Decision::Retry,
+            match reason {
+                RetryReason::AttestationUnavailable => ReasonCode::AttestationUnavailable,
+                RetryReason::TransientFailure => ReasonCode::TransientFailure,
+            },
+        ),
+        TestAction::Deny(reason) => (
+            VerificationPhase::Denied,
+            Decision::Deny,
+            model_denial_reason(reason),
+        ),
+        TestAction::MarkRevoked => (
+            VerificationPhase::Revoked,
+            Decision::Deny,
+            ReasonCode::Revoked,
+        ),
+        _ => panic!("non-failure action in failure mapping: {action:?}"),
+    }
+}
+
+fn flow_for_active_state_with_context(state: ModelState, seed: u8, tag: u8) -> VerifierFlow {
+    let flow = VerifierFlow::begin(request_fixture_with_context_tag(seed, tag));
+    let other_binding = flow_fixture(seed.wrapping_add(1)).binding;
+    advance_flow_to_model_state(flow, state, &other_binding)
+}
+
+fn emit_test_failure(
+    flow: &mut VerifierFlow,
+    action: TestAction,
+) -> Result<AppraisalResult, TransitionError> {
+    match action {
+        TestAction::MarkMalformed => flow.mark_malformed(),
+        TestAction::MarkUnsupported(requirement) => flow.mark_unsupported(requirement),
+        TestAction::MarkRetryable(reason) => flow.mark_retryable(reason),
+        TestAction::Deny(reason) => flow.deny(reason),
+        TestAction::MarkRevoked => flow.mark_revoked(),
+        _ => panic!("non-failure action passed to failure emitter: {action:?}"),
+    }
+}
+
+fn assert_exact_failure_result(
+    result: &AppraisalResult,
+    expected_context: &ExpectedContext,
+    expected_decision: Decision,
+    expected_reason: ReasonCode,
+) {
+    assert_eq!(result.context(), expected_context);
+    assert_eq!(result.decision(), expected_decision);
+    assert_eq!(result.reason(), Some(expected_reason));
+    assert!(matches!(
+        result.view(),
+        AppraisalResultView::Failure { decision, reason }
+            if decision == expected_decision && reason == expected_reason
+    ));
+}
+
+#[test]
+fn failure_after_session_binding_discards_all_accepted_claims() {
+    let state = ModelState::SessionBound;
+    let mut flow = flow_for_active_state_with_context(state, 41, 1);
+    let expected_context = request_fixture_with_context_tag(41, 1).expected;
+    let result = match flow.mark_revoked() {
+        Ok(value) => value,
+        Err(error) => panic!("eligible revocation rejected: {error:?}"),
+    };
+    assert_exact_failure_result(
+        &result,
+        &expected_context,
+        Decision::Deny,
+        ReasonCode::Revoked,
+    );
+    assert_eq!(flow.phase(), VerificationPhase::Revoked);
+    assert_eq!(flow_snapshot(&flow).accepted_profile, None);
+    assert_eq!(flow_snapshot(&flow).session_public_key_id, None);
+}
+
+#[test]
+fn policy_denial_before_revocation_check_is_rejected_unchanged() {
+    let mut flow = flow_for_model_state(ModelState::IdentityChecked, 42);
+    let before = flow_snapshot(&flow);
+    match flow.deny(DenialReason::PolicyDenied) {
+        Err(error) => assert_eq!(
+            error,
+            TransitionError::InvalidTransition {
+                phase: VerificationPhase::IdentityChecked,
+                action: VerificationAction::Deny,
+            }
+        ),
+        Ok(_) => panic!("policy denial succeeded before revocation checking"),
+    }
+    assert_eq!(flow_snapshot(&flow), before);
+}
+
+#[test]
+fn all_41_phase_eligible_failure_edges_emit_exact_results() {
+    let edges = eligible_failure_edges();
+    assert_eq!(edges.len(), 41);
+    for (index, (state, action)) in edges.into_iter().enumerate() {
+        let seed = 60 + index as u8;
+        let mut flow = flow_for_active_state_with_context(state, seed, 2);
+        let expected_context = request_fixture_with_context_tag(seed, 2).expected;
+        let (terminal, decision, reason) = failure_mapping(action);
+        let result = match emit_test_failure(&mut flow, action) {
+            Ok(value) => value,
+            Err(error) => panic!("eligible edge rejected: {state:?} {action:?}: {error:?}"),
+        };
+        assert_exact_failure_result(&result, &expected_context, decision, reason);
+        assert_eq!(flow.phase(), terminal);
+    }
+}
+
+#[test]
+fn all_phase_ineligible_failures_reject_without_mutation() {
+    let eligible = eligible_failure_edges();
+    let mut rejected = 0;
+    for state in ALL_8_ACTIVE_MODEL_STATES {
+        for action in ALL_15_FAILURE_ACTIONS {
+            if eligible.contains(&(state, action)) {
+                continue;
+            }
+            let mut flow = flow_for_model_state(state, 120);
+            let before = flow_snapshot(&flow);
+            match emit_test_failure(&mut flow, action) {
+                Err(error) => assert_eq!(
+                    error,
+                    TransitionError::InvalidTransition {
+                        phase: model_phase(state),
+                        action: action.public(),
+                    }
+                ),
+                Ok(_) => panic!("ineligible edge emitted a result: {state:?} {action:?}"),
+            }
+            assert_eq!(flow_snapshot(&flow), before);
+            rejected += 1;
+        }
+    }
+    assert_eq!(rejected, 79);
+}
+
+#[test]
+fn failure_terminals_store_no_claims_from_every_claim_bearing_phase() {
+    for (state, action) in [
+        (
+            ModelState::EvidenceAppraised,
+            TestAction::Deny(DenialReason::ProtectedSessionLost),
+        ),
+        (ModelState::SessionBound, TestAction::MarkRevoked),
+        (
+            ModelState::RevocationChecked,
+            TestAction::Deny(DenialReason::PolicyDenied),
+        ),
+        (
+            ModelState::PolicySatisfied(AllowedClass::Full),
+            TestAction::Deny(DenialReason::ProtectedSessionLost),
+        ),
+    ] {
+        let mut flow = flow_for_model_state(state, 43);
+        let result = emit_test_failure(&mut flow, action);
+        assert!(result.is_ok());
+        let snapshot = flow_snapshot(&flow);
+        assert!(snapshot.request.is_none());
+        assert!(snapshot.accepted_profile.is_none());
+        assert!(snapshot.session_public_key_id.is_none());
+        assert!(snapshot.allowed.is_none());
+        assert!(matches!(
+            &flow.state,
+            VerificationState::Denied { .. } | VerificationState::Revoked { .. }
+        ));
+    }
+}
+
+#[test]
+fn every_failure_terminal_rejects_repeat_emission() {
+    for (state, first) in [
+        (ModelState::EvidenceReceived, TestAction::MarkMalformed),
+        (
+            ModelState::ChallengeAuthenticated,
+            TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
+        ),
+        (
+            ModelState::EvidenceReceived,
+            TestAction::MarkRetryable(RetryReason::AttestationUnavailable),
+        ),
+        (
+            ModelState::EvidenceReceived,
+            TestAction::Deny(DenialReason::ChallengeAuthenticationFailed),
+        ),
+        (ModelState::SessionBound, TestAction::MarkRevoked),
+    ] {
+        let mut flow = flow_for_model_state(state, 44);
+        let first_result = match emit_test_failure(&mut flow, first) {
+            Ok(value) => value,
+            Err(error) => panic!("first failure emission rejected: {error:?}"),
+        };
+        drop(first_result);
+        let terminal = flow.phase();
+        for repeated in ALL_15_FAILURE_ACTIONS {
+            match emit_test_failure(&mut flow, repeated) {
+                Err(error) => assert_eq!(
+                    error,
+                    TransitionError::InvalidTransition {
+                        phase: terminal,
+                        action: repeated.public(),
+                    }
+                ),
+                Ok(_) => panic!("terminal emitted a repeated result: {terminal:?} {repeated:?}"),
+            }
+        }
+    }
+}
+
+#[test]
+fn every_failure_reason_has_its_only_valid_reporting_mapping() {
+    let eligible = eligible_failure_edges();
+    for action in ALL_15_FAILURE_ACTIONS {
+        let state = match eligible.iter().find(|(_, candidate)| *candidate == action) {
+            Some((state, _)) => *state,
+            None => panic!("failure action has no eligible phase: {action:?}"),
+        };
+        let mut flow = flow_for_model_state(state, 45);
+        let (_, decision, reason) = failure_mapping(action);
+        let result = match emit_test_failure(&mut flow, action) {
+            Ok(value) => value,
+            Err(error) => panic!("mapped failure rejected: {action:?}: {error:?}"),
+        };
+        assert_eq!(result.decision(), decision);
+        assert_eq!(result.reason(), Some(reason));
+    }
+}
+
+#[test]
+fn every_result_accessor_and_view_mapping_is_exact() {
+    for allowed in [AllowedClass::Full, AllowedClass::Restricted] {
+        let expected_profile = accepted_profile();
+        let expected_key = session_key_id(46);
+        let mut flow = policy_ready_flow_with_context_tag(
+            46,
+            3,
+            expected_profile.clone(),
+            expected_key,
+            allowed,
+        );
+        let expected_context = request_fixture_with_context_tag(46, 3).expected;
+        let verified = match flow.complete() {
+            Ok(value) => value,
+            Err(error) => panic!("allow completion rejected: {error:?}"),
+        };
+        let result = verified.into_appraisal_result();
+        assert_eq!(result.context(), &expected_context);
+        assert_eq!(
+            result.decision(),
+            match allowed {
+                AllowedClass::Full => Decision::Allow,
+                AllowedClass::Restricted => Decision::AllowRestricted,
+            }
+        );
+        assert_eq!(result.reason(), None);
+        match (allowed, result.view()) {
+            (AllowedClass::Full, AppraisalResultView::Allow(claims))
+            | (AllowedClass::Restricted, AppraisalResultView::AllowRestricted(claims)) => {
+                assert_eq!(claims.accepted_profile(), &expected_profile);
+                assert_eq!(claims.session_public_key_id(), &expected_key);
+            }
+            _ => panic!("allow result view did not match its selected class"),
+        }
+    }
+
+    let eligible = eligible_failure_edges();
+    for action in ALL_15_FAILURE_ACTIONS {
+        let state = match eligible.iter().find(|(_, candidate)| *candidate == action) {
+            Some((state, _)) => *state,
+            None => panic!("failure action has no eligible phase: {action:?}"),
+        };
+        let mut flow = flow_for_model_state(state, 47);
+        let (_, decision, reason) = failure_mapping(action);
+        let result = match emit_test_failure(&mut flow, action) {
+            Ok(value) => value,
+            Err(error) => panic!("failure result rejected: {action:?}: {error:?}"),
+        };
+        assert_eq!(result.decision(), decision);
+        assert_eq!(result.reason(), Some(reason));
+        assert!(matches!(
+            result.view(),
+            AppraisalResultView::Failure {
+                decision: actual_decision,
+                reason: actual_reason,
+            } if actual_decision == decision && actual_reason == reason
+        ));
+    }
 }

@@ -508,10 +508,6 @@ pub struct AppraisalResult {
     payload: AppraisalPayload,
 }
 
-#[expect(
-    dead_code,
-    reason = "Task 3 freezes the failure shape before Task 6 adds its private construction path"
-)]
 enum AppraisalPayload {
     Allow(AcceptedClaims),
     AllowRestricted(AcceptedClaims),
@@ -532,10 +528,6 @@ struct FailurePayload {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[expect(
-    dead_code,
-    reason = "Task 3 freezes failure shapes before Task 6 adds private construction paths"
-)]
 enum FailureDecision {
     Deny,
     Unsupported,
@@ -549,6 +541,87 @@ impl FailureDecision {
             Self::Unsupported => Decision::Unsupported,
             Self::Retry => Decision::Retry,
         }
+    }
+}
+
+/// Private normalized failure action used for eligibility and terminal mapping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum FailureKind {
+    /// Malformed evidence.
+    Malformed,
+    /// A typed unsupported requirement.
+    Unsupported(UnsupportedRequirement),
+    /// A typed retryable failure.
+    Retry(RetryReason),
+    /// A typed denial.
+    Deny(DenialReason),
+    /// Revocation discovered at the approved phase.
+    Revoked,
+}
+
+impl FailureKind {
+    const fn action(self) -> VerificationAction {
+        match self {
+            Self::Malformed => VerificationAction::MarkMalformed,
+            Self::Unsupported(_) => VerificationAction::MarkUnsupported,
+            Self::Retry(_) => VerificationAction::MarkRetryable,
+            Self::Deny(_) => VerificationAction::Deny,
+            Self::Revoked => VerificationAction::MarkRevoked,
+        }
+    }
+}
+
+fn is_active_phase(phase: VerificationPhase) -> bool {
+    matches!(
+        phase,
+        VerificationPhase::EvidenceReceived
+            | VerificationPhase::ChallengeAuthenticated
+            | VerificationPhase::FreshnessChecked
+            | VerificationPhase::IdentityChecked
+            | VerificationPhase::EvidenceAppraised
+            | VerificationPhase::SessionBound
+            | VerificationPhase::RevocationChecked
+            | VerificationPhase::PolicySatisfied
+    )
+}
+
+fn failure_is_eligible(phase: VerificationPhase, failure: FailureKind) -> bool {
+    match failure {
+        FailureKind::Malformed => phase == VerificationPhase::EvidenceReceived,
+        FailureKind::Unsupported(UnsupportedRequirement::VersionOrProfile) => {
+            phase == VerificationPhase::ChallengeAuthenticated
+        }
+        FailureKind::Unsupported(UnsupportedRequirement::Platform) => {
+            phase == VerificationPhase::IdentityChecked
+        }
+        FailureKind::Unsupported(UnsupportedRequirement::UnknownCriticalRequirement)
+        | FailureKind::Retry(_) => is_active_phase(phase),
+        FailureKind::Deny(DenialReason::ChallengeAuthenticationFailed) => {
+            phase == VerificationPhase::EvidenceReceived
+        }
+        FailureKind::Deny(
+            DenialReason::NotYetValid | DenialReason::Expired | DenialReason::ReplayDetected,
+        ) => phase == VerificationPhase::ChallengeAuthenticated,
+        FailureKind::Deny(DenialReason::ContextBindingMismatch) => matches!(
+            phase,
+            VerificationPhase::ChallengeAuthenticated
+                | VerificationPhase::FreshnessChecked
+                | VerificationPhase::EvidenceAppraised
+        ),
+        FailureKind::Deny(DenialReason::EvidenceInvalid) => {
+            phase == VerificationPhase::IdentityChecked
+        }
+        FailureKind::Deny(DenialReason::PolicyDenied) => {
+            phase == VerificationPhase::RevocationChecked
+        }
+        FailureKind::Deny(DenialReason::ProtectedSessionLost) => matches!(
+            phase,
+            VerificationPhase::EvidenceAppraised
+                | VerificationPhase::SessionBound
+                | VerificationPhase::RevocationChecked
+                | VerificationPhase::PolicySatisfied
+        ),
+        FailureKind::Revoked => phase == VerificationPhase::SessionBound,
     }
 }
 
@@ -1364,104 +1437,126 @@ impl VerifierFlow {
     ///
     /// # Errors
     ///
-    /// Returns a redacted invalid-transition error when the flow is already
-    /// terminal.
-    pub fn mark_malformed(&mut self) -> Result<(), TransitionError> {
-        self.enter_failure(
-            VerificationAction::MarkMalformed,
-            VerificationState::Malformed {
-                outcome: VerificationOutcome::malformed(),
-            },
-        )
+    /// Returns a redacted invalid-transition error when malformed input is not
+    /// eligible in the current phase.
+    pub fn mark_malformed(&mut self) -> Result<AppraisalResult, TransitionError> {
+        self.emit_failure(FailureKind::Malformed)
     }
 
     /// Terminates this attempt because a mandatory feature was unsupported.
     ///
     /// # Errors
     ///
-    /// Returns a redacted invalid-transition error when the flow is already
-    /// terminal.
+    /// Returns a redacted invalid-transition error when the requirement is not
+    /// eligible in the current phase.
     pub fn mark_unsupported(
         &mut self,
         requirement: UnsupportedRequirement,
-    ) -> Result<(), TransitionError> {
-        let _checked_requirement = requirement;
-        self.enter_failure(
-            VerificationAction::MarkUnsupported,
-            VerificationState::Unsupported {
-                outcome: VerificationOutcome::unsupported(UnsupportedRequirement::VersionOrProfile),
-            },
-        )
+    ) -> Result<AppraisalResult, TransitionError> {
+        self.emit_failure(FailureKind::Unsupported(requirement))
     }
 
     /// Terminates this attempt with a retryable unavailable result.
     ///
     /// # Errors
     ///
-    /// Returns a redacted invalid-transition error when the flow is already
-    /// terminal.
-    pub fn mark_retryable(&mut self) -> Result<(), TransitionError> {
-        self.enter_failure(
-            VerificationAction::MarkRetryable,
-            VerificationState::Retryable {
-                outcome: VerificationOutcome::retryable(RetryReason::AttestationUnavailable),
-            },
-        )
+    /// Returns a redacted invalid-transition error when the retry reason is not
+    /// eligible in the current phase.
+    pub fn mark_retryable(
+        &mut self,
+        reason: RetryReason,
+    ) -> Result<AppraisalResult, TransitionError> {
+        self.emit_failure(FailureKind::Retry(reason))
     }
 
     /// Terminates this attempt with one fixed typed denial reason.
     ///
     /// # Errors
     ///
-    /// Returns a redacted invalid-transition error when the flow is already
-    /// terminal.
-    pub fn deny(&mut self, reason: DenialReason) -> Result<(), TransitionError> {
-        self.enter_failure(
-            VerificationAction::Deny,
-            VerificationState::Denied {
-                outcome: VerificationOutcome::denied(reason),
-            },
-        )
+    /// Returns a redacted invalid-transition error when the denial reason is
+    /// not eligible in the current phase.
+    pub fn deny(&mut self, reason: DenialReason) -> Result<AppraisalResult, TransitionError> {
+        self.emit_failure(FailureKind::Deny(reason))
     }
 
     /// Terminates this attempt because a required input was revoked.
     ///
     /// # Errors
     ///
-    /// Returns a redacted invalid-transition error when the flow is already
-    /// terminal.
-    pub fn mark_revoked(&mut self) -> Result<(), TransitionError> {
-        self.enter_failure(
-            VerificationAction::MarkRevoked,
-            VerificationState::Revoked {
-                outcome: VerificationOutcome::revoked(),
-            },
-        )
+    /// Returns a redacted invalid-transition error when revocation is not
+    /// eligible in the current phase.
+    pub fn mark_revoked(&mut self) -> Result<AppraisalResult, TransitionError> {
+        self.emit_failure(FailureKind::Revoked)
     }
 
-    fn is_terminal(&self) -> bool {
-        matches!(
-            &self.state,
-            VerificationState::Verified { .. }
-                | VerificationState::Malformed { .. }
-                | VerificationState::Unsupported { .. }
-                | VerificationState::Retryable { .. }
-                | VerificationState::Denied { .. }
-                | VerificationState::Revoked { .. }
-        )
-    }
-
-    fn enter_failure(
-        &mut self,
-        action: VerificationAction,
-        next: VerificationState,
-    ) -> Result<(), TransitionError> {
-        if self.is_terminal() {
+    fn emit_failure(&mut self, failure: FailureKind) -> Result<AppraisalResult, TransitionError> {
+        let action = failure.action();
+        if !failure_is_eligible(self.phase(), failure) {
             return Err(self.invalid_transition(action));
         }
-        let previous = std::mem::replace(&mut self.state, next);
-        drop(previous);
-        Ok(())
+
+        let (decision, reason, terminal) = match failure {
+            FailureKind::Malformed => (
+                FailureDecision::Deny,
+                ReasonCode::Malformed,
+                VerificationState::Malformed {
+                    outcome: VerificationOutcome::malformed(),
+                },
+            ),
+            FailureKind::Unsupported(requirement) => (
+                FailureDecision::Unsupported,
+                requirement.as_reason_code(),
+                VerificationState::Unsupported {
+                    outcome: VerificationOutcome::unsupported(requirement),
+                },
+            ),
+            FailureKind::Retry(retry_reason) => (
+                FailureDecision::Retry,
+                retry_reason.as_reason_code(),
+                VerificationState::Retryable {
+                    outcome: VerificationOutcome::retryable(retry_reason),
+                },
+            ),
+            FailureKind::Deny(denial_reason) => (
+                FailureDecision::Deny,
+                denial_reason.as_reason_code(),
+                VerificationState::Denied {
+                    outcome: VerificationOutcome::denied(denial_reason),
+                },
+            ),
+            FailureKind::Revoked => (
+                FailureDecision::Deny,
+                ReasonCode::Revoked,
+                VerificationState::Revoked {
+                    outcome: VerificationOutcome::revoked(),
+                },
+            ),
+        };
+
+        let previous = std::mem::replace(&mut self.state, terminal);
+        let request = match previous {
+            VerificationState::EvidenceReceived { request }
+            | VerificationState::ChallengeAuthenticated { request }
+            | VerificationState::FreshnessChecked { request }
+            | VerificationState::IdentityChecked { request }
+            | VerificationState::EvidenceAppraised { request, .. }
+            | VerificationState::SessionBound { request, .. }
+            | VerificationState::RevocationChecked { request, .. }
+            | VerificationState::PolicySatisfied { request, .. } => request,
+            VerificationState::Verified { .. }
+            | VerificationState::Malformed { .. }
+            | VerificationState::Unsupported { .. }
+            | VerificationState::Retryable { .. }
+            | VerificationState::Denied { .. }
+            | VerificationState::Revoked { .. } => {
+                unreachable!("eligibility excluded terminal state before replacement")
+            }
+        };
+
+        Ok(AppraisalResult {
+            context: request.expected,
+            payload: AppraisalPayload::Failure(FailurePayload { decision, reason }),
+        })
     }
 
     fn invalid_transition(&self, action: VerificationAction) -> TransitionError {
