@@ -84,6 +84,11 @@ the only allow path. Eligible failure actions use the same terminal-first whole-
 state replacement and return one unsuccessful Appraisal Result. Every terminal
 remains permanent and issues at most once.
 
+The flow owns its attempt binding only while active. Success moves the sole
+binding into `VerifiedAttestation` until consuming conversion; failure releases
+it before returning. A terminal flow retains no binding, replay registration, or
+attempt allocation.
+
 The exact policy in `ExpectedContext` binds both allow classes. Restricted means
 that policy selected restricted gameplay, not a replacement policy or fallback.
 
@@ -147,6 +152,11 @@ has no intrinsic expiry and does not enforce deletion or secure erasure. Future
 protected-result transport/storage work must define confidentiality and finite
 retention.
 
+Registered scenario owner `initial-maintainer` is the accountable privacy-review
+gate before expanding any result context/claim field, diagnostic surface,
+serializer/wire adapter, persistence/storage/backup path, or logging/telemetry
+path.
+
 ## Dependency and license impact
 
 The decision uses existing workspace types and standard Rust ownership/privacy.
@@ -179,6 +189,10 @@ entry points, fixed redaction, and the distinction between flow association and
 payload provenance. These source-token proofs intentionally enforce a closed
 current inventory and do not claim Rust-parser completeness, macro-expansion
 semantics, cryptographic authenticity, or secure erasure.
+
+Test-only weak references prove the real attempt allocation is released before
+failure return while the terminal flow remains alive, and on success is owned
+only by `VerifiedAttestation` until conversion.
 
 The implementation plan freezes exactly 154 one-cause mutations for authority,
 eligibility, mapping, claim transfer/discard, terminal, one-use, and redaction

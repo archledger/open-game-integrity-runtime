@@ -87,6 +87,12 @@ request, flow, all gates, binding, errors, outcomes, completed capability,
 redaction markers are exact, and semantic values, allocation details, paths,
 control text, and decimal private values are forbidden.
 
+Test-only `Weak<AttemptRecord>` probes verify physical ownership: failures
+release the attempt allocation before returning while the terminal flow remains
+alive; success leaves it owned only by `VerifiedAttestation` and releases it on
+conversion. Physical mutations remove the failure release and restore a success
+clone to prove both tests fail for retained strong ownership.
+
 ### Property tests
 
 Examples:

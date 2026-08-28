@@ -174,12 +174,18 @@ the raw request after a terminal.
 Required response: Use fixed aggregate redaction for requests, flows,
 capabilities, errors, outcomes, bindings, `EvidenceBundle`, `AppraisalResult`,
 `AppraisalResultView`, and `AcceptedClaims`; terminal-first replacement releases
-request ownership and discards staged accepted claims on failure; expose no
-allocation address/count. Retained context and allowed key handles remain
+request ownership and discards staged accepted claims on failure; success moves
+the sole attempt binding into `VerifiedAttestation`, while failure releases it
+before return, so terminal flows retain no binding, replay registration, or
+attempt allocation; expose no allocation address/count. Retained context and allowed key handles remain
 correlation-sensitive. The unsigned value has no intrinsic expiry or deletion
 enforcement, so future transport/storage requires finite retention,
 confidentiality, deletion, and backup policy. None of these ownership rules
 claims secure memory erasure.
+
+Registered scenario owner `initial-maintainer` is the required privacy-review
+gate before any result context/claim field, diagnostic surface, serializer/wire
+adapter, persistence/storage/backup path, or logging/telemetry path expands.
 
 ### Cuckoo or relay
 

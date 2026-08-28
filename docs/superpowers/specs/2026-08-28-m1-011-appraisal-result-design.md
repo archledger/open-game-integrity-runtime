@@ -341,7 +341,9 @@ Fieldless decision, reason, phase, and action names remain safe.
 An active state owns the request only until terminal replacement. On success,
 exact context and allowed claims move into `VerifiedAttestation`; on failure,
 only exact context moves into the returned Appraisal Result. Staged accepted
-claims are discarded at every failure.
+claims are discarded at every failure. Success also moves the flow's sole
+attempt binding into `VerifiedAttestation`; failure releases it before return.
+Terminal flows retain no binding, replay registration, or attempt allocation.
 
 An Appraisal Result retains correlation and, for allows, profile and key handle.
 It has no intrinsic expiry and cannot enforce deletion or secure erasure. Future
@@ -352,6 +354,11 @@ Default diagnostics exclude identifier values, timestamps, policy duration,
 profile sentinels, key bytes, evidence, binding identity, allocation details,
 paths, control text, and CI commands. Explicit accessors are trusted functional
 interfaces, not logging surfaces.
+
+Registered scenario owner `initial-maintainer` is the accountable privacy-review
+gate before expanding any result context/claim field, diagnostic surface,
+serializer/wire adapter, persistence/storage/backup path, or logging/telemetry
+path.
 
 ## Verification design
 

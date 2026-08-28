@@ -45,6 +45,9 @@ This issue enforces the pure-model portions of invariants 1-6, 20-21,
 - Every unsuccessful outcome carries exactly one phase-eligible coarse reason.
 - An Appraisal Result remains unsigned and grants no permit, proof, admission,
   protected Attestation Result, or disciplinary authority.
+- Terminal flows retain no attempt binding, replay registration, or attempt
+  allocation; success transfers sole binding ownership into the completed
+  capability and failure releases it before return.
 
 ## Threats addressed
 
@@ -236,9 +239,15 @@ formatting is fixed and redacted. Explicit accessors are trusted functional
 interfaces rather than approved logging sinks.
 
 Unsuccessful outcomes discard staged accepted claims even after appraisal or
-session binding. The type has no intrinsic expiry and cannot enforce deletion
-or secure memory erasure. Future protected-result transport/storage work must
-define bounded retention and confidentiality.
+session binding, and terminal flows retain no attempt binding, replay
+registration, or attempt allocation. The type has no intrinsic expiry and
+cannot enforce deletion or secure memory erasure. Future protected-result
+transport/storage work must define bounded retention and confidentiality.
+
+Registered scenario owner `initial-maintainer` must approve a privacy review
+before expanding any result context/claim field, diagnostic surface,
+serializer/wire adapter, persistence/storage/backup path, or logging/telemetry
+path.
 
 Reason codes contain no free text, raw evidence, platform detail, player
 identity, or accusation. Attestation failure remains non-disciplinary.
@@ -261,6 +270,8 @@ boundaries remain unchanged.
 - Full and restricted outcomes remain bound to the exact selected policy.
 - Every terminal issues at most one result and remains immutable through one
   whole-state fail-closed replacement.
+- Every terminal flow retains no binding, replay registration, or attempt
+  allocation, proven through real allocation-lifetime tests.
 - Public reports and views grant no result, permit, proof, or admission.
 - Default diagnostics expose no private context, timing, claim, binding, or
   key-handle value.

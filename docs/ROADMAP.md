@@ -157,6 +157,12 @@ accepted claims. `Decision`, `ReasonCode`, `VerificationOutcome`, and borrowed
 result views remain report-only. Both full and restricted classes require all
 seven gates and use the exact selected policy.
 
+Every terminal flow retains no attempt binding, replay registration, or attempt
+allocation. Success moves the sole binding into `VerifiedAttestation` until
+conversion; failure releases it before return. Registered owner
+`initial-maintainer` gates privacy review before any result field, diagnostic,
+wire/serializer, storage/backup, logging, or telemetry expansion.
+
 The unsigned semantic value is distinct from a future protected
 `AttestationResult` and grants no permit, proof, admission, or discipline.
 M1-012 defines semantic binding-transcript inputs without choosing cryptography.
@@ -193,6 +199,7 @@ retention, and admission remain with their later roadmap issues.
 - `VerifiedAttestation` cannot be constructed without a completed verifier path;
 - only consuming `VerifiedAttestation` creates an allowed `AppraisalResult`;
 - failures return phase-eligible typed results and discard accepted claims;
+- terminal flows release the attempt binding, replay registration, and attempt allocation;
 - reason codes remain non-disciplinary;
 - debug output redacts nonce/evidence identifiers where needed.
 

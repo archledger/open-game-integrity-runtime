@@ -383,7 +383,16 @@ durable. Allocation identity proves association with one flow, not
 cryptographic provenance or truth of copyable claim payloads; trusted gate
 producers remain verifier-TCB code. Publicly reachable failure results establish
 a valid shape, not provenance sufficient for future signing. Active request
-ownership ends at every terminal without claiming secure memory erasure.
+ownership ends at every terminal. A successful transition moves the flow's sole
+attempt binding into `VerifiedAttestation` until conversion; a failure releases
+it before returning. The terminal flow retains no binding, replay registration,
+or attempt allocation. These ownership bounds do not claim secure memory
+erasure or allocator zeroization.
+
+The registered `initial-maintainer` scenario owner is the privacy-review gate
+before expanding any result context or claim field, diagnostic surface,
+serializer or wire adapter, persistence, storage or backup path, or logging or
+telemetry path.
 
 M1-012 owns the semantic binding-transcript inputs. Later M2 protocol work owns
 commitment representation and algorithm identifiers, signature or other

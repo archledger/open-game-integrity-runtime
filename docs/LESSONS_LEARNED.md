@@ -606,3 +606,27 @@ Do not use this document to expose embargoed vulnerability details before coordi
 - **Documentation or agent-policy updates:** ADR-0009 and the M1-011 Task 8
   report record the closed inventory, layered regressions, and explicit proof
   limits.
+
+## 2026-08-28 — Terminal state shape does not prove allocation release
+
+- **Context:** M1-011 Task 10 independent privacy review.
+- **Mistaken assumption:** Replacing the request-bearing active state with a
+  claim-free terminal was sufficient to prove all attempt-private data was
+  released.
+- **Observed failure:** `VerifierFlow.binding` lived outside the state enum, so
+  failures retained its `AttemptRecord` and `ReplayRegistration`; success cloned
+  the binding and left a second owner in the terminal flow.
+- **Security or quality impact:** Privacy evidence claimed terminal retention
+  bounds that the real allocation lifetime contradicted.
+- **Permanent regression test:** Test-only `Weak<AttemptRecord>` probes keep the
+  terminal flow alive and prove failure release before return plus sole success
+  ownership by `VerifiedAttestation`; one-cause physical mutations remove the
+  release and restore the clone.
+- **New prevention rule:** Retention reviews must test allocation lifetime, not
+  infer it from state shape. Registered owner `initial-maintainer` must gate
+  privacy review before result fields, diagnostics, wire adapters, storage or
+  backups, logging, or telemetry expand.
+- **Documentation or agent-policy updates:** Invariant 38, architecture,
+  threat/privacy models, roadmap, issue, ADR-0009, test strategy, and scenario
+  `OGIR-PRIVACY-VERIFIER-DIAGNOSTICS-001` now state the ownership bound and gate
+  without claiming secure erasure.

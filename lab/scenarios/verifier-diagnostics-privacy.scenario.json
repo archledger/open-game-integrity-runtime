@@ -9,7 +9,8 @@
   "steps": [
     "format the request flow capabilities errors outcomes binding VerifiedAttestation AppraisalResult AppraisalResultView and AcceptedClaims",
     "format EvidenceBundle and profile or key-handle-bearing result views directly",
-    "emit a failure after profile or session-key acceptance and check that staged accepted claims were discarded",
+    "emit a failure after profile or session-key acceptance and check that staged accepted claims and the attempt binding allocation were released while the terminal flow remains alive",
+    "complete an allowed flow and check that only VerifiedAttestation owns the attempt binding until consuming conversion",
     "search output for identifiers nonce time evidence profile key handle payload pointer values paths or control text"
   ],
   "expected": {
@@ -20,7 +21,8 @@
   "invariants": [
     "default AppraisalResult AppraisalResultView AcceptedClaims and verifier aggregate diagnostics use fixed redaction markers or approved safe enums",
     "failure terminal replacement discards staged profile and key-handle claims while retaining only exact result context",
-    "terminal entry releases owned raw request data without claiming secure erasure or allocator zeroization"
+    "terminal entry releases owned raw request data and leaves the terminal flow with no binding replay registration or attempt allocation without claiming secure erasure or allocator zeroization",
+    "owner initial-maintainer gates privacy review before result fields diagnostics wire adapters storage backups logging or telemetry expand"
   ],
   "residual_risk": ["explicit trusted value accessors and future protected-result storage telemetry retention confidentiality and deletion require separate privacy review"]
 }
