@@ -153,3 +153,53 @@ or toolchain version changes.
 - GitHub code-scanning alerts #43 and #44:
   https://github.com/archledger/open-game-integrity-runtime/security/code-scanning/43
   https://github.com/archledger/open-game-integrity-runtime/security/code-scanning/44
+
+## Implementation evidence
+
+- Verified base: `25030e1af6a437472e27c5e842f4251222d4c6fe`.
+- Verified implementation head before this evidence-only update:
+  `19eaefb082de3bf627a5525b5aa3bb633ac61156`.
+- The base-to-implementation-head diff contains 13 approved planning, test, and
+  documentation paths: the eight test locations named by the plan,
+  `docs/TEST_STRATEGY.md`, `docs/LESSONS_LEARNED.md`, this issue, the approved
+  design, and the implementation plan. It contains 956 insertions and 31
+  deletions. The production/configuration path guard passed; the only model
+  source diff is inside its existing `#[cfg(test)]` module, the agent and
+  verifier `src/` diffs are dedicated test modules, and `.github/**`,
+  `Cargo.toml`, and `Cargo.lock` are unchanged.
+- Scanner RED remains reproducible without mutation: alerts #43/#44 are open
+  `rust/cleartext-logging` results at `freshness.rs:828` and `freshness.rs:833`,
+  both with `dismissed_at: null`. The Rust 1.98.0 characterization recorded in
+  Task 1 proved that the old custom and equality assertion forms print private
+  operands while the selected fixed-message boolean assertion does not.
+- `cargo fmt --all -- --check` passed. The four targeted all-feature crate
+  suites passed with no warnings: model 54 runtime tests plus 20 doctests,
+  protocol 4 runtime tests, agent 17 runtime tests plus 20 doctests, and
+  verifier 48 runtime tests plus 40 doctests.
+- `./scripts/check.sh` passed with 123 runtime/integration tests, 80 doctests,
+  14 attack scenarios, and 8 ADRs. Repository metadata, GitHub bootstrap, DCO
+  fixtures, formatting, Clippy, rustdoc, and cargo-deny also passed.
+  `cargo test --workspace --all-features --release` passed with the same 123
+  runtime/integration tests and 80 doctests. `git diff --check` passed.
+- Focused word-diff review confirmed 19 new fixed mismatch messages, three new
+  fixed forbidden-value messages, and one new fixed missing-marker message;
+  the edited predicates, expected strings, forbidden sets, fixtures, loops,
+  and unrelated functional/state-machine assertions remain unchanged.
+- The focused variant acceptance criterion is not yet satisfied.
+  `diagnostics_for_every_surface`, called before the changed forbidden-value
+  loop in `every_flow_capability_outcome_and_error_diagnostic_is_redacted`,
+  still uses privacy-bearing `assert_eq!` comparisons for binding, capability,
+  request, expected-context, evidence, and private-flow diagnostics. A
+  redaction regression can therefore print an actual private diagnostic before
+  the fixed-message containment checks execute. These same-root-cause variants
+  are at `crates/ogir-verifier/src/verification/tests.rs:733-839` and require a
+  separately authorized correction before this work can pass final privacy
+  review.
+- Before this section was appended, the local issue body was byte-equal to live
+  issue #18. This local evidence update is intentionally not synchronized;
+  GitHub issue state, labels, milestone, body, and alerts remain unchanged.
+- Limitations and pending gates: the normal and release suites exercise passing
+  behavior, not assertion-failure confidentiality. No independent reviewer was
+  dispatched under the Task 5 controller ruling. Controller review, correction
+  and re-verification of the unresolved variants, exact DCO certification and
+  rewrite, publication, and post-publication CodeQL GREEN all remain pending.
