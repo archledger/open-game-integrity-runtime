@@ -2750,6 +2750,60 @@ fn function_tokens<'a>(tokens: &'a [String], name: &str) -> Result<&'a [String],
     Ok(&tokens[start..=end])
 }
 
+fn function_body_tokens<'a>(tokens: &'a [String], name: &str) -> Result<&'a [String], String> {
+    let function = function_tokens(tokens, name)?;
+    let body = function
+        .iter()
+        .position(|token| token == "{")
+        .ok_or_else(|| format!("function {name} has no isolated body"))?;
+    let end = matching_delimiter(function, body)
+        .ok_or_else(|| format!("function {name} has an unbalanced isolated body"))?;
+    Ok(&function[body + 1..end])
+}
+
+fn top_level_statements(tokens: &[String]) -> Result<Vec<&[String]>, String> {
+    let mut statements = Vec::new();
+    let mut delimiters = Vec::new();
+    let mut start = 0;
+
+    for (index, token) in tokens.iter().enumerate() {
+        match token.as_str() {
+            "(" => delimiters.push(")"),
+            "[" => delimiters.push("]"),
+            "{" => delimiters.push("}"),
+            ")" | "]" | "}" if delimiters.pop() != Some(token.as_str()) => {
+                return Err(format!(
+                    "mismatched delimiter {token} at body token {index}"
+                ));
+            }
+            _ => {}
+        }
+
+        let ends_block_statement = delimiters.is_empty()
+            && token == "}"
+            && matches!(
+                tokens.get(start).map(String::as_str),
+                Some("if" | "match" | "while" | "for" | "loop" | "{" | "unsafe")
+            )
+            && !matches!(
+                tokens.get(index + 1).map(String::as_str),
+                Some(";" | "else")
+            );
+        if (delimiters.is_empty() && token == ";") || ends_block_statement {
+            statements.push(&tokens[start..=index]);
+            start = index + 1;
+        }
+    }
+
+    if !delimiters.is_empty() {
+        return Err("unclosed delimiter in function body".to_owned());
+    }
+    if start < tokens.len() {
+        statements.push(&tokens[start..]);
+    }
+    Ok(statements)
+}
+
 fn validate_active_state_replacement(verification: &str) -> Result<(), String> {
     let tokens = rust_tokens(verification);
     for forbidden in [
@@ -2764,86 +2818,84 @@ fn validate_active_state_replacement(verification: &str) -> Result<(), String> {
         }
     }
 
-    let replacement = [
-        "std",
-        ":",
-        ":",
-        "mem",
-        ":",
-        ":",
-        "replace",
-        "(",
-        "&",
-        "mut",
-        "self",
-        ".",
-        "state",
-        ",",
-        "VerificationState",
-        ":",
-        ":",
-        "Retryable",
-        "{",
-        "outcome",
-        ":",
-        "VerificationOutcome",
-        ":",
-        ":",
-        "retryable",
-        "(",
-        "RetryReason",
-        ":",
-        ":",
-        "TransientFailure",
-        ")",
-        ",",
-        "}",
-        ",",
-        ")",
-    ];
-    for method_name in [
-        "record_challenge_authenticated",
-        "record_freshness_checked",
-        "record_identity_checked",
-        "record_evidence_appraised",
-        "record_session_bound",
-        "record_revocation_checked",
-        "record_policy_satisfied",
+    let replacement = r#"
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+    "#;
+    for (method_name, phase, binding, extraction, assignment) in [
+        (
+            "record_challenge_authenticated",
+            "if !matches!(&self.state, VerificationState::EvidenceReceived { .. }) { return Err(self.invalid_transition(VerificationAction::RecordChallengeAuthenticated)); }",
+            "self.ensure_binding(VerificationAction::RecordChallengeAuthenticated, &capability.binding,)?;",
+            "let VerificationState::EvidenceReceived { request } = previous else { unreachable!(\"phase was checked before active-state replacement\") };",
+            "self.state = VerificationState::ChallengeAuthenticated { request };",
+        ),
+        (
+            "record_freshness_checked",
+            "if !matches!(&self.state, VerificationState::ChallengeAuthenticated { .. }) { return Err(self.invalid_transition(VerificationAction::RecordFreshnessChecked)); }",
+            "self.ensure_binding(VerificationAction::RecordFreshnessChecked, capability.binding(),)?;",
+            "let VerificationState::ChallengeAuthenticated { request } = previous else { unreachable!(\"phase was checked before active-state replacement\") };",
+            "self.state = VerificationState::FreshnessChecked { request };",
+        ),
+        (
+            "record_identity_checked",
+            "if !matches!(&self.state, VerificationState::FreshnessChecked { .. }) { return Err(self.invalid_transition(VerificationAction::RecordIdentityChecked)); }",
+            "self.ensure_binding(VerificationAction::RecordIdentityChecked, &capability.binding,)?;",
+            "let VerificationState::FreshnessChecked { request } = previous else { unreachable!(\"phase was checked before active-state replacement\") };",
+            "self.state = VerificationState::IdentityChecked { request };",
+        ),
+        (
+            "record_evidence_appraised",
+            "if !matches!(&self.state, VerificationState::IdentityChecked { .. }) { return Err(self.invalid_transition(VerificationAction::RecordEvidenceAppraised)); }",
+            "self.ensure_binding(VerificationAction::RecordEvidenceAppraised, &capability.binding,)?;",
+            "let VerificationState::IdentityChecked { request } = previous else { unreachable!(\"phase was checked before active-state replacement\") };",
+            "self.state = VerificationState::EvidenceAppraised { request, accepted_profile: capability.accepted_profile, };",
+        ),
+        (
+            "record_session_bound",
+            "if !matches!(&self.state, VerificationState::EvidenceAppraised { .. }) { return Err(self.invalid_transition(VerificationAction::RecordSessionBound)); }",
+            "self.ensure_binding(VerificationAction::RecordSessionBound, &capability.binding)?;",
+            "let VerificationState::EvidenceAppraised { request, accepted_profile, } = previous else { unreachable!(\"phase was checked before active-state replacement\") };",
+            "self.state = VerificationState::SessionBound { request, accepted_profile, session_public_key_id: capability.session_public_key_id, };",
+        ),
+        (
+            "record_revocation_checked",
+            "if !matches!(&self.state, VerificationState::SessionBound { .. }) { return Err(self.invalid_transition(VerificationAction::RecordRevocationChecked)); }",
+            "self.ensure_binding(VerificationAction::RecordRevocationChecked, &capability.binding,)?;",
+            "let VerificationState::SessionBound { request, accepted_profile, session_public_key_id, } = previous else { unreachable!(\"phase was checked before active-state replacement\") };",
+            "self.state = VerificationState::RevocationChecked { request, accepted_profile, session_public_key_id, };",
+        ),
+        (
+            "record_policy_satisfied",
+            "if !matches!(&self.state, VerificationState::RevocationChecked { .. }) { return Err(self.invalid_transition(VerificationAction::RecordPolicySatisfied)); }",
+            "self.ensure_binding(VerificationAction::RecordPolicySatisfied, &capability.binding,)?;",
+            "let VerificationState::RevocationChecked { request, accepted_profile, session_public_key_id, } = previous else { unreachable!(\"phase was checked before active-state replacement\") };",
+            "self.state = VerificationState::PolicySatisfied { request, accepted_profile, session_public_key_id, allowed: capability.allowed, };",
+        ),
     ] {
-        let method = function_tokens(&tokens, method_name)?;
-        let phase = sequence_start(method, &["matches", "!", "(", "&", "self", ".", "state"])
-            .ok_or_else(|| format!("{method_name} lacks a borrowed phase match"))?;
-        let binding = sequence_start(method, &["self", ".", "ensure_binding"])
-            .ok_or_else(|| format!("{method_name} lacks a binding check"))?;
-        let replace = sequence_start(method, &replacement).ok_or_else(|| {
-            format!(
-                "{method_name} lacks the exact fail-closed replacement; method tokens: {method:?}"
-            )
-        })?;
-        let extraction = sequence_start(method, &["let", "VerificationState", ":", ":"])
-            .ok_or_else(|| format!("{method_name} lacks old-state extraction"))?;
-        let assignment = sequence_start(
-            &method[extraction + 1..],
-            &["self", ".", "state", "=", "VerificationState", ":", ":"],
-        )
-        .map(|index| index + extraction + 1)
-        .ok_or_else(|| format!("{method_name} lacks next-state assignment"))?;
-        let replace_count = method
-            .windows(7)
-            .filter(|window| {
-                window
-                    .iter()
-                    .zip(["std", ":", ":", "mem", ":", ":", "replace"])
-                    .all(|(actual, expected)| actual == expected)
-            })
-            .count();
-        if !(phase < binding
-            && binding < replace
-            && replace < extraction
-            && extraction < assignment
-            && replace_count == 1)
+        let body = function_body_tokens(&tokens, method_name)?;
+        let actual = top_level_statements(body)?;
+        let expected = [
+            rust_tokens(phase),
+            rust_tokens(binding),
+            rust_tokens(replacement),
+            rust_tokens(extraction),
+            rust_tokens(assignment),
+            rust_tokens("Ok(())"),
+        ];
+        if actual.len() != expected.len()
+            || actual
+                .iter()
+                .zip(&expected)
+                .any(|(actual, expected)| *actual != expected)
         {
-            return Err(format!("{method_name} transition token order drifted"));
+            return Err(format!(
+                "{method_name} top-level transition statements drifted; expected {expected:?}, found {actual:?}"
+            ));
         }
     }
     Ok(())
@@ -3002,6 +3054,102 @@ fn active_replacement_rejects_option_take_and_comment_order_decoys() {
     );
     assert_ne!(mutated, source);
     assert!(validate_active_state_replacement(&mutated).is_err());
+}
+
+#[test]
+fn active_replacement_rejects_direct_assignment_with_stringify_sequence_decoy() {
+    let source = include_str!("../verification.rs");
+    let correct = r#"        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::EvidenceReceived { request } = previous else {
+            unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::ChallengeAuthenticated { request };"#;
+    let bypass = r#"        self.state = match &self.state {
+            VerificationState::EvidenceReceived { request } => {
+                VerificationState::ChallengeAuthenticated {
+                    request: request.clone(),
+                }
+            }
+            _ => unreachable!(),
+        };
+        stringify!(
+            let previous = std::mem::replace(
+                &mut self.state,
+                VerificationState::Retryable {
+                    outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+                },
+            );
+            let VerificationState::EvidenceReceived { request } = previous else {
+                unreachable!()
+            };
+            self.state = VerificationState::ChallengeAuthenticated { request };
+        );"#;
+    let mutated = source.replacen(correct, bypass, 1);
+
+    assert_ne!(mutated, source);
+    assert!(validate_active_state_replacement(&mutated).is_err());
+}
+
+#[test]
+fn active_replacement_rejects_sequence_nested_under_unreachable_block() {
+    let source = include_str!("../verification.rs");
+    let correct = r#"        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::EvidenceReceived { request } = previous else {
+            unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::ChallengeAuthenticated { request };"#;
+    let nested = format!("        if false {{\n{correct}\n        }}");
+    let mutated = source.replacen(correct, &nested, 1);
+
+    assert_ne!(mutated, source);
+    assert!(validate_active_state_replacement(&mutated).is_err());
+}
+
+#[test]
+fn active_replacement_accepts_production_shaped_top_level_sequence() {
+    assert!(validate_active_state_replacement(include_str!("../verification.rs")).is_ok());
+}
+
+#[test]
+fn top_level_statement_splitter_keeps_nested_constructs_together() {
+    let tokens = rust_tokens(
+        r#"
+            let value = inspect(
+                stringify!(first(); second()),
+                || { first(); second(); },
+                if condition { left() } else { right() },
+            );
+            if other { nested(); } else { nested_else(); }
+            Ok(())
+        "#,
+    );
+    let statements = top_level_statements(&tokens)
+        .unwrap_or_else(|error| panic!("failed to split fixture statements: {error}"));
+    let actual = statements
+        .into_iter()
+        .map(<[String]>::to_vec)
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        actual,
+        [
+            rust_tokens(
+                "let value = inspect(stringify!(first(); second()), || { first(); second(); }, if condition { left() } else { right() },);",
+            ),
+            rust_tokens("if other { nested(); } else { nested_else(); }"),
+            rust_tokens("Ok(())"),
+        ]
+    );
 }
 
 #[test]
