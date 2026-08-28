@@ -502,20 +502,33 @@ fn model_transition(state: ModelState, action: TestAction) -> Option<ModelState>
         (state, TestAction::MarkMalformed) if model_is_nonterminal(state) => {
             Some(ModelState::Malformed)
         }
-        (state, TestAction::MarkUnsupported(_)) if model_is_nonterminal(state) => {
+        (state, TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile))
+            if model_is_nonterminal(state) =>
+        {
             Some(ModelState::Unsupported)
         }
         (_, TestAction::MarkUnsupported(UnsupportedRequirement::Platform))
         | (_, TestAction::MarkUnsupported(UnsupportedRequirement::UnknownCriticalRequirement))
         | (_, TestAction::MarkRetryable(RetryReason::TransientFailure))
-        | (_, TestAction::Deny(DenialReason::ChallengeAuthenticationFailed)) => None,
+        | (
+            _,
+            TestAction::Deny(
+                DenialReason::ChallengeAuthenticationFailed
+                | DenialReason::NotYetValid
+                | DenialReason::Expired
+                | DenialReason::ReplayDetected
+                | DenialReason::ContextBindingMismatch
+                | DenialReason::EvidenceInvalid
+                | DenialReason::ProtectedSessionLost,
+            ),
+        ) => None,
         (state, TestAction::MarkRetryable(RetryReason::AttestationUnavailable))
             if model_is_nonterminal(state) =>
         {
             Some(ModelState::Retryable)
         }
-        (state, TestAction::Deny(reason)) if model_is_nonterminal(state) => {
-            Some(ModelState::Denied(reason))
+        (state, TestAction::Deny(DenialReason::PolicyDenied)) if model_is_nonterminal(state) => {
+            Some(ModelState::Denied(DenialReason::PolicyDenied))
         }
         (state, TestAction::MarkRevoked) if model_is_nonterminal(state) => {
             Some(ModelState::Revoked)
@@ -536,6 +549,57 @@ fn model_is_nonterminal(state: ModelState) -> bool {
             | ModelState::RevocationChecked
             | ModelState::PolicySatisfied(_)
     )
+}
+
+#[test]
+fn stale_task_6_model_rejects_new_failure_variants_without_changing_old_actions() {
+    let new_actions = [
+        TestAction::MarkUnsupported(UnsupportedRequirement::Platform),
+        TestAction::MarkUnsupported(UnsupportedRequirement::UnknownCriticalRequirement),
+        TestAction::MarkRetryable(RetryReason::TransientFailure),
+        TestAction::Deny(DenialReason::ChallengeAuthenticationFailed),
+        TestAction::Deny(DenialReason::NotYetValid),
+        TestAction::Deny(DenialReason::Expired),
+        TestAction::Deny(DenialReason::ReplayDetected),
+        TestAction::Deny(DenialReason::ContextBindingMismatch),
+        TestAction::Deny(DenialReason::EvidenceInvalid),
+        TestAction::Deny(DenialReason::ProtectedSessionLost),
+    ];
+    for state in ALL_14_MODEL_STATES {
+        for action in new_actions {
+            assert_eq!(
+                model_transition(state, action),
+                None,
+                "{state:?} {action:?}"
+            );
+        }
+    }
+
+    let old_actions = [
+        (TestAction::MarkMalformed, ModelState::Malformed),
+        (
+            TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
+            ModelState::Unsupported,
+        ),
+        (
+            TestAction::MarkRetryable(RetryReason::AttestationUnavailable),
+            ModelState::Retryable,
+        ),
+        (
+            TestAction::Deny(DenialReason::PolicyDenied),
+            ModelState::Denied(DenialReason::PolicyDenied),
+        ),
+        (TestAction::MarkRevoked, ModelState::Revoked),
+    ];
+    for state in ALL_14_MODEL_STATES {
+        for (action, terminal) in old_actions {
+            assert_eq!(
+                model_transition(state, action),
+                model_is_nonterminal(state).then_some(terminal),
+                "{state:?} {action:?}"
+            );
+        }
+    }
 }
 
 fn model_phase(state: ModelState) -> VerificationPhase {
