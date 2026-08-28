@@ -11,7 +11,7 @@ pub use freshness::{
 };
 pub use verification::{
     ChallengeAuthenticated, DenialReason, EvidenceAppraised, ExpectedContext, IdentityChecked,
-    PolicySatisfied, RevocationChecked, SessionBound, TransitionError, UnsupportedRequirement,
-    VerificationAction, VerificationOutcome, VerificationPhase, VerificationRequest,
-    VerifiedAttestation, VerifierFlow, verify_research_structure,
+    PolicySatisfied, RetryReason, RevocationChecked, SessionBound, TransitionError,
+    UnsupportedRequirement, VerificationAction, VerificationOutcome, VerificationPhase,
+    VerificationRequest, VerifiedAttestation, VerifierFlow, verify_research_structure,
 };

@@ -66,13 +66,13 @@ impl fmt::Debug for VerificationRequest {
 ///
 /// let forged = VerificationOutcome {
 ///     decision: Decision::Allow,
-///     reason: ReasonCode::None,
+///     reason: None,
 /// };
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VerificationOutcome {
     decision: Decision,
-    reason: ReasonCode,
+    reason: Option<ReasonCode>,
 }
 
 impl VerificationOutcome {
@@ -84,56 +84,56 @@ impl VerificationOutcome {
 
     /// Returns the structured non-disciplinary reason report.
     #[must_use]
-    pub const fn reason(self) -> ReasonCode {
+    pub const fn reason(self) -> Option<ReasonCode> {
         self.reason
     }
 
     const fn allowed_full() -> Self {
         Self {
             decision: Decision::Allow,
-            reason: ReasonCode::None,
+            reason: None,
         }
     }
 
     const fn allowed_restricted() -> Self {
         Self {
             decision: Decision::AllowRestricted,
-            reason: ReasonCode::None,
+            reason: None,
         }
     }
 
     const fn malformed() -> Self {
         Self {
             decision: Decision::Deny,
-            reason: ReasonCode::Malformed,
+            reason: Some(ReasonCode::Malformed),
         }
     }
 
-    const fn unsupported() -> Self {
+    const fn unsupported(requirement: UnsupportedRequirement) -> Self {
         Self {
             decision: Decision::Unsupported,
-            reason: ReasonCode::UnsupportedVersion,
+            reason: Some(requirement.as_reason_code()),
         }
     }
 
-    const fn retryable() -> Self {
+    const fn retryable(reason: RetryReason) -> Self {
         Self {
             decision: Decision::Retry,
-            reason: ReasonCode::AttestationUnavailable,
+            reason: Some(reason.as_reason_code()),
         }
     }
 
     const fn revoked() -> Self {
         Self {
             decision: Decision::Deny,
-            reason: ReasonCode::Revoked,
+            reason: Some(ReasonCode::Revoked),
         }
     }
 
     const fn denied(reason: DenialReason) -> Self {
         Self {
             decision: Decision::Deny,
-            reason: reason.as_reason_code(),
+            reason: Some(reason.as_reason_code()),
         }
     }
 }
@@ -205,14 +205,16 @@ pub enum VerificationAction {
 /// Fixed non-disciplinary reasons accepted by the denied terminal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DenialReason {
+    /// Publisher challenge authentication failed.
+    ChallengeAuthenticationFailed,
     /// The request predates its validity window.
     NotYetValid,
     /// The request has expired.
     Expired,
     /// The challenge has already been used.
     ReplayDetected,
-    /// The relying-party or session binding did not match.
-    SessionBindingMismatch,
+    /// The relying-party, identity, or session context did not match.
+    ContextBindingMismatch,
     /// Evidence appraisal failed.
     EvidenceInvalid,
     /// The selected policy denied the request.
@@ -226,17 +228,48 @@ pub enum DenialReason {
 pub enum UnsupportedRequirement {
     /// A protocol version or evidence profile is not implemented.
     VersionOrProfile,
-    /// A required gate is unknown and therefore cannot be safely skipped.
-    UnknownMandatoryGate,
+    /// The platform is not supported for the selected policy.
+    Platform,
+    /// A critical requirement is unknown and cannot be safely skipped.
+    UnknownCriticalRequirement,
+}
+
+/// Typed causes accepted by the non-disciplinary retry terminal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RetryReason {
+    /// A required attestation service or resource was unavailable.
+    AttestationUnavailable,
+    /// A transient verifier failure may be retried.
+    TransientFailure,
+}
+
+impl UnsupportedRequirement {
+    const fn as_reason_code(self) -> ReasonCode {
+        match self {
+            Self::VersionOrProfile => ReasonCode::UnsupportedVersionOrProfile,
+            Self::Platform => ReasonCode::UnsupportedPlatform,
+            Self::UnknownCriticalRequirement => ReasonCode::UnsupportedCriticalRequirement,
+        }
+    }
+}
+
+impl RetryReason {
+    const fn as_reason_code(self) -> ReasonCode {
+        match self {
+            Self::AttestationUnavailable => ReasonCode::AttestationUnavailable,
+            Self::TransientFailure => ReasonCode::TransientFailure,
+        }
+    }
 }
 
 impl DenialReason {
     const fn as_reason_code(self) -> ReasonCode {
         match self {
+            Self::ChallengeAuthenticationFailed => ReasonCode::ChallengeAuthenticationFailed,
             Self::NotYetValid => ReasonCode::NotYetValid,
             Self::Expired => ReasonCode::Expired,
             Self::ReplayDetected => ReasonCode::ReplayDetected,
-            Self::SessionBindingMismatch => ReasonCode::SessionBindingMismatch,
+            Self::ContextBindingMismatch => ReasonCode::ContextBindingMismatch,
             Self::EvidenceInvalid => ReasonCode::EvidenceInvalid,
             Self::PolicyDenied => ReasonCode::PolicyDenied,
             Self::ProtectedSessionLost => ReasonCode::ProtectedSessionLost,
@@ -701,8 +734,12 @@ impl VerifierFlow {
                 Some(VerificationOutcome::allowed_restricted())
             }
             VerificationState::Malformed => Some(VerificationOutcome::malformed()),
-            VerificationState::Unsupported => Some(VerificationOutcome::unsupported()),
-            VerificationState::Retryable => Some(VerificationOutcome::retryable()),
+            VerificationState::Unsupported => Some(VerificationOutcome::unsupported(
+                UnsupportedRequirement::VersionOrProfile,
+            )),
+            VerificationState::Retryable => Some(VerificationOutcome::retryable(
+                RetryReason::AttestationUnavailable,
+            )),
             VerificationState::Denied(reason) => Some(VerificationOutcome::denied(reason)),
             VerificationState::Revoked => Some(VerificationOutcome::revoked()),
             VerificationState::EvidenceReceived
@@ -1023,7 +1060,7 @@ pub fn verify_research_structure<Store: ReplayStore + ?Sized>(
         && expected.policy_version == challenge.policy_version;
 
     if !binding_matches {
-        return VerificationOutcome::denied(DenialReason::SessionBindingMismatch);
+        return VerificationOutcome::denied(DenialReason::ContextBindingMismatch);
     }
 
     if let Err(error) = freshness.claim(request.now, &request.challenge) {
@@ -1044,7 +1081,9 @@ fn freshness_failure(error: FreshnessError) -> VerificationOutcome {
         FreshnessError::ReplayDetected => VerificationOutcome::denied(DenialReason::ReplayDetected),
         FreshnessError::ClockRollback
         | FreshnessError::StateUnavailable
-        | FreshnessError::CapacityExceeded => VerificationOutcome::retryable(),
+        | FreshnessError::CapacityExceeded => {
+            VerificationOutcome::retryable(RetryReason::AttestationUnavailable)
+        }
     }
 }
 

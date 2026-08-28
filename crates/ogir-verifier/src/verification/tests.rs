@@ -402,29 +402,69 @@ fn model_phase(state: ModelState) -> VerificationPhase {
     }
 }
 
+#[test]
+fn report_reason_is_absent_only_for_allows() {
+    assert_eq!(VerificationOutcome::allowed_full().reason(), None);
+    assert_eq!(VerificationOutcome::allowed_restricted().reason(), None);
+    assert_eq!(
+        VerificationOutcome::malformed().reason(),
+        Some(ReasonCode::Malformed)
+    );
+}
+
+#[test]
+fn every_failure_reason_has_one_report_mapping() {
+    let mappings = [
+        (Decision::Deny, ReasonCode::Malformed),
+        (Decision::Deny, ReasonCode::ChallengeAuthenticationFailed),
+        (Decision::Deny, ReasonCode::NotYetValid),
+        (Decision::Deny, ReasonCode::Expired),
+        (Decision::Deny, ReasonCode::ReplayDetected),
+        (Decision::Deny, ReasonCode::ContextBindingMismatch),
+        (Decision::Deny, ReasonCode::EvidenceInvalid),
+        (Decision::Deny, ReasonCode::PolicyDenied),
+        (Decision::Deny, ReasonCode::Revoked),
+        (Decision::Deny, ReasonCode::ProtectedSessionLost),
+        (
+            Decision::Unsupported,
+            ReasonCode::UnsupportedVersionOrProfile,
+        ),
+        (Decision::Unsupported, ReasonCode::UnsupportedPlatform),
+        (
+            Decision::Unsupported,
+            ReasonCode::UnsupportedCriticalRequirement,
+        ),
+        (Decision::Retry, ReasonCode::AttestationUnavailable),
+        (Decision::Retry, ReasonCode::TransientFailure),
+    ];
+    assert_eq!(mappings.len(), 15);
+}
+
 fn model_denial_reason(reason: DenialReason) -> ReasonCode {
     match reason {
+        DenialReason::ChallengeAuthenticationFailed => ReasonCode::ChallengeAuthenticationFailed,
         DenialReason::NotYetValid => ReasonCode::NotYetValid,
         DenialReason::Expired => ReasonCode::Expired,
         DenialReason::ReplayDetected => ReasonCode::ReplayDetected,
-        DenialReason::SessionBindingMismatch => ReasonCode::SessionBindingMismatch,
+        DenialReason::ContextBindingMismatch => ReasonCode::ContextBindingMismatch,
         DenialReason::EvidenceInvalid => ReasonCode::EvidenceInvalid,
         DenialReason::PolicyDenied => ReasonCode::PolicyDenied,
         DenialReason::ProtectedSessionLost => ReasonCode::ProtectedSessionLost,
     }
 }
 
-fn model_report(state: ModelState) -> Option<(Decision, ReasonCode)> {
+fn model_report(state: ModelState) -> Option<(Decision, Option<ReasonCode>)> {
     match state {
-        ModelState::Verified(AllowedClass::Full) => Some((Decision::Allow, ReasonCode::None)),
-        ModelState::Verified(AllowedClass::Restricted) => {
-            Some((Decision::AllowRestricted, ReasonCode::None))
-        }
-        ModelState::Malformed => Some((Decision::Deny, ReasonCode::Malformed)),
-        ModelState::Unsupported => Some((Decision::Unsupported, ReasonCode::UnsupportedVersion)),
-        ModelState::Retryable => Some((Decision::Retry, ReasonCode::AttestationUnavailable)),
-        ModelState::Denied(reason) => Some((Decision::Deny, model_denial_reason(reason))),
-        ModelState::Revoked => Some((Decision::Deny, ReasonCode::Revoked)),
+        ModelState::Verified(AllowedClass::Full) => Some((Decision::Allow, None)),
+        ModelState::Verified(AllowedClass::Restricted) => Some((Decision::AllowRestricted, None)),
+        ModelState::Malformed => Some((Decision::Deny, Some(ReasonCode::Malformed))),
+        ModelState::Unsupported => Some((
+            Decision::Unsupported,
+            Some(ReasonCode::UnsupportedVersionOrProfile),
+        )),
+        ModelState::Retryable => Some((Decision::Retry, Some(ReasonCode::AttestationUnavailable))),
+        ModelState::Denied(reason) => Some((Decision::Deny, Some(model_denial_reason(reason)))),
+        ModelState::Revoked => Some((Decision::Deny, Some(ReasonCode::Revoked))),
         ModelState::EvidenceReceived
         | ModelState::ChallengeAuthenticated
         | ModelState::FreshnessChecked
@@ -888,7 +928,7 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
         ModelState::Denied(DenialReason::NotYetValid),
         ModelState::Denied(DenialReason::Expired),
         ModelState::Denied(DenialReason::ReplayDetected),
-        ModelState::Denied(DenialReason::SessionBindingMismatch),
+        ModelState::Denied(DenialReason::ContextBindingMismatch),
         ModelState::Denied(DenialReason::EvidenceInvalid),
         ModelState::Denied(DenialReason::PolicyDenied),
         ModelState::Denied(DenialReason::ProtectedSessionLost),
@@ -969,7 +1009,7 @@ const ALL_7_DENIAL_REASONS: [DenialReason; 7] = [
     DenialReason::NotYetValid,
     DenialReason::Expired,
     DenialReason::ReplayDetected,
-    DenialReason::SessionBindingMismatch,
+    DenialReason::ContextBindingMismatch,
     DenialReason::EvidenceInvalid,
     DenialReason::PolicyDenied,
     DenialReason::ProtectedSessionLost,
@@ -1138,7 +1178,7 @@ fn scheduled_actions() -> Vec<ScheduledStep> {
     push_sequence(
         &mut schedule,
         &[TestAction::MarkUnsupported(
-            UnsupportedRequirement::UnknownMandatoryGate,
+            UnsupportedRequirement::UnknownCriticalRequirement,
         )],
     );
     let unknown_gate_sequences = 1usize;
@@ -1249,10 +1289,10 @@ fn failure_index(action: TestAction) -> Option<usize> {
 
 fn denial_index(reason: DenialReason) -> usize {
     match reason {
-        DenialReason::NotYetValid => 0,
+        DenialReason::ChallengeAuthenticationFailed | DenialReason::NotYetValid => 0,
         DenialReason::Expired => 1,
         DenialReason::ReplayDetected => 2,
-        DenialReason::SessionBindingMismatch => 3,
+        DenialReason::ContextBindingMismatch => 3,
         DenialReason::EvidenceInvalid => 4,
         DenialReason::PolicyDenied => 5,
         DenialReason::ProtectedSessionLost => 6,
@@ -1371,7 +1411,9 @@ impl Coverage {
             }
             if before == ModelState::EvidenceReceived
                 && action
-                    == TestAction::MarkUnsupported(UnsupportedRequirement::UnknownMandatoryGate)
+                    == TestAction::MarkUnsupported(
+                        UnsupportedRequirement::UnknownCriticalRequirement,
+                    )
                 && next == ModelState::Unsupported
             {
                 self.unknown_gate += 1;
@@ -1513,10 +1555,7 @@ fn canonical_full_path_returns_one_bound_verified_capability() {
         flow.outcome().map(VerificationOutcome::decision),
         Some(Decision::Allow)
     );
-    assert_eq!(
-        flow.outcome().map(VerificationOutcome::reason),
-        Some(ReasonCode::None)
-    );
+    assert_eq!(flow.outcome().map(VerificationOutcome::reason), Some(None));
     assert!(
         format!("{verified:?}") == "VerifiedAttestation([REDACTED])",
         "private diagnostic mismatch"
@@ -1574,10 +1613,7 @@ fn restricted_success_uses_the_same_complete_gate() {
         flow.outcome().map(VerificationOutcome::decision),
         Some(Decision::AllowRestricted)
     );
-    assert_eq!(
-        flow.outcome().map(VerificationOutcome::reason),
-        Some(ReasonCode::None)
-    );
+    assert_eq!(flow.outcome().map(VerificationOutcome::reason), Some(None));
 }
 
 #[test]
@@ -1593,7 +1629,7 @@ fn every_failure_class_is_terminal_and_releases_the_request() {
             TestAction::MarkUnsupported(UnsupportedRequirement::VersionOrProfile),
             VerificationPhase::Unsupported,
             Decision::Unsupported,
-            ReasonCode::UnsupportedVersion,
+            ReasonCode::UnsupportedVersionOrProfile,
         ),
         (
             TestAction::MarkRetryable,
@@ -1627,7 +1663,7 @@ fn every_failure_class_is_terminal_and_releases_the_request() {
         );
         assert_eq!(
             flow.outcome().map(VerificationOutcome::reason),
-            Some(expected_reason)
+            Some(Some(expected_reason))
         );
         assert!(flow.request.is_none());
         assert_every_action_rejected(&mut flow);
@@ -1637,12 +1673,16 @@ fn every_failure_class_is_terminal_and_releases_the_request() {
 #[test]
 fn every_denial_reason_has_its_only_valid_reporting_mapping() {
     for (index, (reason, expected)) in [
+        (
+            DenialReason::ChallengeAuthenticationFailed,
+            ReasonCode::ChallengeAuthenticationFailed,
+        ),
         (DenialReason::NotYetValid, ReasonCode::NotYetValid),
         (DenialReason::Expired, ReasonCode::Expired),
         (DenialReason::ReplayDetected, ReasonCode::ReplayDetected),
         (
-            DenialReason::SessionBindingMismatch,
-            ReasonCode::SessionBindingMismatch,
+            DenialReason::ContextBindingMismatch,
+            ReasonCode::ContextBindingMismatch,
         ),
         (DenialReason::EvidenceInvalid, ReasonCode::EvidenceInvalid),
         (DenialReason::PolicyDenied, ReasonCode::PolicyDenied),
@@ -1662,7 +1702,7 @@ fn every_denial_reason_has_its_only_valid_reporting_mapping() {
         );
         assert_eq!(
             flow.outcome().map(VerificationOutcome::reason),
-            Some(expected)
+            Some(Some(expected))
         );
     }
 }
@@ -1671,13 +1711,13 @@ fn every_denial_reason_has_its_only_valid_reporting_mapping() {
 fn unknown_mandatory_gate_maps_to_unsupported() {
     let mut flow = flow_fixture(44);
     assert_eq!(
-        flow.mark_unsupported(UnsupportedRequirement::UnknownMandatoryGate),
+        flow.mark_unsupported(UnsupportedRequirement::UnknownCriticalRequirement),
         Ok(())
     );
     assert_eq!(flow.phase(), VerificationPhase::Unsupported);
     assert_eq!(
         flow.outcome().map(VerificationOutcome::reason),
-        Some(ReasonCode::UnsupportedVersion)
+        Some(Some(ReasonCode::UnsupportedVersionOrProfile))
     );
 }
 
@@ -1921,7 +1961,7 @@ fn authority_fields_remain_private_by_structure() {
 
     for declaration in [
         "struct AttemptRecord {\n    _registration: ReplayRegistration,\n}",
-        "pub struct VerificationOutcome {\n    decision: Decision,\n    reason: ReasonCode,\n}",
+        "pub struct VerificationOutcome {\n    decision: Decision,\n    reason: Option<ReasonCode>,\n}",
         "pub struct ChallengeAuthenticated {\n    binding: VerificationBinding,\n}",
         "pub struct IdentityChecked {\n    binding: VerificationBinding,\n}",
         "pub struct EvidenceAppraised {\n    binding: VerificationBinding,\n}",
@@ -1953,7 +1993,7 @@ fn authority_fields_remain_private_by_structure() {
         "    state: VerificationState,",
         "    allowed: AllowedClass,",
         "    decision: Decision,",
-        "    reason: ReasonCode,",
+        "    reason: Option<ReasonCode>,",
     ] {
         assert!(verification_lines.contains(&private_line));
         let field = match private_line.strip_prefix("    ") {
