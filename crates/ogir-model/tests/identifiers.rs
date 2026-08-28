@@ -227,16 +227,46 @@ fn privacy_sensitive_debug_output_is_redacted() {
             Err(error) => panic!("valid fixture window rejected: {error:?}"),
         };
 
-    assert_eq!(format!("{publisher:?}"), "PublisherId([REDACTED])");
-    assert_eq!(format!("{game:?}"), "GameId([REDACTED])");
-    assert_eq!(format!("{build:?}"), "BuildId([REDACTED])");
-    assert_eq!(format!("{account:?}"), "AccountScope([REDACTED])");
-    assert_eq!(format!("{match_id:?}"), "MatchId([REDACTED])");
-    assert_eq!(format!("{session:?}"), "SessionId([REDACTED])");
-    assert_eq!(format!("{policy:?}"), "PolicyId([REDACTED])");
-    assert_eq!(format!("{policy_version:?}"), "PolicyVersion([REDACTED])");
-    assert_eq!(format!("{:?}", window.issued_at()), "UnixTime([REDACTED])");
-    assert_eq!(format!("{window:?}"), "ChallengeWindow([REDACTED])");
+    assert!(
+        format!("{publisher:?}") == "PublisherId([REDACTED])",
+        "private diagnostic mismatch"
+    );
+    assert!(
+        format!("{game:?}") == "GameId([REDACTED])",
+        "private diagnostic mismatch"
+    );
+    assert!(
+        format!("{build:?}") == "BuildId([REDACTED])",
+        "private diagnostic mismatch"
+    );
+    assert!(
+        format!("{account:?}") == "AccountScope([REDACTED])",
+        "private diagnostic mismatch"
+    );
+    assert!(
+        format!("{match_id:?}") == "MatchId([REDACTED])",
+        "private diagnostic mismatch"
+    );
+    assert!(
+        format!("{session:?}") == "SessionId([REDACTED])",
+        "private diagnostic mismatch"
+    );
+    assert!(
+        format!("{policy:?}") == "PolicyId([REDACTED])",
+        "private diagnostic mismatch"
+    );
+    assert!(
+        format!("{policy_version:?}") == "PolicyVersion([REDACTED])",
+        "private diagnostic mismatch"
+    );
+    assert!(
+        format!("{:?}", window.issued_at()) == "UnixTime([REDACTED])",
+        "private diagnostic mismatch"
+    );
+    assert!(
+        format!("{window:?}") == "ChallengeWindow([REDACTED])",
+        "private diagnostic mismatch"
+    );
 }
 
 #[test]
@@ -282,5 +312,8 @@ fn publisher_challenge_uses_typed_ids_and_redacts_complete_binding() {
 
     assert_eq!(challenge.window.evaluate(UnixTime::new(150)), Ok(()));
     let debug = format!("{challenge:?}");
-    assert_eq!(debug, "PublisherChallenge([REDACTED])");
+    assert!(
+        debug == "PublisherChallenge([REDACTED])",
+        "private diagnostic mismatch"
+    );
 }

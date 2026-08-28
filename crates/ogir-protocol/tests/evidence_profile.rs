@@ -31,7 +31,10 @@ fn evidence_bundle_debug_redacts_profile_and_payload() {
     };
 
     let diagnostic = format!("{evidence:?}");
-    assert_eq!(diagnostic, "EvidenceBundle([REDACTED])");
+    assert!(
+        diagnostic == "EvidenceBundle([REDACTED])",
+        "private diagnostic mismatch"
+    );
     assert!(!diagnostic.contains(profile_sentinel));
     assert!(!diagnostic.contains("private-evidence-payload-sentinel"));
 }

@@ -254,6 +254,13 @@ exhaustion, and freshness-state privacy are represented by
 `OGIR-PRIVACY-FRESHNESS-001`. They preserve publisher-authoritative time,
 atomic single-use nonce, live-record retention, bounded state, and redacted
 diagnostics without turning failure into disciplinary evidence.
+Privacy/redaction tests must not repeat the value under test in their own
+failure diagnostics. Exact comparisons and forbidden-value checks use boolean
+assertions with fixed generic messages rather than `assert_eq!` or interpolated
+panic text, because Rust equality assertions print unequal operands. CodeQL
+`rust/cleartext-logging` remains the sink-model regression gate; do not dismiss
+or suppress a repository-controlled finding when the test assertion can be made
+non-disclosing.
 Local-session gate skipping, cross-session capability substitution, and
 terminal reactivation or stranded cleanup are represented by
 `OGIR-SESSION-GATE-SKIP-001`,

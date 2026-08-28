@@ -730,47 +730,68 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
     let binding = flow.binding.clone();
 
     let binding_diagnostic = format!("{binding:?}");
-    assert_eq!(binding_diagnostic, "VerificationBinding([REDACTED])");
+    assert!(
+        binding_diagnostic == "VerificationBinding([REDACTED])",
+        "private diagnostic mismatch"
+    );
     diagnostics.push(binding_diagnostic);
 
     let challenge = ChallengeAuthenticated {
         binding: binding.clone(),
     };
     let diagnostic = format!("{challenge:?}");
-    assert_eq!(diagnostic, "ChallengeAuthenticated([REDACTED])");
+    assert!(
+        diagnostic == "ChallengeAuthenticated([REDACTED])",
+        "private diagnostic mismatch"
+    );
     diagnostics.push(diagnostic);
 
     let freshness = crate::freshness::test_freshness_checked(binding.clone());
     let diagnostic = format!("{freshness:?}");
-    assert_eq!(diagnostic, "FreshnessChecked([REDACTED])");
+    assert!(
+        diagnostic == "FreshnessChecked([REDACTED])",
+        "private diagnostic mismatch"
+    );
     diagnostics.push(diagnostic);
 
     let identity = IdentityChecked {
         binding: binding.clone(),
     };
     let diagnostic = format!("{identity:?}");
-    assert_eq!(diagnostic, "IdentityChecked([REDACTED])");
+    assert!(
+        diagnostic == "IdentityChecked([REDACTED])",
+        "private diagnostic mismatch"
+    );
     diagnostics.push(diagnostic);
 
     let evidence = EvidenceAppraised {
         binding: binding.clone(),
     };
     let diagnostic = format!("{evidence:?}");
-    assert_eq!(diagnostic, "EvidenceAppraised([REDACTED])");
+    assert!(
+        diagnostic == "EvidenceAppraised([REDACTED])",
+        "private diagnostic mismatch"
+    );
     diagnostics.push(diagnostic);
 
     let session = SessionBound {
         binding: binding.clone(),
     };
     let diagnostic = format!("{session:?}");
-    assert_eq!(diagnostic, "SessionBound([REDACTED])");
+    assert!(
+        diagnostic == "SessionBound([REDACTED])",
+        "private diagnostic mismatch"
+    );
     diagnostics.push(diagnostic);
 
     let revocation = RevocationChecked {
         binding: binding.clone(),
     };
     let diagnostic = format!("{revocation:?}");
-    assert_eq!(diagnostic, "RevocationChecked([REDACTED])");
+    assert!(
+        diagnostic == "RevocationChecked([REDACTED])",
+        "private diagnostic mismatch"
+    );
     diagnostics.push(diagnostic);
 
     let policy = PolicySatisfied {
@@ -778,7 +799,10 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
         allowed: AllowedClass::Full,
     };
     let diagnostic = format!("{policy:?}");
-    assert_eq!(diagnostic, "PolicySatisfied([REDACTED])");
+    assert!(
+        diagnostic == "PolicySatisfied([REDACTED])",
+        "private diagnostic mismatch"
+    );
     diagnostics.push(diagnostic);
 
     let verified = VerifiedAttestation {
@@ -786,7 +810,10 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
         allowed: AllowedClass::Full,
     };
     let diagnostic = format!("{verified:?}");
-    assert_eq!(diagnostic, "VerifiedAttestation([REDACTED])");
+    assert!(
+        diagnostic == "VerifiedAttestation([REDACTED])",
+        "private diagnostic mismatch"
+    );
     diagnostics.push(diagnostic);
 
     let request = match flow.request.as_ref() {
@@ -794,13 +821,22 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
         None => panic!("active sentinel flow unexpectedly released its request"),
     };
     let diagnostic = format!("{request:?}");
-    assert_eq!(diagnostic, "VerificationRequest([REDACTED])");
+    assert!(
+        diagnostic == "VerificationRequest([REDACTED])",
+        "private diagnostic mismatch"
+    );
     diagnostics.push(diagnostic);
     let diagnostic = format!("{:?}", request.expected);
-    assert_eq!(diagnostic, "ExpectedContext([REDACTED])");
+    assert!(
+        diagnostic == "ExpectedContext([REDACTED])",
+        "private diagnostic mismatch"
+    );
     diagnostics.push(diagnostic);
     let diagnostic = format!("{:?}", request.evidence);
-    assert_eq!(diagnostic, "EvidenceBundle([REDACTED])");
+    assert!(
+        diagnostic == "EvidenceBundle([REDACTED])",
+        "private diagnostic mismatch"
+    );
     diagnostics.push(diagnostic);
 
     let invalid = TransitionError::InvalidTransition {
@@ -827,16 +863,19 @@ fn diagnostics_for_every_surface(flow: &mut VerifierFlow) -> Vec<String> {
     diagnostics.push(diagnostic);
 
     let diagnostic = format!("{flow:?}");
-    assert_eq!(
-        diagnostic,
-        "VerifierFlow { phase: EvidenceReceived, outcome: None }"
+    assert!(
+        diagnostic == "VerifierFlow { phase: EvidenceReceived, outcome: None }",
+        "private diagnostic mismatch"
     );
     diagnostics.push(diagnostic);
 
     for state in ALL_14_MODEL_STATES {
         let state_flow = private_flow_for_model_state(state);
         let diagnostic = format!("{state_flow:?}");
-        assert_eq!(diagnostic, expected_flow_diagnostic(state));
+        assert!(
+            diagnostic == expected_flow_diagnostic(state),
+            "private diagnostic mismatch"
+        );
         diagnostics.push(diagnostic);
     }
 
@@ -1478,7 +1517,10 @@ fn canonical_full_path_returns_one_bound_verified_capability() {
         flow.outcome().map(VerificationOutcome::reason),
         Some(ReasonCode::None)
     );
-    assert_eq!(format!("{verified:?}"), "VerifiedAttestation([REDACTED])");
+    assert!(
+        format!("{verified:?}") == "VerifiedAttestation([REDACTED])",
+        "private diagnostic mismatch"
+    );
 }
 
 #[test]
@@ -1858,7 +1900,7 @@ fn every_flow_capability_outcome_and_error_diagnostic_is_redacted() {
         for sentinel in forbidden {
             assert!(
                 !diagnostic.contains(sentinel),
-                "diagnostic leaked {sentinel:?}: {diagnostic:?}"
+                "private diagnostic exposed a forbidden value"
             );
         }
     }
