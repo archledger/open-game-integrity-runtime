@@ -7035,6 +7035,13 @@ fn all_phase_ineligible_failures_reject_without_mutation() {
 
 #[test]
 fn failure_terminals_store_no_claims_from_every_claim_bearing_phase() {
+    if let Err(error) = validate_authority_structure(
+        include_str!("../verification.rs"),
+        include_str!("../freshness.rs"),
+    ) {
+        panic!("failure terminal authority structure drifted: {error}");
+    }
+
     for (state, action) in [
         (
             ModelState::EvidenceAppraised,
