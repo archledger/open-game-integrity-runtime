@@ -3329,6 +3329,7 @@ const AUTHORITY_TARGETS: [&str; 3] = ["AppraisalResult", "AcceptedClaims", "Veri
 struct AuthorityScope {
     local_target_shadows: BTreeSet<String>,
     aliases: BTreeMap<String, bool>,
+    child_modules: BTreeMap<String, AuthorityScope>,
 }
 
 fn path_start(tokens: &[String], end: usize) -> usize {
@@ -3362,6 +3363,23 @@ fn unqualified_name_resolves_authority(name: &str, scopes: &[AuthorityScope]) ->
     AUTHORITY_TARGETS.contains(&name)
 }
 
+fn module_path_resolves_authority(segments: &[&str], scope: &AuthorityScope) -> bool {
+    let Some((name, modules)) = segments.split_last() else {
+        return true;
+    };
+    let mut resolved_scope = scope;
+    for module in modules {
+        let Some(child) = resolved_scope.child_modules.get(*module) else {
+            return true;
+        };
+        resolved_scope = child;
+    }
+    if let Some(resolves) = resolved_scope.aliases.get(*name) {
+        return *resolves;
+    }
+    !AUTHORITY_TARGETS.contains(name) || !resolved_scope.local_target_shadows.contains(*name)
+}
+
 fn path_resolves_authority(tokens: &[String], end: usize, scopes: &[AuthorityScope]) -> bool {
     let segments = path_segments(tokens, end);
     let Some(name) = segments.last().copied() else {
@@ -3372,25 +3390,13 @@ fn path_resolves_authority(tokens: &[String], end: usize, scopes: &[AuthoritySco
     }
 
     match segments[0] {
-        "crate" | "$crate" => {
-            scopes
-                .first()
-                .is_some_and(|scope| scope.aliases.get(name).copied().unwrap_or(false))
-                || AUTHORITY_TARGETS.contains(&name)
-        }
-        "self" => scopes.last().is_some_and(|scope| {
-            scope.aliases.get(name).copied().unwrap_or(false)
-                || (AUTHORITY_TARGETS.contains(&name) && !scope.local_target_shadows.contains(name))
-        }),
-        "super" => {
-            let levels = segments
-                .iter()
-                .take_while(|segment| **segment == "super")
-                .count();
-            let retained = scopes.len().saturating_sub(levels);
-            retained == 0 || unqualified_name_resolves_authority(name, &scopes[..retained])
-        }
-        _ => unqualified_name_resolves_authority(name, scopes) || AUTHORITY_TARGETS.contains(&name),
+        "crate" | "$crate" | "super" => true,
+        "self" => scopes
+            .last()
+            .is_none_or(|scope| module_path_resolves_authority(&segments[1..], scope)),
+        _ => scopes
+            .last()
+            .is_none_or(|scope| module_path_resolves_authority(&segments, scope)),
     }
 }
 
@@ -3491,10 +3497,69 @@ fn validate_nested_aliases_and_imports(
     Ok(())
 }
 
+fn validate_no_unscanned_modules(tokens: &[String]) -> Result<(), String> {
+    if tokens.iter().any(|token| token == "mod") {
+        Err("non-module item may declare an unscanned module".to_owned())
+    } else {
+        Ok(())
+    }
+}
+
 fn is_inline_module(item: &[String]) -> Result<bool, String> {
-    let header = direct_item_header(item)?;
-    let core = item_core_start(header)?;
-    Ok(header.get(core).map(String::as_str) == Some("mod") && item_body_open(item).is_some())
+    Ok(is_module_item(item)? && module_body_open(item)?.is_some())
+}
+
+fn inline_module_name(item: &[String]) -> Result<&str, String> {
+    let core = item_core_start(item)?;
+    if item.get(core).map(String::as_str) != Some("mod") || module_body_open(item)?.is_none() {
+        return Err("inline module name requested for a non-inline item".to_owned());
+    }
+    item.get(core + 1)
+        .map(String::as_str)
+        .ok_or_else(|| "inline module lacks a name".to_owned())
+}
+
+fn is_module_item(item: &[String]) -> Result<bool, String> {
+    let core = item_core_start(item)?;
+    Ok(item.get(core).map(String::as_str) == Some("mod"))
+}
+
+fn module_body_open(item: &[String]) -> Result<Option<usize>, String> {
+    if !is_module_item(item)? {
+        return Ok(None);
+    }
+    let core = item_core_start(item)?;
+    item.iter()
+        .enumerate()
+        .skip(core + 2)
+        .find_map(|(index, token)| match token.as_str() {
+            "{" => Some(Some(index)),
+            ";" => Some(None),
+            _ => None,
+        })
+        .ok_or_else(|| "module item has neither a body nor a semicolon".to_owned())
+}
+
+fn validate_external_module_inventory(items: &[&[String]], root_scope: bool) -> Result<(), String> {
+    let mut bodyless = Vec::new();
+    for item in items {
+        if is_module_item(item)? && module_body_open(item)?.is_none() {
+            bodyless.push(*item);
+        }
+    }
+    let approved = rust_tokens_with_literals("#[cfg(test)] mod tests;");
+    let valid_inventory = if root_scope {
+        bodyless.len() == 1 && bodyless[0] == approved
+    } else {
+        bodyless.is_empty()
+    };
+    if valid_inventory {
+        Ok(())
+    } else {
+        Err(format!(
+            "external module inventory must contain only the exact root test module: {bodyless:?}"
+        ))
+    }
 }
 
 fn is_macro_definition(item: &[String]) -> Result<bool, String> {
@@ -3514,7 +3579,11 @@ fn validate_macro_invocations(
     ]
     .map(rust_tokens_with_literals);
     for invocation in macro_invocations(tokens)? {
-        if !tokens_resolve_authority(macro_arguments(invocation)?, scopes) {
+        let arguments = macro_arguments(invocation)?;
+        if arguments.iter().any(|token| token == "mod") {
+            return Err("macro invocation may declare an unscanned module".to_owned());
+        }
+        if !tokens_resolve_authority(arguments, scopes) {
             continue;
         }
         if root_scope && approved.iter().any(|expected| invocation == expected) {
@@ -3552,8 +3621,9 @@ fn validate_authority_scope(
     tokens: &[String],
     parent_scopes: &[AuthorityScope],
     root_scope: bool,
-) -> Result<(), String> {
+) -> Result<AuthorityScope, String> {
     let items = direct_items(tokens)?;
+    validate_external_module_inventory(&items, root_scope)?;
     let mut scope = AuthorityScope::default();
     if !root_scope {
         for item in &items {
@@ -3600,6 +3670,18 @@ fn validate_authority_scope(
         }
     }
 
+    for item in &items {
+        if is_inline_module(item)? {
+            let name = inline_module_name(item)?.to_owned();
+            let child = validate_authority_scope(direct_item_body(item)?, &scopes, false)?;
+            scopes
+                .last_mut()
+                .ok_or_else(|| "authority scope stack is empty".to_owned())?
+                .child_modules
+                .insert(name, child);
+        }
+    }
+
     for item in items {
         let header = direct_item_header(item)?;
         let core = item_core_start(header)?;
@@ -3619,10 +3701,15 @@ fn validate_authority_scope(
             }
         }
         if is_inline_module(item)? {
-            validate_authority_scope(direct_item_body(item)?, &scopes, false)?;
+            continue;
+        }
+        if is_module_item(item)? {
             continue;
         }
         if is_macro_definition(item)? {
+            if item.iter().any(|token| token == "mod") {
+                return Err("macro definition may declare an unscanned module".to_owned());
+            }
             if item
                 .iter()
                 .any(|token| AUTHORITY_TARGETS.contains(&token.as_str()))
@@ -3632,6 +3719,7 @@ fn validate_authority_scope(
             }
             continue;
         }
+        validate_no_unscanned_modules(item)?;
         validate_macro_invocations(item, &scopes, root_scope)?;
         validate_nested_aliases_and_imports(item, &scopes)?;
         validate_associated_target_aliases(item, &scopes)?;
@@ -3648,16 +3736,17 @@ fn validate_authority_scope(
         .flat_map(|scope| &scope.aliases)
         .filter_map(|(name, resolves)| resolves.then_some(name))
         .collect::<Vec<_>>();
-    if target_aliases.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
+    if !target_aliases.is_empty() {
+        return Err(format!(
             "type aliases resolve to appraisal authority: {target_aliases:?}"
-        ))
+        ));
     }
+    scopes
+        .pop()
+        .ok_or_else(|| "authority scope stack is empty".to_owned())
 }
 
-fn validate_recursive_authority_inventory(source: &str) -> Result<(), String> {
+fn validate_recursive_authority_inventory(source: &str) -> Result<AuthorityScope, String> {
     let tokens = rust_tokens_with_literals(source);
     validate_authority_scope(&tokens, &[], true)
 }
@@ -3788,16 +3877,14 @@ fn validate_authority_method_inventories(tokens: &[String]) -> Result<(), String
     )
 }
 
-fn header_mentions_authority_target(header: &[String]) -> bool {
-    header.iter().any(|token| {
-        matches!(
-            token.as_str(),
-            "AppraisalResult" | "AcceptedClaims" | "VerifiedAttestation"
-        )
-    })
+fn header_mentions_authority_target(header: &[String], scopes: &[AuthorityScope]) -> bool {
+    tokens_resolve_authority(header, scopes)
 }
 
-fn validate_authority_trait_impls(tokens: &[String]) -> Result<(), String> {
+fn validate_authority_trait_impls(
+    tokens: &[String],
+    scopes: &[AuthorityScope],
+) -> Result<(), String> {
     let expected = rust_tokens(
         r#"impl fmt::Debug for VerifiedAttestation {
             fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -3814,7 +3901,7 @@ fn validate_authority_trait_impls(tokens: &[String]) -> Result<(), String> {
             let core = item_core_start(header).ok()?;
             (header.get(core).map(String::as_str) == Some("impl")
                 && header.iter().any(|token| token == "for")
-                && header_mentions_authority_target(header))
+                && header_mentions_authority_target(header, scopes))
             .then_some(item)
         })
         .collect::<Vec<_>>();
@@ -3827,14 +3914,17 @@ fn validate_authority_trait_impls(tokens: &[String]) -> Result<(), String> {
     }
 }
 
-fn validate_authority_impl_headers(tokens: &[String]) -> Result<(), String> {
+fn validate_authority_impl_headers(
+    tokens: &[String],
+    scopes: &[AuthorityScope],
+) -> Result<(), String> {
     let actual = direct_items(tokens)?
         .into_iter()
         .filter_map(|item| {
             let header = direct_item_header(item).ok()?;
             let core = item_core_start(header).ok()?;
             (header.get(core).map(String::as_str) == Some("impl")
-                && header_mentions_authority_target(header))
+                && header_mentions_authority_target(header, scopes))
             .then(|| header.to_vec())
         })
         .collect::<Vec<_>>();
@@ -3910,14 +4000,27 @@ fn function_name(function: &[String]) -> Result<&str, String> {
         .ok_or_else(|| "function lacks a name".to_owned())
 }
 
-fn construction_count(function: &[String], type_name: &str) -> Result<usize, String> {
-    Ok(direct_item_body(function)?
+fn construction_count(
+    function: &[String],
+    type_name: &str,
+    scopes: &[AuthorityScope],
+) -> Result<usize, String> {
+    let body = direct_item_body(function)?;
+    Ok(body
         .windows(2)
-        .filter(|window| window[0] == type_name && window[1] == "{")
+        .enumerate()
+        .filter(|(index, window)| {
+            window[0] == type_name
+                && window[1] == "{"
+                && path_resolves_authority(body, *index, scopes)
+        })
         .count())
 }
 
-fn validate_authority_constructions(tokens: &[String]) -> Result<(), String> {
+fn validate_authority_constructions(
+    tokens: &[String],
+    scopes: &[AuthorityScope],
+) -> Result<(), String> {
     let mut self_constructions = BTreeMap::<String, (usize, usize, usize)>::new();
     for item in direct_items(tokens)? {
         let header = direct_item_header(item)?;
@@ -3927,10 +4030,11 @@ fn validate_authority_constructions(tokens: &[String]) -> Result<(), String> {
         {
             continue;
         }
-        let Some(target) = header.get(core + 1).map(String::as_str) else {
-            continue;
-        };
-        let Some(target_index) = AUTHORITY_TARGETS.iter().position(|name| *name == target) else {
+        let Some(target_index) = header.iter().enumerate().find_map(|(index, token)| {
+            AUTHORITY_TARGETS
+                .iter()
+                .position(|name| *name == token && path_resolves_authority(header, index, scopes))
+        }) else {
             continue;
         };
         for method in direct_items(direct_item_body(item)?)? {
@@ -3963,9 +4067,9 @@ fn validate_authority_constructions(tokens: &[String]) -> Result<(), String> {
     let mut actual = Vec::new();
     for function in concrete_functions(tokens)? {
         let mut counts = (
-            construction_count(function, "AppraisalResult")?,
-            construction_count(function, "AcceptedClaims")?,
-            construction_count(function, "VerifiedAttestation")?,
+            construction_count(function, "AppraisalResult", scopes)?,
+            construction_count(function, "AcceptedClaims", scopes)?,
+            construction_count(function, "VerifiedAttestation", scopes)?,
         );
         if let Some(additional) = self_constructions.get(function_name(function)?) {
             counts.0 += additional.0;
@@ -3996,6 +4100,7 @@ fn validate_authority_constructions(tokens: &[String]) -> Result<(), String> {
             for target in ["AppraisalResult", "AcceptedClaims", "VerifiedAttestation"] {
                 for (index, window) in item.windows(2).enumerate() {
                     if window == [target, "{"]
+                        && path_resolves_authority(item, index, scopes)
                         && !matches!(
                             index
                                 .checked_sub(1)
@@ -4015,12 +4120,15 @@ fn validate_authority_constructions(tokens: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_authority_free_functions(tokens: &[String]) -> Result<(), String> {
+fn validate_authority_free_functions(
+    tokens: &[String],
+    scopes: &[AuthorityScope],
+) -> Result<(), String> {
     for item in direct_items(tokens)? {
         let header = direct_item_header(item)?;
         let core = item_core_start(header)?;
         if header.get(core).map(String::as_str) == Some("fn")
-            && header_mentions_authority_target(header)
+            && header_mentions_authority_target(header, scopes)
         {
             return Err(format!(
                 "free function mentions authority target in signature: {header:?}"
@@ -4084,7 +4192,8 @@ fn validate_private_diagnostic_assertions(source: &str) -> Result<(), String> {
 }
 
 fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(), String> {
-    validate_recursive_authority_inventory(verification)?;
+    let authority_scope = validate_recursive_authority_inventory(verification)?;
+    let authority_scopes = std::slice::from_ref(&authority_scope);
     let tokens = rust_tokens(verification);
     for (keyword, name, expected) in [
         (
@@ -4208,11 +4317,11 @@ fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(
         require_exact_item(&tokens, keyword, name, expected)?;
     }
     validate_authority_method_inventories(&tokens)?;
-    validate_authority_impl_headers(&tokens)?;
-    validate_authority_trait_impls(&tokens)?;
+    validate_authority_impl_headers(&tokens, authority_scopes)?;
+    validate_authority_trait_impls(&tokens, authority_scopes)?;
     validate_redacted_debug_macro_inventory(&tokens)?;
-    validate_authority_constructions(&tokens)?;
-    validate_authority_free_functions(&tokens)?;
+    validate_authority_constructions(&tokens, authority_scopes)?;
+    validate_authority_free_functions(&tokens, authority_scopes)?;
     validate_exact_failure_entry_points(&tokens)?;
 
     let freshness_tokens = rust_tokens(freshness);
@@ -5563,12 +5672,55 @@ fn authority_inventory_rejects_target_bearing_macro_definition() {
 }
 
 #[test]
-fn authority_inventory_ignores_bodyless_external_module_declaration() {
+fn authority_inventory_rejects_unscanned_external_module() {
     let source = include_str!("../verification.rs");
-    let positive = format!("{source}\nmod unrelated_external;");
-    if let Err(error) = validate_authority_structure(&positive, include_str!("../freshness.rs")) {
-        panic!("bodyless external module declaration affected authority inventory: {error}");
+    let mutation = format!("{source}\nmod authority;");
+    assert!(validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err());
+}
+
+#[test]
+fn authority_inventory_permits_exact_approved_external_test_module() {
+    let source = include_str!("../verification.rs");
+    if let Err(error) = validate_authority_structure(source, include_str!("../freshness.rs")) {
+        panic!("exact cfg(test) module declaration was rejected: {error}");
     }
+}
+
+#[test]
+fn authority_inventory_rejects_alternate_external_module_sources() {
+    let source = include_str!("../verification.rs");
+    for mutation in [
+        format!("{source}\nmod alternate;"),
+        format!("{source}\n#[cfg(test)] mod tests;"),
+        source.replacen("#[cfg(test)]\nmod tests;", "#[cfg(test)]\nmod renamed;", 1),
+        source.replacen(
+            "#[cfg(test)]\nmod tests;",
+            "#[cfg(any(test))]\nmod tests;",
+            1,
+        ),
+        source.replacen(
+            "#[cfg(test)]\nmod tests;",
+            "#[cfg(test)]\n#[path = \"tests.rs\"]\nmod tests;",
+            1,
+        ),
+        format!("{source}\nmod nested {{ mod authority; }}"),
+        format!(
+            "{source}\nmacro_rules! external_module {{ ($name:ident) => {{ mod $name; }}; }} external_module!(authority);"
+        ),
+        format!("{source}\nitems! {{ mod authority; }}"),
+    ] {
+        assert_ne!(mutation, source);
+        assert!(
+            validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err(),
+            "alternate external module source was accepted"
+        );
+    }
+}
+
+#[test]
+fn authority_inventory_rejects_block_local_external_module() {
+    let source = "#[cfg(test)] mod tests; fn load_external() { mod authority; }";
+    assert!(validate_recursive_authority_inventory(source).is_err());
 }
 
 #[test]
@@ -5590,6 +5742,46 @@ fn authority_inventory_permits_wholly_local_child_shadow() {
     );
     if let Err(error) = validate_authority_structure(&positive, include_str!("../freshness.rs")) {
         panic!("wholly child-local shadow was misattributed: {error}");
+    }
+}
+
+#[test]
+fn authority_inventory_permits_qualified_local_child_shadow() {
+    let source = include_str!("../verification.rs");
+    let positive = format!(
+        "{source}\nmod local {{ pub struct AppraisalResult {{ value: usize }} }} impl local::AppraisalResult {{ fn duplicate(&self) -> Self {{ Self {{ value: self.value }} }} }} fn inspect(value: local::AppraisalResult) -> local::AppraisalResult {{ local::AppraisalResult {{ value: value.value }} }}"
+    );
+    if let Err(error) = validate_authority_structure(&positive, include_str!("../freshness.rs")) {
+        panic!("qualified child-local shadow was misattributed: {error}");
+    }
+}
+
+#[test]
+fn authority_inventory_permits_deep_qualified_local_child_shadow() {
+    let source = include_str!("../verification.rs");
+    let positive = format!(
+        "{source}\nmod local {{ pub mod deeper {{ pub struct AppraisalResult {{ value: usize }} }} }} impl local::deeper::AppraisalResult {{ fn duplicate(&self) -> Self {{ Self {{ value: self.value }} }} }} fn inspect(value: local::deeper::AppraisalResult) -> local::deeper::AppraisalResult {{ local::deeper::AppraisalResult {{ value: value.value }} }}"
+    );
+    if let Err(error) = validate_authority_structure(&positive, include_str!("../freshness.rs")) {
+        panic!("deep qualified child-local shadow was misattributed: {error}");
+    }
+}
+
+#[test]
+fn authority_inventory_rejects_qualified_nonlocal_authority_paths() {
+    let source = include_str!("../verification.rs");
+    for item in [
+        "mod local { pub struct Other; } fn inspect(_: local::AppraisalResult) {}",
+        "mod local { type AppraisalResult = super::AppraisalResult; } fn inspect(_: local::AppraisalResult) {}",
+        "mod local { use super::AppraisalResult; } fn inspect(_: local::AppraisalResult) {}",
+        "mod local { pub use crate::verification::AppraisalResult; } fn inspect(_: local::AppraisalResult) {}",
+        "mod local { pub mod deeper { type AppraisalResult = crate::verification::AppraisalResult; } } fn inspect(_: local::deeper::AppraisalResult) {}",
+    ] {
+        let mutation = format!("{source}\n{item}");
+        assert!(
+            validate_authority_structure(&mutation, include_str!("../freshness.rs")).is_err(),
+            "qualified real or unresolved authority path was accepted: {item}"
+        );
     }
 }
 
