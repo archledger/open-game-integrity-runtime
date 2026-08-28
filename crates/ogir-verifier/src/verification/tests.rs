@@ -3443,14 +3443,106 @@ fn macro_invocations(tokens: &[String]) -> Result<Vec<&[String]>, String> {
     Ok(invocations)
 }
 
-fn macro_arguments(invocation: &[String]) -> Result<&[String], String> {
-    let bang = invocation
-        .iter()
-        .position(|token| token == "!")
-        .ok_or_else(|| "macro invocation lacks !".to_owned())?;
-    let close = matching_delimiter(invocation, bang + 1)
-        .ok_or_else(|| "macro invocation arguments are unbalanced".to_owned())?;
-    Ok(&invocation[bang + 2..close])
+fn approved_macro_definition() -> Vec<String> {
+    rust_tokens_with_literals(
+        r#"
+            macro_rules! impl_redacted_debug {
+                ($type_name:ty, $text:literal) => {
+                    impl fmt::Debug for $type_name {
+                        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                            formatter.write_str($text)
+                        }
+                    }
+                };
+            }
+        "#,
+    )
+}
+
+fn approved_macro_invocations() -> Vec<Vec<String>> {
+    [
+        r#"matches!(phase, VerificationPhase::EvidenceReceived | VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::IdentityChecked | VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied)"#,
+        r#"matches!(phase, VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::EvidenceAppraised)"#,
+        r#"matches!(phase, VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied)"#,
+        r#"impl_redacted_debug!(ChallengeAuthenticated, "ChallengeAuthenticated([REDACTED])")"#,
+        r#"impl_redacted_debug!(IdentityChecked, "IdentityChecked([REDACTED])")"#,
+        r#"impl_redacted_debug!(EvidenceAppraised, "EvidenceAppraised([REDACTED])")"#,
+        r#"impl_redacted_debug!(SessionBound, "SessionBound([REDACTED])")"#,
+        r#"impl_redacted_debug!(RevocationChecked, "RevocationChecked([REDACTED])")"#,
+        r#"impl_redacted_debug!(PolicySatisfied, "PolicySatisfied([REDACTED])")"#,
+        r#"impl_redacted_debug!(AppraisalResult, "AppraisalResult([REDACTED])")"#,
+        r#"impl_redacted_debug!(AcceptedClaims, "AcceptedClaims([REDACTED])")"#,
+        r#"impl_redacted_debug!(AppraisalResultView<'_>, "AppraisalResultView([REDACTED])")"#,
+        r#"matches!(&self.state, VerificationState::EvidenceReceived { .. })"#,
+        r#"unreachable!("phase was checked before active-state replacement")"#,
+        r#"matches!(&self.state, VerificationState::ChallengeAuthenticated { .. })"#,
+        r#"unreachable!("phase was checked before active-state replacement")"#,
+        r#"matches!(&self.state, VerificationState::FreshnessChecked { .. })"#,
+        r#"unreachable!("phase was checked before active-state replacement")"#,
+        r#"matches!(&self.state, VerificationState::IdentityChecked { .. })"#,
+        r#"unreachable!("phase was checked before active-state replacement")"#,
+        r#"matches!(&self.state, VerificationState::EvidenceAppraised { .. })"#,
+        r#"unreachable!("phase was checked before active-state replacement")"#,
+        r#"matches!(&self.state, VerificationState::SessionBound { .. })"#,
+        r#"unreachable!("phase was checked before active-state replacement")"#,
+        r#"matches!(&self.state, VerificationState::RevocationChecked { .. })"#,
+        r#"unreachable!("phase was checked before active-state replacement")"#,
+        r#"unreachable!("phase was checked before terminal replacement")"#,
+        r#"unreachable!("eligibility excluded terminal state before replacement")"#,
+    ]
+    .map(rust_tokens_with_literals)
+    .to_vec()
+}
+
+fn macro_definitions(tokens: &[String]) -> Result<Vec<&[String]>, String> {
+    let mut definitions = Vec::new();
+    for start in 0..tokens.len().saturating_sub(3) {
+        if tokens[start] != "macro_rules" || tokens.get(start + 1).map(String::as_str) != Some("!")
+        {
+            continue;
+        }
+        let open = start + 3;
+        if !matches!(tokens.get(open).map(String::as_str), Some("(" | "[" | "{")) {
+            return Err(format!(
+                "macro definition at token {start} lacks a delimited body"
+            ));
+        }
+        let close = matching_delimiter(tokens, open)
+            .ok_or_else(|| format!("macro definition at token {start} is unbalanced"))?;
+        let end = close + 1 + usize::from(tokens.get(close + 1).map(String::as_str) == Some(";"));
+        definitions.push(&tokens[start..end]);
+    }
+    Ok(definitions)
+}
+
+fn validate_macro_imports(tokens: &[String]) -> Result<(), String> {
+    const RESERVED: [&str; 6] = [
+        "impl_redacted_debug",
+        "matches",
+        "unreachable",
+        "include",
+        "include_str",
+        "include_bytes",
+    ];
+    for (index, token) in tokens.iter().enumerate() {
+        if token != "use" {
+            continue;
+        }
+        let statement = semicolon_terminated_slice(tokens, index)?;
+        if statement.iter().any(|token| token == "*")
+            || statement
+                .iter()
+                .any(|token| RESERVED.contains(&token.as_str()))
+        {
+            return Err(format!(
+                "macro import or re-export can shadow the approved inventory: {statement:?}"
+            ));
+        }
+    }
+    if tokens.iter().any(|token| token == "macro_use") {
+        return Err("macro_use can import uninspected macro definitions".to_owned());
+    }
+    Ok(())
 }
 
 fn semicolon_terminated_slice(tokens: &[String], start: usize) -> Result<&[String], String> {
@@ -3568,32 +3660,63 @@ fn is_macro_definition(item: &[String]) -> Result<bool, String> {
     Ok(header.get(core).map(String::as_str) == Some("macro_rules"))
 }
 
-fn validate_macro_invocations(
-    tokens: &[String],
-    scopes: &[AuthorityScope],
-    root_scope: bool,
-) -> Result<(), String> {
-    let approved = [
-        r#"impl_redacted_debug!(AppraisalResult, "AppraisalResult([REDACTED])")"#,
-        r#"impl_redacted_debug!(AcceptedClaims, "AcceptedClaims([REDACTED])")"#,
-    ]
-    .map(rust_tokens_with_literals);
+fn validate_macro_invocations(tokens: &[String]) -> Result<(), String> {
+    let approved = approved_macro_invocations();
     for invocation in macro_invocations(tokens)? {
-        let arguments = macro_arguments(invocation)?;
-        if arguments.iter().any(|token| token == "mod") {
-            return Err("macro invocation may declare an unscanned module".to_owned());
+        let bang = invocation
+            .iter()
+            .position(|token| token == "!")
+            .ok_or_else(|| "macro invocation lacks !".to_owned())?;
+        let name = invocation
+            .get(
+                bang.checked_sub(1)
+                    .ok_or_else(|| "macro invocation lacks a name".to_owned())?,
+            )
+            .map(String::as_str)
+            .ok_or_else(|| "macro invocation lacks a name".to_owned())?;
+        if name == "include" {
+            return Err("include! may inject uninspected Rust source".to_owned());
         }
-        if !tokens_resolve_authority(arguments, scopes) {
-            continue;
-        }
-        if root_scope && approved.iter().any(|expected| invocation == expected) {
+        if approved.iter().any(|expected| invocation == expected) {
             continue;
         }
         return Err(format!(
-            "unapproved macro invocation mentions appraisal authority: {invocation:?}"
+            "macro invocation is outside the exact production inventory: {invocation:?}"
         ));
     }
     Ok(())
+}
+
+fn validate_production_macro_inventory(tokens: &[String]) -> Result<(), String> {
+    let approved_definition = approved_macro_definition();
+    let definitions = macro_definitions(tokens)?;
+    if definitions != [approved_definition.as_slice()] {
+        return Err(format!(
+            "production macro definition inventory drifted: {definitions:?}"
+        ));
+    }
+    let direct_definition_count = direct_items(tokens)?
+        .into_iter()
+        .filter(|item| *item == approved_definition)
+        .count();
+    if direct_definition_count != 1 {
+        return Err(format!(
+            "approved macro definition must be one direct root item, found {direct_definition_count}"
+        ));
+    }
+    validate_macro_imports(tokens)?;
+    let actual = macro_invocations(tokens)?
+        .into_iter()
+        .map(<[String]>::to_vec)
+        .collect::<Vec<_>>();
+    let expected = approved_macro_invocations();
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "production macro invocation inventory drifted; expected {expected:?}, found {actual:?}"
+        ))
+    }
 }
 
 fn validate_associated_target_aliases(
@@ -3707,20 +3830,18 @@ fn validate_authority_scope(
             continue;
         }
         if is_macro_definition(item)? {
-            if item.iter().any(|token| token == "mod") {
-                return Err("macro definition may declare an unscanned module".to_owned());
+            if root_scope && item == approved_macro_definition() {
+                continue;
             }
-            if item
-                .iter()
-                .any(|token| AUTHORITY_TARGETS.contains(&token.as_str()))
-                || tokens_resolve_authority(item, &scopes)
-            {
-                return Err("macro definition names appraisal authority".to_owned());
-            }
-            continue;
+            return Err("macro definition is outside the exact production inventory".to_owned());
         }
         validate_no_unscanned_modules(item)?;
-        validate_macro_invocations(item, &scopes, root_scope)?;
+        if macro_definitions(item)?.is_empty() {
+            validate_macro_imports(item)?;
+            validate_macro_invocations(item)?;
+        } else {
+            return Err("non-module item contains a macro definition".to_owned());
+        }
         validate_nested_aliases_and_imports(item, &scopes)?;
         validate_associated_target_aliases(item, &scopes)?;
         if !root_scope && tokens_resolve_authority(item, &scopes) {
@@ -4194,6 +4315,8 @@ fn validate_private_diagnostic_assertions(source: &str) -> Result<(), String> {
 fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(), String> {
     let authority_scope = validate_recursive_authority_inventory(verification)?;
     let authority_scopes = std::slice::from_ref(&authority_scope);
+    let literal_tokens = rust_tokens_with_literals(verification);
+    validate_production_macro_inventory(&literal_tokens)?;
     let tokens = rust_tokens(verification);
     for (keyword, name, expected) in [
         (
@@ -5786,13 +5909,178 @@ fn authority_inventory_rejects_qualified_nonlocal_authority_paths() {
 }
 
 #[test]
-fn authority_inventory_permits_harmless_unrelated_macro() {
-    let source = include_str!("../verification.rs");
-    let positive = format!(
-        "{source}\nmacro_rules! make_pair {{ ($left:ty => $right:ty) => {{ struct Pair($left, $right); }}; }}\nmake_pair!(usize => String);"
+fn authority_inventory_rejects_direct_include_source() {
+    let source = "#[cfg(test)] mod tests; include!(\"authority.rs\");";
+    assert!(validate_recursive_authority_inventory(source).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_nested_include_source() {
+    let source = "#[cfg(test)] mod tests; mod nested { include!(\"authority.rs\"); }";
+    assert!(validate_recursive_authority_inventory(source).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_block_include_source() {
+    let source = "#[cfg(test)] mod tests; fn load() { include!(\"authority.rs\"); }";
+    assert!(validate_recursive_authority_inventory(source).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_include_alias_source() {
+    let source = "#[cfg(test)] mod tests; use std::include as load; load!(\"authority.rs\");";
+    assert!(validate_recursive_authority_inventory(source).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_include_wrapper_macro() {
+    let source = r#"
+        #[cfg(test)] mod tests;
+        macro_rules! load_items { () => { include!("authority.rs"); }; }
+    "#;
+    assert!(validate_recursive_authority_inventory(source).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_non_source_include_macros() {
+    for source in [
+        "#[cfg(test)] mod tests; const TEXT: &str = include_str!(\"authority.rs\");",
+        "#[cfg(test)] mod tests; const BYTES: &[u8] = include_bytes!(\"authority.rs\");",
+    ] {
+        assert!(validate_recursive_authority_inventory(source).is_err());
+    }
+}
+
+#[test]
+fn authority_inventory_rejects_generic_dequalification_macro() {
+    let source = r#"
+        #[cfg(test)] mod tests;
+        mod local { pub struct AppraisalResult; }
+        macro_rules! dequalify { ($module:ident::$name:ident) => { impl $name {} }; }
+        dequalify!(local::AppraisalResult);
+    "#;
+    assert!(validate_recursive_authority_inventory(source).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_macro_with_qualified_local_shadow_argument() {
+    let source = r#"
+        #[cfg(test)] mod tests;
+        mod local { pub struct AppraisalResult; }
+        observe!(local::AppraisalResult);
+    "#;
+    assert!(validate_recursive_authority_inventory(source).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_approved_macro_name_shadow() {
+    let source = r#"
+        #[cfg(test)] mod tests;
+        macro_rules! matches { ($($tokens:tt)*) => { true }; }
+    "#;
+    assert!(validate_recursive_authority_inventory(source).is_err());
+}
+
+#[test]
+fn authority_inventory_rejects_macro_definitions_below_module_items() {
+    for source in [
+        "#[cfg(test)] mod tests; mod nested { macro_rules! helper { () => { true }; } }",
+        "#[cfg(test)] mod tests; fn nested() { macro_rules! helper { () => { true }; } }",
+    ] {
+        assert!(validate_recursive_authority_inventory(source).is_err());
+    }
+}
+
+#[test]
+fn authority_inventory_rejects_approved_macro_import_shadow() {
+    let source = r#"
+        #[cfg(test)] mod tests;
+        use external::matches;
+        matches!(phase, VerificationPhase::EvidenceReceived | VerificationPhase::ChallengeAuthenticated | VerificationPhase::FreshnessChecked | VerificationPhase::IdentityChecked | VerificationPhase::EvidenceAppraised | VerificationPhase::SessionBound | VerificationPhase::RevocationChecked | VerificationPhase::PolicySatisfied);
+    "#;
+    assert!(validate_recursive_authority_inventory(source).is_err());
+}
+
+#[test]
+fn authority_inventory_ignores_non_executable_include_decoys() {
+    let source = r#"
+        #[cfg(test)] mod tests;
+        // include!("comment.rs");
+        /* include!("block-comment.rs"); */
+        /// ```ignore
+        /// include!("doctest.rs");
+        /// ```
+        const TEXT: &str = "include!(\"string.rs\")";
+    "#;
+    if let Err(error) = validate_recursive_authority_inventory(source) {
+        panic!("non-executable include decoy affected source inventory: {error}");
+    }
+}
+
+#[test]
+fn authority_inventory_pins_existing_macro_names_and_counts() {
+    let tokens = rust_tokens_with_literals(include_str!("../verification.rs"));
+    let definitions = match macro_definitions(&tokens) {
+        Ok(definitions) => definitions,
+        Err(error) => panic!("production macro definitions did not parse: {error}"),
+    };
+    assert_eq!(definitions, [approved_macro_definition()]);
+    let direct = match direct_items(&tokens) {
+        Ok(direct) => direct,
+        Err(error) => panic!("production direct items did not parse: {error}"),
+    };
+    assert_eq!(
+        direct
+            .into_iter()
+            .filter(|item| *item == approved_macro_definition())
+            .count(),
+        1
     );
-    if let Err(error) = validate_authority_structure(&positive, include_str!("../freshness.rs")) {
-        panic!("unrelated macro affected authority inventory: {error}");
+    let invocations = match macro_invocations(&tokens) {
+        Ok(invocations) => invocations,
+        Err(error) => panic!("production macro inventory did not parse: {error}"),
+    };
+    let mut counts = BTreeMap::<&str, usize>::new();
+    for invocation in invocations {
+        let Some(bang) = invocation.iter().position(|token| token == "!") else {
+            panic!("macro invocation did not contain !");
+        };
+        let Some(name) = bang
+            .checked_sub(1)
+            .and_then(|index| invocation.get(index))
+            .map(String::as_str)
+        else {
+            panic!("macro invocation did not have a name");
+        };
+        *counts.entry(name).or_default() += 1;
+    }
+    assert_eq!(
+        counts,
+        BTreeMap::from([
+            ("impl_redacted_debug", 9),
+            ("matches", 10),
+            ("unreachable", 9),
+        ])
+    );
+    if let Err(error) = validate_production_macro_inventory(&tokens) {
+        panic!("exact production macro inventory was rejected: {error}");
+    }
+}
+
+#[test]
+fn authority_inventory_rejects_macro_definition_or_invocation_drift() {
+    let source = include_str!("../verification.rs");
+    for mutation in [
+        source.replacen("$type_name:ty", "$type_name:path", 1),
+        source.replacen(
+            "matches!(\n        phase,",
+            "matches!(\n        VerificationPhase::EvidenceReceived,",
+            1,
+        ),
+    ] {
+        assert_ne!(mutation, source);
+        let tokens = rust_tokens_with_literals(&mutation);
+        assert!(validate_production_macro_inventory(&tokens).is_err());
     }
 }
 
@@ -5872,7 +6160,7 @@ fn private_diagnostic_inventory_ignores_unrelated_safe_assertion() {
 fn authority_inventory_distinguishes_direct_items_from_nested_and_unrelated_controls() {
     let source = include_str!("../verification.rs");
     let positive = format!(
-        "{source}\nmod nested_decoys {{ pub struct AppraisalResult {{ pub exposed: usize }} impl AppraisalResult {{ pub fn protect(self) -> Self {{ self }} }} }}\nstruct Unrelated; impl Unrelated {{ pub fn protect(self) -> Self {{ self }} pub fn authorize(self) -> Self {{ self }} }}\nmacro_rules! unused_declarations {{ () => {{ pub fn issue_attestation() {{}} }}; }}"
+        "{source}\nmod nested_decoys {{ pub struct AppraisalResult {{ pub exposed: usize }} impl AppraisalResult {{ pub fn protect(self) -> Self {{ self }} }} }}\nstruct Unrelated; impl Unrelated {{ pub fn protect(self) -> Self {{ self }} pub fn authorize(self) -> Self {{ self }} }}"
     );
     assert!(
         validate_authority_structure(&positive, include_str!("../freshness.rs")).is_ok(),
