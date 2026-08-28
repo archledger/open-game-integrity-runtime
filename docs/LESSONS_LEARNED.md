@@ -553,3 +553,27 @@ Do not use this document to expose embargoed vulnerability details before coordi
   explicitly invalidates the earlier apparent success and records the matching
   fail-closed hashes; this ledger preserves the rule for future external-state
   reconciliation.
+
+## 2026-08-27 — Privacy tests must not disclose the regression they detect
+
+- **Context:** Post-merge CodeQL 2.26.4 review of verifier freshness privacy
+  diagnostics.
+- **Mistaken assumption:** Synthetic fixtures and test-only assertions made it
+  harmless to include the forbidden value or complete diagnostic in failure
+  output, and message-free `assert_eq!` comparisons were safe.
+- **Observed failure:** Alerts #43/#44 traced private account data into custom
+  assertion messages; Rust 1.98.0 also prints both operands for every failed
+  `assert_eq!`, creating same-root-cause variants across privacy tests.
+- **Security or quality impact:** A redaction regression could copy the private
+  value into local or CI logs through the test intended to catch it, while
+  repeated scanner noise reduced the value of full-branch analysis.
+- **Permanent regression test:** Existing exact redaction and forbidden-value
+  tests now fail with fixed generic text; CodeQL alerts #43/#44 provide the
+  scanner RED and must be fixed by analysis with null dismissal metadata.
+- **New prevention rule:** Privacy assertions may compare or search sensitive
+  diagnostics, but their panic path must not format either operand, the
+  forbidden fixture, or the diagnostic under test. Prefer boolean `assert!`
+  with fixed generic text over `assert_eq!` for privacy-bearing values.
+- **Documentation or agent-policy updates:** Issue #18, its design/plan, and the
+  test strategy record the assertion rule; no production or threat-model change
+  is implied.
