@@ -2289,108 +2289,518 @@ fn request_exists_only_while_flow_is_nonterminal() {
     }
 }
 
-#[test]
-fn authority_fields_remain_private_by_structure() {
-    let verification = include_str!("../verification.rs").replace("\r\n", "\n");
-    let freshness = include_str!("../freshness.rs").replace("\r\n", "\n");
-
-    for declaration in [
-        "struct AttemptRecord {\n    _registration: ReplayRegistration,\n}",
-        "pub struct VerificationOutcome {\n    decision: Decision,\n    reason: Option<ReasonCode>,\n}",
-        "pub struct ChallengeAuthenticated {\n    binding: VerificationBinding,\n}",
-        "pub struct IdentityChecked {\n    binding: VerificationBinding,\n}",
-        "pub struct EvidenceAppraised {\n    binding: VerificationBinding,\n    accepted_profile: EvidenceProfile,\n}",
-        "pub struct SessionBound {\n    binding: VerificationBinding,\n    session_public_key_id: SessionPublicKeyId,\n}",
-        "pub struct RevocationChecked {\n    binding: VerificationBinding,\n}",
-        "pub struct PolicySatisfied {\n    binding: VerificationBinding,\n    allowed: AllowedClass,\n}",
-        "pub struct VerifiedAttestation {\n    binding: VerificationBinding,\n    allowed: AllowedClass,\n}",
-        "pub struct VerifierFlow {\n    binding: VerificationBinding,\n    state: VerificationState,\n}",
-    ] {
-        assert!(
-            verification.contains(declaration),
-            "verification authority declaration drifted: {declaration:?}"
-        );
+fn raw_string_end(source: &str, start: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut cursor = start;
+    if matches!(bytes.get(cursor), Some(b'b' | b'c')) {
+        cursor += 1;
     }
-    assert!(
-        verification.contains(
-            "#[derive(Clone)]\npub(crate) struct VerificationBinding(Arc<AttemptRecord>);"
-        )
-    );
-    assert!(
-        freshness.contains("pub struct FreshnessChecked {\n    binding: VerificationBinding,\n}")
-    );
+    if bytes.get(cursor) != Some(&b'r') {
+        return None;
+    }
+    cursor += 1;
 
-    let verification_lines: Vec<&str> = verification.lines().collect();
-    for (indent, field) in [
-        ("    ", "_registration: ReplayRegistration,"),
-        ("    ", "binding: VerificationBinding,"),
-        ("        ", "request: VerificationRequest,"),
-        ("    ", "accepted_profile: EvidenceProfile,"),
-        ("    ", "session_public_key_id: SessionPublicKeyId,"),
-        ("    ", "state: VerificationState,"),
-        ("    ", "allowed: AllowedClass,"),
-        ("    ", "decision: Decision,"),
-        ("    ", "reason: Option<ReasonCode>,"),
+    let mut hashes = 0;
+    while bytes.get(cursor) == Some(&b'#') {
+        hashes += 1;
+        cursor += 1;
+    }
+    if bytes.get(cursor) != Some(&b'"') {
+        return None;
+    }
+    cursor += 1;
+
+    while cursor < bytes.len() {
+        if bytes[cursor] == b'"' {
+            let end = cursor + 1 + hashes;
+            if end <= bytes.len() && bytes[cursor + 1..end].iter().all(|byte| *byte == b'#') {
+                return Some(end);
+            }
+        }
+        cursor += 1;
+    }
+    panic!("unterminated raw string at byte {start}")
+}
+
+fn quoted_string_end(source: &str, quote: usize) -> usize {
+    let bytes = source.as_bytes();
+    let mut cursor = quote + 1;
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'\\' => cursor += 2,
+            b'"' => return cursor + 1,
+            _ => cursor += 1,
+        }
+    }
+    panic!("unterminated string at byte {quote}")
+}
+
+fn char_literal_end(source: &str, quote: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut cursor = quote + 1;
+    let first = *bytes.get(cursor)?;
+    if first == b'\\' {
+        cursor += 1;
+        match *bytes.get(cursor)? {
+            b'x' => cursor += 3,
+            b'u' => {
+                cursor += 1;
+                if bytes.get(cursor) != Some(&b'{') {
+                    return None;
+                }
+                cursor += 1;
+                while bytes.get(cursor) != Some(&b'}') {
+                    cursor += 1;
+                    if cursor >= bytes.len() {
+                        return None;
+                    }
+                }
+                cursor += 1;
+            }
+            _ => cursor += 1,
+        }
+    } else {
+        let character = source[cursor..].chars().next()?;
+        if matches!(character, '\'' | '\n' | '\r') {
+            return None;
+        }
+        cursor += character.len_utf8();
+    }
+    (bytes.get(cursor) == Some(&b'\'')).then_some(cursor + 1)
+}
+
+fn is_rust_whitespace(character: char) -> bool {
+    matches!(
+        character,
+        '\u{0009}'
+            ..='\u{000d}'
+                | '\u{0020}'
+                | '\u{0085}'
+                | '\u{200e}'
+                | '\u{200f}'
+                | '\u{2028}'
+                | '\u{2029}'
+    )
+}
+
+fn is_identifier_start(character: char) -> bool {
+    !is_rust_whitespace(character)
+        && (character == '_' || character.is_ascii_alphabetic() || !character.is_ascii())
+}
+
+fn is_identifier_continue(character: char) -> bool {
+    !is_rust_whitespace(character)
+        && (character == '_' || character.is_ascii_alphanumeric() || !character.is_ascii())
+}
+
+fn identifier_end(source: &str, start: usize) -> Option<usize> {
+    let character = source.get(start..)?.chars().next()?;
+    if !is_identifier_start(character) {
+        return None;
+    }
+    let mut cursor = start + character.len_utf8();
+    while cursor < source.len() {
+        let next = source[cursor..].chars().next()?;
+        if !is_identifier_continue(next) {
+            break;
+        }
+        cursor += next.len_utf8();
+    }
+    Some(cursor)
+}
+
+fn rust_tokens(source: &str) -> Vec<String> {
+    let source = source.strip_prefix('\u{feff}').unwrap_or(source);
+    let bytes = source.as_bytes();
+    let mut tokens = Vec::new();
+    let mut cursor = 0;
+
+    while cursor < bytes.len() {
+        let character = source[cursor..]
+            .chars()
+            .next()
+            .unwrap_or_else(|| panic!("token cursor {cursor} is not a character boundary"));
+        if is_rust_whitespace(character) {
+            cursor += character.len_utf8();
+        } else if bytes[cursor..].starts_with(b"//") {
+            cursor += 2;
+            while cursor < bytes.len() && bytes[cursor] != b'\n' {
+                cursor += 1;
+            }
+        } else if bytes[cursor..].starts_with(b"/*") {
+            cursor += 2;
+            let mut depth = 1_usize;
+            while depth > 0 {
+                assert!(cursor < bytes.len(), "unterminated block comment");
+                if bytes[cursor..].starts_with(b"/*") {
+                    depth += 1;
+                    cursor += 2;
+                } else if bytes[cursor..].starts_with(b"*/") {
+                    depth -= 1;
+                    cursor += 2;
+                } else {
+                    cursor += 1;
+                }
+            }
+        } else if let Some(end) = raw_string_end(source, cursor) {
+            cursor = identifier_end(source, end).unwrap_or(end);
+        } else if bytes[cursor] == b'"' {
+            let end = quoted_string_end(source, cursor);
+            cursor = identifier_end(source, end).unwrap_or(end);
+        } else if matches!(bytes.get(cursor), Some(b'b' | b'c'))
+            && bytes.get(cursor + 1) == Some(&b'"')
+        {
+            let end = quoted_string_end(source, cursor + 1);
+            cursor = identifier_end(source, end).unwrap_or(end);
+        } else if bytes[cursor] == b'b' && bytes.get(cursor + 1) == Some(&b'\'') {
+            let end = char_literal_end(source, cursor + 1)
+                .unwrap_or_else(|| panic!("invalid byte character at byte {cursor}"));
+            cursor = identifier_end(source, end).unwrap_or(end);
+        } else if bytes[cursor] == b'\'' {
+            if let Some(end) = char_literal_end(source, cursor) {
+                cursor = identifier_end(source, end).unwrap_or(end);
+            } else if bytes
+                .get(cursor + 1..)
+                .is_some_and(|tail| tail.starts_with(b"r#"))
+            {
+                let end = identifier_end(source, cursor + 3)
+                    .unwrap_or_else(|| panic!("invalid raw lifetime at byte {cursor}"));
+                tokens.push(source[cursor..end].to_owned());
+                cursor = end;
+            } else if let Some(end) = identifier_end(source, cursor + 1) {
+                tokens.push(source[cursor..end].to_owned());
+                cursor = end;
+            } else {
+                tokens.push("'".to_owned());
+                cursor += 1;
+            }
+        } else if bytes[cursor..].starts_with(b"r#") {
+            if let Some(end) = identifier_end(source, cursor + 2) {
+                tokens.push(source[cursor + 2..end].to_owned());
+                cursor = end;
+            } else {
+                tokens.push(character.to_string());
+                cursor += character.len_utf8();
+            }
+        } else if is_identifier_start(character) {
+            let end = identifier_end(source, cursor)
+                .unwrap_or_else(|| panic!("identifier at byte {cursor} has no end"));
+            tokens.push(source[cursor..end].to_owned());
+            cursor = end;
+        } else if character.is_ascii_digit() {
+            let start = cursor;
+            cursor += 1;
+            while cursor < bytes.len()
+                && (bytes[cursor].is_ascii_alphanumeric() || matches!(bytes[cursor], b'_' | b'.'))
+            {
+                cursor += 1;
+            }
+            tokens.push(source[start..cursor].to_owned());
+        } else {
+            tokens.push(character.to_string());
+            cursor += character.len_utf8();
+        }
+    }
+    tokens
+}
+
+fn matching_delimiter(tokens: &[String], open: usize) -> Option<usize> {
+    let expected = match tokens.get(open).map(String::as_str) {
+        Some("(") => ")",
+        Some("[") => "]",
+        Some("{") => "}",
+        _ => return None,
+    };
+    let mut stack = vec![expected];
+    for (index, token) in tokens.iter().enumerate().skip(open + 1) {
+        match token.as_str() {
+            "(" => stack.push(")"),
+            "[" => stack.push("]"),
+            "{" => stack.push("}"),
+            ")" | "]" | "}" => {
+                if stack.pop() != Some(token.as_str()) {
+                    return None;
+                }
+                if stack.is_empty() {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn item_visibility_start(tokens: &[String], keyword: usize) -> usize {
+    if keyword > 0 && tokens[keyword - 1] == "pub" {
+        return keyword - 1;
+    }
+    if keyword > 0 && tokens[keyword - 1] == ")" {
+        let mut depth = 1_usize;
+        let mut cursor = keyword - 1;
+        while cursor > 0 {
+            cursor -= 1;
+            match tokens[cursor].as_str() {
+                ")" => depth += 1,
+                "(" => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return if cursor > 0 && tokens[cursor - 1] == "pub" {
+                            cursor - 1
+                        } else {
+                            keyword
+                        };
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    keyword
+}
+
+fn named_item_tokens<'a>(
+    tokens: &'a [String],
+    keyword: &str,
+    name: &str,
+) -> Result<&'a [String], String> {
+    let starts = tokens
+        .windows(2)
+        .enumerate()
+        .filter_map(|(index, window)| (window == [keyword, name]).then_some(index))
+        .collect::<Vec<_>>();
+    if starts.len() != 1 {
+        return Err(format!(
+            "expected one {keyword} {name} item, found {}",
+            starts.len()
+        ));
+    }
+    let keyword_start = starts[0];
+    let start = item_visibility_start(tokens, keyword_start);
+    let delimiter = tokens
+        .iter()
+        .enumerate()
+        .skip(keyword_start + 2)
+        .find_map(|(index, token)| matches!(token.as_str(), "(" | "{" | ";").then_some(index))
+        .ok_or_else(|| format!("{keyword} {name} has no item delimiter"))?;
+    let end = if tokens[delimiter] == ";" {
+        delimiter + 1
+    } else {
+        let close = matching_delimiter(tokens, delimiter)
+            .ok_or_else(|| format!("{keyword} {name} has unbalanced delimiters"))?;
+        if tokens[delimiter] == "(" {
+            if tokens.get(close + 1).map(String::as_str) != Some(";") {
+                return Err(format!("tuple {keyword} {name} lacks a semicolon"));
+            }
+            close + 2
+        } else {
+            close + 1
+        }
+    };
+    Ok(&tokens[start..end])
+}
+
+fn require_exact_item(
+    tokens: &[String],
+    keyword: &str,
+    name: &str,
+    expected_source: &str,
+) -> Result<(), String> {
+    let actual = named_item_tokens(tokens, keyword, name)?;
+    let expected = rust_tokens(expected_source);
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "{keyword} {name} token inventory drifted; expected {expected:?}, found {actual:?}"
+        ))
+    }
+}
+
+fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(), String> {
+    let tokens = rust_tokens(verification);
+    for (keyword, name, expected) in [
+        (
+            "struct",
+            "AttemptRecord",
+            "struct AttemptRecord { _registration: ReplayRegistration, }",
+        ),
+        (
+            "struct",
+            "VerificationBinding",
+            "pub(crate) struct VerificationBinding(Arc<AttemptRecord>);",
+        ),
+        (
+            "struct",
+            "VerificationOutcome",
+            "pub struct VerificationOutcome { decision: Decision, reason: Option<ReasonCode>, }",
+        ),
+        (
+            "struct",
+            "ChallengeAuthenticated",
+            "pub struct ChallengeAuthenticated { binding: VerificationBinding, }",
+        ),
+        (
+            "struct",
+            "IdentityChecked",
+            "pub struct IdentityChecked { binding: VerificationBinding, }",
+        ),
+        (
+            "struct",
+            "EvidenceAppraised",
+            "pub struct EvidenceAppraised { binding: VerificationBinding, accepted_profile: EvidenceProfile, }",
+        ),
+        (
+            "struct",
+            "SessionBound",
+            "pub struct SessionBound { binding: VerificationBinding, session_public_key_id: SessionPublicKeyId, }",
+        ),
+        (
+            "struct",
+            "RevocationChecked",
+            "pub struct RevocationChecked { binding: VerificationBinding, }",
+        ),
+        (
+            "struct",
+            "PolicySatisfied",
+            "pub struct PolicySatisfied { binding: VerificationBinding, allowed: AllowedClass, }",
+        ),
+        (
+            "struct",
+            "VerifiedAttestation",
+            "pub struct VerifiedAttestation { binding: VerificationBinding, allowed: AllowedClass, }",
+        ),
+        (
+            "struct",
+            "VerifierFlow",
+            "pub struct VerifierFlow { binding: VerificationBinding, state: VerificationState, }",
+        ),
+        (
+            "enum",
+            "VerificationState",
+            r#"
+                enum VerificationState {
+                    EvidenceReceived { request: VerificationRequest, },
+                    ChallengeAuthenticated { request: VerificationRequest, },
+                    FreshnessChecked { request: VerificationRequest, },
+                    IdentityChecked { request: VerificationRequest, },
+                    EvidenceAppraised { request: VerificationRequest, accepted_profile: EvidenceProfile, },
+                    SessionBound { request: VerificationRequest, accepted_profile: EvidenceProfile, session_public_key_id: SessionPublicKeyId, },
+                    RevocationChecked { request: VerificationRequest, accepted_profile: EvidenceProfile, session_public_key_id: SessionPublicKeyId, },
+                    PolicySatisfied { request: VerificationRequest, accepted_profile: EvidenceProfile, session_public_key_id: SessionPublicKeyId, allowed: AllowedClass, },
+                    Verified { outcome: VerificationOutcome, },
+                    Malformed { outcome: VerificationOutcome, },
+                    Unsupported { outcome: VerificationOutcome, },
+                    Retryable { outcome: VerificationOutcome, },
+                    Denied { outcome: VerificationOutcome, },
+                    Revoked { outcome: VerificationOutcome, },
+                }
+            "#,
+        ),
     ] {
-        let private_line = format!("{indent}{field}");
-        assert!(verification_lines.contains(&private_line.as_str()));
-        for visibility in ["pub ", "pub(crate) ", "pub(super) "] {
-            let forbidden = format!("{indent}{visibility}{field}");
-            assert!(
-                !verification_lines.contains(&forbidden.as_str()),
-                "verification authority field became visible: {forbidden:?}"
-            );
+        require_exact_item(&tokens, keyword, name, expected)?;
+    }
+
+    let freshness_tokens = rust_tokens(freshness);
+    require_exact_item(
+        &freshness_tokens,
+        "struct",
+        "FreshnessChecked",
+        "pub struct FreshnessChecked { binding: VerificationBinding, }",
+    )
+}
+
+fn sequence_start(tokens: &[String], expected: &[&str]) -> Option<usize> {
+    tokens.windows(expected.len()).position(|window| {
+        window
+            .iter()
+            .zip(expected)
+            .all(|(actual, expected)| actual == expected)
+    })
+}
+
+fn function_tokens<'a>(tokens: &'a [String], name: &str) -> Result<&'a [String], String> {
+    let marker = ["pub", "fn", name];
+    let starts = tokens
+        .windows(marker.len())
+        .enumerate()
+        .filter_map(|(index, window)| {
+            window
+                .iter()
+                .zip(marker)
+                .all(|(actual, expected)| actual == expected)
+                .then_some(index)
+        })
+        .collect::<Vec<_>>();
+    if starts.len() != 1 {
+        return Err(format!(
+            "expected one public function {name}, found {}",
+            starts.len()
+        ));
+    }
+    let start = starts[0];
+    let body = tokens
+        .iter()
+        .enumerate()
+        .skip(start + marker.len())
+        .find_map(|(index, token)| (token == "{").then_some(index))
+        .ok_or_else(|| format!("function {name} has no body"))?;
+    let end = matching_delimiter(tokens, body)
+        .ok_or_else(|| format!("function {name} has an unbalanced body"))?;
+    Ok(&tokens[start..=end])
+}
+
+fn validate_active_state_replacement(verification: &str) -> Result<(), String> {
+    let tokens = rust_tokens(verification);
+    for forbidden in [
+        &["Option", "<", "VerificationState", ">"][..],
+        &["self", ".", "state", ".", "take", "(", ")"][..],
+        &[
+            "std", ":", ":", "mem", ":", ":", "take", "(", "&", "mut", "self", ".", "state",
+        ][..],
+    ] {
+        if sequence_start(&tokens, forbidden).is_some() {
+            return Err(format!("forbidden state extraction tokens: {forbidden:?}"));
         }
     }
 
-    let freshness_lines: Vec<&str> = freshness.lines().collect();
-    let freshness_field = "    binding: VerificationBinding,";
-    assert!(freshness_lines.contains(&freshness_field));
-    for visibility in ["pub ", "pub(crate) ", "pub(super) "] {
-        let forbidden = format!("    {visibility}binding: VerificationBinding,");
-        assert!(
-            !freshness_lines.contains(&forbidden.as_str()),
-            "freshness authority field became visible: {forbidden:?}"
-        );
-    }
-
-    for forbidden in [
-        "pub(crate) struct VerificationBinding(pub Arc<AttemptRecord>);",
-        "pub(crate) struct VerificationBinding(pub(crate) Arc<AttemptRecord>);",
-        "pub(crate) struct VerificationBinding(pub(super) Arc<AttemptRecord>);",
-    ] {
-        assert!(!verification.contains(forbidden));
-    }
-
-    for state_shape in [
-        "EvidenceReceived {\n        request: VerificationRequest,\n    }",
-        "ChallengeAuthenticated {\n        request: VerificationRequest,\n    }",
-        "FreshnessChecked {\n        request: VerificationRequest,\n    }",
-        "IdentityChecked {\n        request: VerificationRequest,\n    }",
-        "EvidenceAppraised {\n        request: VerificationRequest,\n        accepted_profile: EvidenceProfile,\n    }",
-        "SessionBound {\n        request: VerificationRequest,\n        accepted_profile: EvidenceProfile,\n        session_public_key_id: SessionPublicKeyId,\n    }",
-        "RevocationChecked {\n        request: VerificationRequest,\n        accepted_profile: EvidenceProfile,\n        session_public_key_id: SessionPublicKeyId,\n    }",
-        "PolicySatisfied {\n        request: VerificationRequest,\n        accepted_profile: EvidenceProfile,\n        session_public_key_id: SessionPublicKeyId,\n        allowed: AllowedClass,\n    }",
-        "Verified {\n        outcome: VerificationOutcome,\n    }",
-        "Malformed {\n        outcome: VerificationOutcome,\n    }",
-        "Unsupported {\n        outcome: VerificationOutcome,\n    }",
-        "Retryable {\n        outcome: VerificationOutcome,\n    }",
-        "Denied {\n        outcome: VerificationOutcome,\n    }",
-        "Revoked {\n        outcome: VerificationOutcome,\n    }",
-    ] {
-        assert!(
-            verification.contains(state_shape),
-            "verification state ownership drifted: {state_shape:?}"
-        );
-    }
-
-    assert!(!verification.contains("Option<VerificationState>"));
-    assert!(!verification.contains("self.state.take()"));
-}
-
-#[test]
-fn active_state_replacement_is_terminal_first_and_never_taken_from_option() {
-    let verification = include_str!("../verification.rs").replace("\r\n", "\n");
+    let replacement = [
+        "std",
+        ":",
+        ":",
+        "mem",
+        ":",
+        ":",
+        "replace",
+        "(",
+        "&",
+        "mut",
+        "self",
+        ".",
+        "state",
+        ",",
+        "VerificationState",
+        ":",
+        ":",
+        "Retryable",
+        "{",
+        "outcome",
+        ":",
+        "VerificationOutcome",
+        ":",
+        ":",
+        "retryable",
+        "(",
+        "RetryReason",
+        ":",
+        ":",
+        "TransientFailure",
+        ")",
+        ",",
+        "}",
+        ",",
+        ")",
+    ];
     for method_name in [
         "record_challenge_authenticated",
         "record_freshness_checked",
@@ -2400,58 +2810,214 @@ fn active_state_replacement_is_terminal_first_and_never_taken_from_option() {
         "record_revocation_checked",
         "record_policy_satisfied",
     ] {
-        let marker = format!("    pub fn {method_name}(");
-        let start = verification
-            .find(&marker)
-            .unwrap_or_else(|| panic!("missing gate method: {method_name}"));
-        let remaining = &verification[start..];
-        let end = remaining
-            .find("\n    ///")
-            .unwrap_or_else(|| panic!("missing gate method boundary: {method_name}"));
-        let method = &remaining[..end];
-
-        let binding_check = method
-            .find("self.ensure_binding")
-            .unwrap_or_else(|| panic!("gate lacks binding check: {method_name}"));
-        let phase_check = method[..binding_check]
-            .find("matches!")
-            .unwrap_or_else(|| panic!("gate lacks phase match before binding: {method_name}"));
-        assert!(
-            method[..binding_check].contains("&self.state"),
-            "gate does not borrow state for phase check: {method_name}"
-        );
-        let replacement = method
-            .find("std::mem::replace")
-            .unwrap_or_else(|| panic!("gate lacks whole-state replacement: {method_name}"));
-        let retry_terminal = method
-            .find("VerificationState::Retryable")
-            .unwrap_or_else(|| panic!("gate lacks transient retry terminal: {method_name}"));
-        let extraction = method
-            .find("let VerificationState::")
-            .unwrap_or_else(|| panic!("gate lacks old-state extraction: {method_name}"));
-        let assignment = method
-            .rfind("self.state = VerificationState::")
-            .unwrap_or_else(|| {
-                panic!("gate lacks infallible next-state assignment: {method_name}")
-            });
-
-        assert!(phase_check < binding_check);
-        assert!(binding_check < replacement);
-        assert!(replacement <= retry_terminal);
-        assert!(retry_terminal < extraction);
-        assert!(extraction < assignment);
-        assert_eq!(method.matches("std::mem::replace").count(), 1);
+        let method = function_tokens(&tokens, method_name)?;
+        let phase = sequence_start(method, &["matches", "!", "(", "&", "self", ".", "state"])
+            .ok_or_else(|| format!("{method_name} lacks a borrowed phase match"))?;
+        let binding = sequence_start(method, &["self", ".", "ensure_binding"])
+            .ok_or_else(|| format!("{method_name} lacks a binding check"))?;
+        let replace = sequence_start(method, &replacement).ok_or_else(|| {
+            format!(
+                "{method_name} lacks the exact fail-closed replacement; method tokens: {method:?}"
+            )
+        })?;
+        let extraction = sequence_start(method, &["let", "VerificationState", ":", ":"])
+            .ok_or_else(|| format!("{method_name} lacks old-state extraction"))?;
+        let assignment = sequence_start(
+            &method[extraction + 1..],
+            &["self", ".", "state", "=", "VerificationState", ":", ":"],
+        )
+        .map(|index| index + extraction + 1)
+        .ok_or_else(|| format!("{method_name} lacks next-state assignment"))?;
+        let replace_count = method
+            .windows(7)
+            .filter(|window| {
+                window
+                    .iter()
+                    .zip(["std", ":", ":", "mem", ":", ":", "replace"])
+                    .all(|(actual, expected)| actual == expected)
+            })
+            .count();
+        if !(phase < binding
+            && binding < replace
+            && replace < extraction
+            && extraction < assignment
+            && replace_count == 1)
+        {
+            return Err(format!("{method_name} transition token order drifted"));
+        }
     }
+    Ok(())
+}
 
-    for forbidden in [
-        "Option<VerificationState>",
-        "self.state.take()",
-        "std::mem::take(&mut self.state)",
-    ] {
-        assert!(
-            !verification.contains(forbidden),
-            "verification state may not use an option/take extraction: {forbidden}"
-        );
+#[test]
+fn structural_rust_tokens_ignore_decoys_and_preserve_lifetimes() {
+    let source = r###"
+        // enum VerificationState { Decoy { pub(in crate) request: VerificationRequest } }
+        /* outer /* nested pub state: VerificationState */ comment */
+        const NORMAL: &str = "std::mem::replace(&mut self.state, terminal)";
+        const BYTE: &[u8] = b"let VerificationState::Decoy = previous";
+        const RAW: &str = r#"pub(in crate) allowed: AllowedClass"#;
+        const BYTE_RAW: &[u8] = br##"Option<VerificationState>"##;
+        const CHARACTER: char = 'x';
+        const BYTE_CHARACTER: u8 = b'x';
+        fn borrow<'a>(value: &'a str) -> &'a str { value }
+        fn raw<'r#scope>() {}
+    "###;
+
+    assert_eq!(
+        rust_tokens(source),
+        [
+            "const",
+            "NORMAL",
+            ":",
+            "&",
+            "str",
+            "=",
+            ";",
+            "const",
+            "BYTE",
+            ":",
+            "&",
+            "[",
+            "u8",
+            "]",
+            "=",
+            ";",
+            "const",
+            "RAW",
+            ":",
+            "&",
+            "str",
+            "=",
+            ";",
+            "const",
+            "BYTE_RAW",
+            ":",
+            "&",
+            "[",
+            "u8",
+            "]",
+            "=",
+            ";",
+            "const",
+            "CHARACTER",
+            ":",
+            "char",
+            "=",
+            ";",
+            "const",
+            "BYTE_CHARACTER",
+            ":",
+            "u8",
+            "=",
+            ";",
+            "fn",
+            "borrow",
+            "<",
+            "'a",
+            ">",
+            "(",
+            "value",
+            ":",
+            "&",
+            "'a",
+            "str",
+            ")",
+            "-",
+            ">",
+            "&",
+            "'a",
+            "str",
+            "{",
+            "value",
+            "}",
+            "fn",
+            "raw",
+            "<",
+            "'r#scope",
+            ">",
+            "(",
+            ")",
+            "{",
+            "}",
+        ]
+    );
+}
+
+#[test]
+fn authority_structure_rejects_comment_and_string_declaration_decoys() {
+    let source = include_str!("../verification.rs");
+    let correct = "EvidenceReceived {\n        request: VerificationRequest,\n    }";
+    let wrong = "EvidenceReceived {}";
+    let mutated = source.replacen(correct, wrong, 1)
+        + &format!("\n// {correct}\nconst DECOY: &str = {correct:?};\n");
+    assert_ne!(mutated, source);
+    assert!(validate_authority_structure(&mutated, include_str!("../freshness.rs")).is_err());
+}
+
+#[test]
+fn authority_structure_rejects_restricted_field_visibility() {
+    let source = include_str!("../verification.rs");
+    let mutated = source.replacen(
+        "    binding: VerificationBinding,\n    accepted_profile: EvidenceProfile,",
+        "    pub(in crate) binding: VerificationBinding,\n    accepted_profile: EvidenceProfile,",
+        1,
+    );
+    assert_ne!(mutated, source);
+    assert!(validate_authority_structure(&mutated, include_str!("../freshness.rs")).is_err());
+}
+
+#[test]
+fn authority_structure_rejects_an_extra_requestless_active_variant() {
+    let source = include_str!("../verification.rs");
+    let mutated = source.replacen(
+        "    Verified {\n        outcome: VerificationOutcome,\n    },",
+        "    InjectedActive,\n    Verified {\n        outcome: VerificationOutcome,\n    },",
+        1,
+    );
+    assert_ne!(mutated, source);
+    assert!(validate_authority_structure(&mutated, include_str!("../freshness.rs")).is_err());
+}
+
+#[test]
+fn authority_structure_rejects_claims_retained_by_a_terminal_variant() {
+    let source = include_str!("../verification.rs");
+    let mutated = source.replacen(
+        "    Verified {\n        outcome: VerificationOutcome,\n    },",
+        "    Verified {\n        outcome: VerificationOutcome,\n        accepted_profile: EvidenceProfile,\n    },",
+        1,
+    );
+    assert_ne!(mutated, source);
+    assert!(validate_authority_structure(&mutated, include_str!("../freshness.rs")).is_err());
+}
+
+#[test]
+fn active_replacement_rejects_option_take_and_comment_order_decoys() {
+    let source = include_str!("../verification.rs");
+    let replacement = "std::mem::replace(\n            &mut self.state,\n            VerificationState::Retryable";
+    let mutated = source.replacen(
+        replacement,
+        "/* std::mem::replace(&mut self.state, VerificationState::Retryable) */\n        self.state.take();\n        std::mem::replace(\n            &mut self.state,\n            VerificationState::EvidenceReceived",
+        1,
+    );
+    assert_ne!(mutated, source);
+    assert!(validate_active_state_replacement(&mutated).is_err());
+}
+
+#[test]
+fn authority_fields_remain_private_by_structure() {
+    if let Err(error) = validate_authority_structure(
+        include_str!("../verification.rs"),
+        include_str!("../freshness.rs"),
+    ) {
+        panic!("verification authority structure drifted: {error}");
+    }
+}
+
+#[test]
+fn active_state_replacement_is_terminal_first_and_never_taken_from_option() {
+    if let Err(error) = validate_active_state_replacement(include_str!("../verification.rs")) {
+        panic!("active replacement structure drifted: {error}");
     }
 }
 
