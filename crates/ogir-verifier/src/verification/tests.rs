@@ -4394,14 +4394,42 @@ fn validate_private_diagnostic_assertions(source: &str) -> Result<(), String> {
     }
 }
 
+fn validate_failure_terminal_claim_storage(tokens: &[String]) -> Result<(), String> {
+    let state = named_item_tokens(tokens, "enum", "VerificationState")?;
+    let denied = state
+        .windows(2)
+        .position(|window| window[0] == "Denied" && window[1] == "{")
+        .ok_or_else(|| "VerificationState lacks a braced Denied terminal".to_owned())?;
+    let close = matching_delimiter(state, denied + 1)
+        .ok_or_else(|| "VerificationState Denied terminal is unbalanced".to_owned())?;
+    let fields = &state[denied + 2..close];
+
+    for (field, diagnostic) in [
+        (
+            "accepted_profile",
+            "failure terminal profile boundary violated: Denied stores accepted_profile",
+        ),
+        (
+            "session_public_key_id",
+            "failure terminal session-key boundary violated: Denied stores session_public_key_id",
+        ),
+    ] {
+        if fields.iter().any(|token| token == field) {
+            return Err(diagnostic.to_owned());
+        }
+    }
+    Ok(())
+}
+
 fn validate_authority_structure(verification: &str, freshness: &str) -> Result<(), String> {
+    let tokens = rust_tokens(verification);
+    validate_failure_terminal_claim_storage(&tokens)?;
     validate_no_std_bindings(&rust_tokens_with_literals(verification))?;
     validate_sibling_macro_surface(freshness)?;
     let authority_scope = validate_recursive_authority_inventory(verification)?;
     let authority_scopes = std::slice::from_ref(&authority_scope);
     let literal_tokens = rust_tokens_with_literals(verification);
     validate_production_macro_inventory(&literal_tokens)?;
-    let tokens = rust_tokens(verification);
     for (keyword, name, expected) in [
         (
             "struct",
@@ -7089,10 +7117,33 @@ fn all_phase_ineligible_failures_reject_without_mutation() {
 
 #[test]
 fn failure_terminals_store_no_claims_from_every_claim_bearing_phase() {
-    if let Err(error) = validate_authority_structure(
-        include_str!("../verification.rs"),
-        include_str!("../freshness.rs"),
-    ) {
+    let verification = include_str!("../verification.rs");
+    for (field, diagnostic) in [
+        (
+            "accepted_profile: Option<EvidenceProfile>",
+            "failure terminal profile boundary violated: Denied stores accepted_profile",
+        ),
+        (
+            "session_public_key_id: Option<SessionPublicKeyId>",
+            "failure terminal session-key boundary violated: Denied stores session_public_key_id",
+        ),
+    ] {
+        let mutation = verification.replacen(
+            "    Denied {\n        outcome: VerificationOutcome,\n    },",
+            &format!(
+                "    Denied {{\n        outcome: VerificationOutcome,\n        {field},\n    }},"
+            ),
+            1,
+        );
+        assert_ne!(mutation, verification);
+        assert_eq!(
+            validate_authority_structure(&mutation, include_str!("../freshness.rs")),
+            Err(diagnostic.to_owned())
+        );
+    }
+
+    if let Err(error) = validate_authority_structure(verification, include_str!("../freshness.rs"))
+    {
         panic!("failure terminal authority structure drifted: {error}");
     }
 
