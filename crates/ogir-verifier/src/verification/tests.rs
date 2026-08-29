@@ -7118,6 +7118,11 @@ fn all_phase_ineligible_failures_reject_without_mutation() {
 #[test]
 fn failure_terminals_store_no_claims_from_every_claim_bearing_phase() {
     let verification = include_str!("../verification.rs");
+    if let Err(error) = validate_authority_structure(verification, include_str!("../freshness.rs"))
+    {
+        panic!("failure terminal authority structure drifted: {error}");
+    }
+
     for (field, diagnostic) in [
         (
             "accepted_profile: Option<EvidenceProfile>",
@@ -7140,11 +7145,6 @@ fn failure_terminals_store_no_claims_from_every_claim_bearing_phase() {
             validate_authority_structure(&mutation, include_str!("../freshness.rs")),
             Err(diagnostic.to_owned())
         );
-    }
-
-    if let Err(error) = validate_authority_structure(verification, include_str!("../freshness.rs"))
-    {
-        panic!("failure terminal authority structure drifted: {error}");
     }
 
     for (state, action) in [
