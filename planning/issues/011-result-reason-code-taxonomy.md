@@ -304,61 +304,97 @@ boundaries remain unchanged.
 
 ## Implementation evidence
 
-This evidence is time-bounded to the clean reviewed implementation head
-`ec21f23e1f0c341551ed599829fcfd10b818040e`, tree
-`fd8c5c79f99bd8c1050147b68b776fb4f4a158a6`, before this later local
-documentation-only evidence commit. The implementation range from merged base
-`955c88e372cffa13f15953085f15887165be62b5` through that reviewed head contains
-33 commits. Those commits and this evidence update are unsigned and contain no
-DCO trailer; certification, publication, remote review, and merge remain
-pending.
+This corrected evidence is time-bounded to the clean sealed-campaign head
+`01df9016c555e3e37d304392562d98e1e4a32969`, parent
+`7f065926692da72da3d2fad01645327f14883185`, and tree
+`031dd9db7ff115fe1375c16265bcb214bf2a08f8`. The range from merged base
+`955c88e372cffa13f15953085f15887165be62b5` through that head contains 38
+commits. The final four correction commits follow signed and published head
+`c50f66c090518194d0453d93c658dada370ae560`; all four are unsigned and contain
+no DCO trailer. This later issue-only evidence commit is also unsigned. Human
+DCO certification, guarded publication of the correction, and PR creation
+remain pending.
 
-Fresh normal and optimized all-feature gates at the reviewed head passed
-`./scripts/check.sh` and `cargo test --workspace --all-features --release` with
-225 runtime/integration tests, 111 doctests, 14 validated attack scenarios, and
-9 indexed ADRs. The finite verifier model covers all `14 * 24 = 336`
-phase/action pairs: 50 successful edges, comprising 9 gate/completion edges and
-41 phase-eligible failure edges, plus 286 state-preserving rejections. All 5,040
-gate permutations admit exactly one canonical ordering and reject the other
-5,039. Seven gate omissions and seven equal-data, different-flow capability
-substitutions are covered.
+Fresh normal and optimized all-feature gates were run at the exact campaign
+head before this issue-only update. `./scripts/check.sh` and
+`cargo test --workspace --all-features --release` both passed with 225
+runtime/integration tests and 111 doctests; the normal gate included 116
+verifier unit tests, including the correction regressions, 14 validated attack
+scenarios, 9 indexed ADRs, formatting, Clippy with warnings denied, rustdoc,
+repository metadata, and dependency policy. The finite verifier model covers
+all `14 * 24 = 336` phase/action pairs: 50 successful edges, comprising 9
+gate/completion edges and 41 phase-eligible failure edges, plus 286
+state-preserving rejections. All 5,040 gate permutations admit exactly one
+canonical ordering and reject the other 5,039. Seven gate omissions and seven
+equal-data, different-flow capability substitutions are covered.
 
 The deterministic history proof checks exactly 1,048,576 actions. Its 2,048
-scheduled actions are partitioned as
-`256 + 864 + 576 + 35 + 312 + 5`; another 1,046,528 fixed-seed actions exercise
-arbitrary histories. The arbitrary tail contains exactly 175,120 matching-gate
-actions, 174,585 different-flow gate actions, and 21,965 accepted active-state
-advances. The public authority proof contains one compile-pass case and 70
-single-cause compile-fail doctests.
+scheduled actions are partitioned as `256 + 864 + 576 + 35 + 312 + 5`; another
+1,046,528 fixed-seed actions exercise arbitrary histories. The arbitrary tail
+contains exactly 175,120 matching-gate actions, 174,585 different-flow gate
+actions, and 21,965 accepted active-state advances. The public authority proof
+contains one compile-pass case and 70 single-cause compile-fail doctests.
 
-The frozen mutation campaign ran at exact head `ec21f23` and killed all
-`41 + 15 + 27 + 13 + 6 + 19 + 4 + 15 + 14 = 154` one-cause probes. Its report
-contains 154 exact-base records and 154 cleanup records, no survivor or invalid
-row, and SHA-256
-`720fff3ec741338e58069eaf54fd3112c494ceea903db0ff0002024f12247dcc`.
-This later issue-only evidence commit does not move the campaign head; the
-verifier runtime and test blobs remain respectively
-`a392774b96df58d3bca0468a0721318756671b91` and
-`daa35bc5845362e0c2adfc32a401876c2c2389ea`.
+The prior published Task 10 campaign evidence was reopened by whole-branch
+review because several reported kills were collateral rather than their named
+first causes. The correction redesigned the affected mutations as exact,
+compiling one-cause transforms and hardened the producer to fail closed on
+source, artifact, detector, command, and cleanup drift. Corrected attempt 1
+stopped invalid at `A06` after rustdoc returned the exact expected DOC failures
+in a different order. Corrected attempt 2 replaced that order-sensitive check
+with exact failure-summary and failure-block multisets while retaining exact
+diagnostics and unrelated-failure rejection.
 
-Separate fresh controller-owned trusted-computing-base and privacy re-reviews
-of exact head `ec21f23` reported no Critical, Important, or Minor findings and
-returned `Readiness: Yes`. Their residual limitations remain part of this
-checkpoint: source-token proofs are not a Rust parser; allocation identity
-proves flow association, not payload truth; dropped values are not securely
-erased or allocator-zeroized; retained context, profile, and key-handle values
-are correlation-sensitive; the unsigned result has no intrinsic expiry or
-deletion enforcement; and a publicly constructible failure report does not
-establish trusted provenance for future signing.
+The resulting sealed attempt-2 report has SHA-256
+`4c655d1cfebd8778fbd25bcee66a46fddb1632e633bb02040ac54c43f97b9a33`.
+Its independently reconstructed first-cause audit has SHA-256
+`488f9395602cbe306868077b9006a189fe6bba63d384858749cd8d5a49c228ca`,
+found no Critical, Important, or Minor issue, and returned `Readiness: Yes`.
+The audit supports 154 rows, with 0 invalid and 0 unresolved:
+`41 + 15 + 27 + 13 + 6 + 19 + 4 + 15 + 14 = 154`. It independently checked
+154 ordered unique row IDs, 154 exact-base/status records, 154 distinct
+untagged mutant artifacts and source/token transforms, 195 raw command records,
+195 nonzero exits all equal to 101, and 154 cleanup records. It found no
+survivor, timeout, zero-test record, comment/tag-only mutant, unrelated non-DOC
+compiler failure, or residual mutation worktree/target.
+
+The campaign source bytes are exactly:
+
+- `crates/ogir-verifier/src/verification.rs`: SHA-256
+  `32b135174cc9a5f44f6bc664fe6e0dc9c1ee966676f23e4830b35012991cf63e`, Git
+  object `a392774b96df58d3bca0468a0721318756671b91`.
+- `crates/ogir-verifier/src/verification/tests.rs`: SHA-256
+  `970337ee2aa434cf20c910094de10bd0921d47a7d07b24935e05db879a6c1226`, Git
+  object `0d476f105f715010162f37b3fd5946e295362bb2`.
+- `crates/ogir-protocol/src/lib.rs`: SHA-256
+  `90cc4ab93abaf482dc031292c70097884b1dd5471ff91efcb7d081dddb7c7049`, Git
+  object `0e629ea32d220f3d7aa68c3aae9e01947e2fcf7e`.
+
+This later issue-only evidence commit does not move the campaign head or alter
+the runtime, test, or protocol proof. Separate fresh trusted-computing-base and
+privacy correction reviews at exact head `01df9016c555e3e37d304392562d98e1e4a32969`
+reported no Critical, Important, or Minor findings, equivalence `Yes`, spec
+`PASS`, and `Readiness: Yes`.
+
+The residual limitations remain part of this checkpoint. Source-token proofs
+are not a Rust parser or macro-expansion engine. Allocation identity proves flow
+association, not cryptographic payload truth. The retained sealed campaign is
+local process evidence, not signed host, toolchain, or process attestation.
+Dropped values are not securely erased or allocator-zeroized; retained context,
+profile, and key-handle values are correlation-sensitive.
 
 This pure research-scaffold result establishes no cryptographic payload
-provenance, trusted failure provenance, intrinsic validity, signer or signing
-interface, protected result, permit, proof of possession, matchmaking
-admission, parser or serializer, cryptography, I/O, persistence, or production
-adapter. It is not authorized for production enforcement or discipline.
+provenance, trusted failure provenance, intrinsic validity, issued-at or expiry,
+deletion or zeroization enforcement, signer or signing interface, protected
+result, permit, proof of possession, matchmaking admission, parser or
+serializer, cryptography, I/O, persistence, production adapter, production
+authority, or disciplinary authority. It is not authorized for production
+enforcement or discipline.
 
-The local issue source is now `status: needs-review`. The live issue remains
-OPEN with `status: ready` and its prior ready body because the required separate
-issue-edit authorization has not been granted. No GitHub read, edit, remote
-access, push, pull request, or other publication action was performed for this
-checkpoint.
+Controller-provided external state records live issue #20 as OPEN with
+`status: needs-review` and the prior `c50f66c` evidence body, remote feature
+branch `research/m1-011-appraisal-result` at signed
+`c50f66c090518194d0453d93c658dada370ae560`, the local correction ahead and
+unsigned, and no M1-011 PR. This checkpoint did not access GitHub or any remote;
+all external facts require guarded revalidation before any live issue edit,
+publication, or PR action.
