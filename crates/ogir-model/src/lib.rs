@@ -541,33 +541,39 @@ pub enum Decision {
     Retry,
 }
 
-/// Non-disciplinary result reasons.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Exact non-disciplinary reasons exposed by verifier reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ReasonCode {
-    /// No failure occurred.
-    None,
-    /// Input was malformed.
+    /// The verifier could not interpret the input as a valid request.
     Malformed,
-    /// A protocol or profile version is unsupported.
-    UnsupportedVersion,
-    /// Challenge or result is not yet valid.
+    /// Publisher challenge authentication failed.
+    ChallengeAuthenticationFailed,
+    /// The challenge predates its validity window.
     NotYetValid,
-    /// Challenge or result expired.
+    /// The challenge has reached or passed its expiry.
     Expired,
-    /// A nonce or permit was reused.
+    /// The publisher challenge nonce was already used.
     ReplayDetected,
-    /// Caller or session identity did not match.
-    SessionBindingMismatch,
-    /// Evidence could not be validated.
+    /// Relying-party, identity, or session context did not match.
+    ContextBindingMismatch,
+    /// Submitted evidence failed appraisal.
     EvidenceInvalid,
-    /// The requested policy was not satisfied.
+    /// The selected policy was not satisfied.
     PolicyDenied,
-    /// A component or key was revoked.
+    /// A required component, policy, or key was revoked.
     Revoked,
-    /// Required local service or hardware was unavailable.
-    AttestationUnavailable,
     /// Required protected-session state was lost.
     ProtectedSessionLost,
+    /// A protocol version or evidence profile is unsupported.
+    UnsupportedVersionOrProfile,
+    /// The platform is unsupported for the selected policy.
+    UnsupportedPlatform,
+    /// An unknown critical requirement could not be safely ignored.
+    UnsupportedCriticalRequirement,
+    /// A required attestation service or resource was unavailable.
+    AttestationUnavailable,
+    /// A transient verifier failure may be retried.
+    TransientFailure,
 }
 
 #[cfg(test)]

@@ -42,28 +42,64 @@ session sentinels and exclude raw authorization, process, and path values.
 
 #### Verifier flow
 
-Verifier-flow tests exhaust 14 phases × 13 actions = 182 pairs against an
-independent literal model: exactly 48 succeed and 134 reject unchanged. Seven
-gate omissions and all 7! = 5,040 orderings prove that only one canonical order
-can reach `PolicySatisfied`. All seven capabilities reject an equal cloned
-request in a different flow through allocation identity.
-Full and restricted success tests also inspect the returned capability's exact
-allocation identity and private allowed class; flow outcome alone is not used
-as a proxy for authority payload correctness.
+Historical M1-010 verifier-flow evidence exhausts 14 phases × 13 actions = 182
+pairs against its independent literal model: exactly 48 succeeded and 134
+rejected unchanged. That evidence describes the M1-010 action domain before
+phase-eligible M1-011 result emission.
 
-The fixed action budget is exactly 1,048,576: 2,048 scheduled actions guarantee
-at least 16 full and 16 restricted completions plus every failure/reason,
-binding, and terminal class; 1,046,528 fixed-seed actions exercise arbitrary
-histories against the same independent oracle. A new flow is test setup after
-terminal entry and is not counted as one of the 13 actions.
+M1-011 re-freezes the current domain at 14 phases × 24 semantic actions = 336
+pairs. The independent model contains 9 successful gate/completion edges and 41
+phase-eligible failure edges, for exactly `41 + 9 = 50` successes and 286
+state-preserving rejections. The fifteen failure observations across eight
+active phases contain exactly 41 eligible and 79 ineligible cells. Every
+successful failure action compares the direct typed result's exact context,
+decision, reason, and view; every rejection compares the complete unchanged
+active state. All six terminals reject all 24 actions.
 
-One public compile-pass, 39 single-cause compile-fail doctests, and structural
-tests cover every authority-bearing type/field, outcome construction, raw-claim
+Seven gate omissions and all 7! = 5,040 orderings prove that only one canonical
+order can reach `PolicySatisfied`. All seven capabilities reject equal cloned
+request data from a different flow through allocation identity. Full and
+restricted tests inspect exact result context, profile, key handle, and allowed
+class; flow outcome alone is not used as a proxy for authority payload
+correctness. Correct binding proves association with the flow, not
+cryptographic payload provenance.
+
+M1-011 retains all 5,040 gate permutations, seven omissions, seven equal-data
+capability substitutions, and phase-before-binding checks. The fixed schedule
+is exactly `256 + 864 + 576 + 35 + 312 + 5 = 2,048` actions; another 1,046,528
+fixed-seed actions exercise arbitrary histories, for exactly 1,048,576 checked
+actions. Coverage updates only after exact result and complete state equality.
+A new flow is test setup after terminal entry and is not counted as one of the
+24 semantic actions.
+
+The frozen M1-011 mutation inventory contains exactly 154 one-cause probes for
+mapping, phase eligibility, claim transfer/discard, authority fields, terminal
+replacement, one-use paths, and diagnostic redaction. The initial Task 10
+campaign ran all 154 rows, but complete raw failure-cause review invalidated
+`R03`-`R06`, `A08`, and `A17`. Generic macro-inventory checks rejected syntax
+introduced by `R03`-`R06` and `A17` before their declared detectors ran, while
+`A08` failed crate compilation before rustdoc because its supporting payload
+type remained private. That archive therefore supports 148 intended-cause
+kills. Correction requires redesigned compiling mutants and
+a complete restart from E01 at the first documentation-correction head; only a
+154-row audit with 154 intended-cause kills, zero collateral/invalid/surviving
+rows, and 154 cleanup records closes the campaign.
+
+The current verifier documentation suite contains one ordinary public
+compile-pass and 70 single-cause compile-fail doctests. Structural tests cover
+every inventoried authority-bearing type/field, result construction, raw-claim
 exclusion, and report/capability substitution. Exact diagnostic tests cover the
-request, flow, all gates, binding, errors, outcomes, final capability, and
-direct `EvidenceBundle` formatting. Every phase is built from the same private
-sentinel request, both error Display/Debug variants and every outcome Debug are
-exact, and decimal counts/times are forbidden.
+request, flow, all gates, binding, errors, outcomes, completed capability,
+`AppraisalResult`, `AppraisalResultView`, `AcceptedClaims`, and direct
+`EvidenceBundle` formatting. Every phase uses distinct private sentinels; fixed
+redaction markers are exact, and semantic values, allocation details, paths,
+control text, and decimal private values are forbidden.
+
+Test-only `Weak<AttemptRecord>` probes verify physical ownership: failures
+release the attempt allocation before returning while the terminal flow remains
+alive; success leaves it owned only by `VerifiedAttestation` and releases it on
+conversion. Physical mutations remove the failure release and restore a success
+clone to prove both tests fail for retained strong ownership.
 
 ### Property tests
 

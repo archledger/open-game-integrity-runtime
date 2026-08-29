@@ -102,14 +102,15 @@ Define what OGIR means before deciding how bytes are encoded or which libraries 
 - `SessionId`
 - `SessionPublicKeyId`
 - `EvidenceProfile`
-- `AttestationResult`
+- `AppraisalResult`
 - `ReasonCode`
 - `RevocationTarget`
 
 `SessionPublicKeyId` is completed as M1-007F, a bounded identifier follow-up to
-task 7. It is a non-authoritative lookup handle only. Task 11 remains the
-separate result/reason-code taxonomy that later consumes a key reference under
-the complete signed context.
+task 7. It is a non-authoritative lookup handle only. Task 11 defines the
+unsigned semantic `AppraisalResult` and reason-code taxonomy that later consume
+a key reference as an accepted claim. M2 separately owns protected
+`AttestationResult` issuance, integrity protection, and validity.
 
 ### State machines
 
@@ -148,12 +149,27 @@ any nonterminal phase
 ```
 
 All six terminals are permanent. `Verified` yields one process-local
-`VerifiedAttestation` capability; it is not a signed `AttestationResult`,
-permit, or game admission. Renewal starts a new appraisal attempt with a fresh
-challenge. Result construction, permit issuance, expiry, renewal, and
-revocation lifecycle are later domain/protocol issues. `Decision` and
-`ReasonCode` are report-only views, and both full and restricted Allow classes
-require all seven gates.
+`VerifiedAttestation`; consuming it is the sole path to an allowed, unsigned
+`AppraisalResult`. Every Appraisal Result retains exact `ExpectedContext`, while
+only allows retain the accepted profile and session public-key handle. Eligible
+failure transitions return direct typed results with one coarse reason and no
+accepted claims. `Decision`, `ReasonCode`, `VerificationOutcome`, and borrowed
+result views remain report-only. Both full and restricted classes require all
+seven gates and use the exact selected policy.
+
+Every terminal flow retains no attempt binding, replay registration, or attempt
+allocation. Success moves the sole binding into `VerifiedAttestation` until
+conversion; failure releases it before return. Registered owner
+`initial-maintainer` gates privacy review before any result field, diagnostic,
+wire/serializer, storage/backup, logging, or telemetry expansion.
+
+The unsigned semantic value is distinct from a future protected
+`AttestationResult` and grants no permit, proof, admission, or discipline.
+M1-012 defines semantic binding-transcript inputs without choosing cryptography.
+Later M2 work owns commitment representation and algorithm identifiers,
+signature or integrity protection, wire format and parsing, validation,
+issued-at/expiry, and the trusted issuer. Permit lifecycle, renewal, revocation,
+retention, and admission remain with their later roadmap issues.
 
 ### Failure taxonomy
 
@@ -181,6 +197,9 @@ require all seven gates.
 - state transitions cannot skip security gates;
 - freely constructible `Decision`/`ReasonCode` reports grant no authority;
 - `VerifiedAttestation` cannot be constructed without a completed verifier path;
+- only consuming `VerifiedAttestation` creates an allowed `AppraisalResult`;
+- failures return phase-eligible typed results and discard accepted claims;
+- terminal flows release the attempt binding, replay registration, and attempt allocation;
 - reason codes remain non-disciplinary;
 - debug output redacts nonce/evidence identifiers where needed.
 

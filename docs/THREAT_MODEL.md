@@ -140,25 +140,52 @@ access-control, and anti-rollback policy.
 ### Verifier gate skipping or cross-attempt substitution
 
 Threat: Hostile/equal requests or faulty orchestration skip an appraisal gate,
-reuse a gate result from another attempt, treat opaque evidence or report-only
-Allow as authority, or issue success twice.
+reuse a profile-bearing or key-bearing result from another attempt, treat opaque
+evidence, a report-only Allow, or a freely built failure view as result
+authority, retain accepted claims on failure, report a reason before its gate,
+or issue a terminal result twice.
 
 Required response: Keep progress in one private checked graph. Require all
 seven exact-attempt capabilities in order, compare allocation identity rather
-than request equality, make completion single-use, and keep every terminal
-permanent. A typed `UnsupportedRequirement::UnknownMandatoryGate` observation
-terminates Unsupported. Only a future trusted consumer of
-`VerifiedAttestation` may construct an attestation result.
+than request equality, accumulate accepted profile and key-handle claims only
+after those checks, and consume the completed capability as the sole allow
+construction path. Eligible failure actions return one typed unsigned
+`AppraisalResult` directly; terminal-first whole-state replacement discards all
+staged claims, and all six terminals reject all twenty-four semantic actions. A
+typed `UnsupportedRequirement::UnknownCriticalRequirement` observation is
+eligible at every active phase and maps to Unsupported with
+`UnsupportedCriticalRequirement`.
+
+Every unsigned Appraisal Result retains exact relying-party context, and only
+allows retain accepted claims. Allocation identity proves exact-flow
+association, not payload truth: a correctly bound dishonest profile or key
+handle remains trusted-producer A5 risk. Public failure construction proves
+valid report shape, not trusted provenance for future signing. A later trusted
+issuer must separately establish provenance, validity, commitment, and
+protection before producing a protected Attestation Result.
 
 ### Verifier diagnostic disclosure or over-retention
 
 Threat: Default formatting exposes request identifiers, freshness context,
-evidence payload, pointer identity, or retains the raw request after a terminal.
+evidence payload, accepted profile, session-key handle, Appraisal Result
+context, accepted claims, or pointer identity, or a failure retains claims or
+the raw request after a terminal.
 
 Required response: Use fixed aggregate redaction for requests, flows,
-capabilities, errors, outcomes, bindings, and `EvidenceBundle`; release request
-ownership on terminal entry; expose no allocation address/count. This is a
-retention bound, not secure memory erasure.
+capabilities, errors, outcomes, bindings, `EvidenceBundle`, `AppraisalResult`,
+`AppraisalResultView`, and `AcceptedClaims`; terminal-first replacement releases
+request ownership and discards staged accepted claims on failure; success moves
+the sole attempt binding into `VerifiedAttestation`, while failure releases it
+before return, so terminal flows retain no binding, replay registration, or
+attempt allocation; expose no allocation address/count. Retained context and allowed key handles remain
+correlation-sensitive. The unsigned value has no intrinsic expiry or deletion
+enforcement, so future transport/storage requires finite retention,
+confidentiality, deletion, and backup policy. None of these ownership rules
+claims secure memory erasure.
+
+Registered scenario owner `initial-maintainer` is the required privacy-review
+gate before any result context/claim field, diagnostic surface, serializer/wire
+adapter, persistence/storage/backup path, or logging/telemetry path expands.
 
 ### Cuckoo or relay
 
@@ -219,6 +246,9 @@ Required response: fixed local claim vocabulary, publisher-scoped identity, sess
 Threat: Firmware update, crash, version mismatch, or unsupported configuration is interpreted as cheating.
 
 Required response: structured non-disciplinary outcome classes and separation of eligibility from ban decisions.
+
+An unsigned Appraisal Result, including a deny, unsupported, or retry result, is
+not by itself evidence that a player cheated and grants no automatic discipline.
 
 ## 7. Explicit residual risks
 

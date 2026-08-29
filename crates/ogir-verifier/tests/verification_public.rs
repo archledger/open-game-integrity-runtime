@@ -4,12 +4,16 @@ use std::fmt::Debug;
 use std::num::NonZeroU64;
 
 use ogir_model::{
-    AccountScope, BuildId, ChallengeLifetime, ChallengeWindow, EvidenceProfile, GameId,
+    AccountScope, BuildId, ChallengeLifetime, ChallengeWindow, Decision, EvidenceProfile, GameId,
     IdentifierError, MatchId, Nonce, PolicyId, PolicyVersion, ProtocolVersion, PublisherChallenge,
-    PublisherId, UnixTime,
+    PublisherId, ReasonCode, UnixTime,
 };
 use ogir_protocol::EvidenceBundle;
-use ogir_verifier::{ExpectedContext, VerificationPhase, VerificationRequest, VerifierFlow};
+use ogir_verifier::{
+    AcceptedClaims, AppraisalResult, AppraisalResultView, DenialReason, ExpectedContext,
+    RetryReason, TransitionError, UnsupportedRequirement, VerificationPhase, VerificationRequest,
+    VerifiedAttestation, VerifierFlow,
+};
 
 fn identifier<T>(value: &str) -> T
 where
@@ -62,6 +66,47 @@ fn request_fixture() -> VerificationRequest {
 }
 
 #[test]
+fn appraisal_result_public_accessors_type_check() {
+    fn inspect_claims(claims: &AcceptedClaims) {
+        let _ = claims.accepted_profile();
+        let _ = claims.session_public_key_id();
+    }
+
+    fn inspect(result: &AppraisalResult) {
+        let _: &ExpectedContext = result.context();
+        let _: Decision = result.decision();
+        let _: Option<ReasonCode> = result.reason();
+        match result.view() {
+            AppraisalResultView::Allow(claims) | AppraisalResultView::AllowRestricted(claims) => {
+                inspect_claims(claims)
+            }
+            AppraisalResultView::Failure { decision, reason } => {
+                let _: Decision = decision;
+                let _: ReasonCode = reason;
+            }
+        }
+    }
+
+    let _: fn(&AppraisalResult) = inspect;
+    let _: fn(&AcceptedClaims) = inspect_claims;
+    let _: fn(&mut VerifierFlow) -> Result<VerifiedAttestation, TransitionError> =
+        VerifierFlow::complete;
+    let _: fn(&mut VerifierFlow) -> Result<AppraisalResult, TransitionError> =
+        VerifierFlow::mark_malformed;
+    let _: fn(
+        &mut VerifierFlow,
+        UnsupportedRequirement,
+    ) -> Result<AppraisalResult, TransitionError> = VerifierFlow::mark_unsupported;
+    let _: fn(&mut VerifierFlow, RetryReason) -> Result<AppraisalResult, TransitionError> =
+        VerifierFlow::mark_retryable;
+    let _: fn(&mut VerifierFlow, DenialReason) -> Result<AppraisalResult, TransitionError> =
+        VerifierFlow::deny;
+    let _: fn(&mut VerifierFlow) -> Result<AppraisalResult, TransitionError> =
+        VerifierFlow::mark_revoked;
+    let _: fn(VerifiedAttestation) -> AppraisalResult = VerifiedAttestation::into_appraisal_result;
+}
+
+#[test]
 fn new_flow_exposes_only_received_phase_and_no_outcome() {
     let flow = VerifierFlow::begin(request_fixture());
     assert_eq!(flow.phase(), VerificationPhase::EvidenceReceived);
@@ -70,4 +115,25 @@ fn new_flow_exposes_only_received_phase_and_no_outcome() {
         format!("{flow:?}") == "VerifierFlow { phase: EvidenceReceived, outcome: None }",
         "private diagnostic mismatch"
     );
+}
+
+#[test]
+fn public_failure_result_is_valid_shape_not_trusted_signing_provenance() {
+    let expected = request_fixture().expected;
+    let mut flow = VerifierFlow::begin(request_fixture());
+    let result = match flow.mark_malformed() {
+        Ok(value) => value,
+        Err(error) => panic!("eligible public failure rejected: {error:?}"),
+    };
+
+    assert_eq!(result.context(), &expected);
+    assert_eq!(result.decision(), Decision::Deny);
+    assert_eq!(result.reason(), Some(ReasonCode::Malformed));
+    assert!(matches!(
+        result.view(),
+        AppraisalResultView::Failure {
+            decision: Decision::Deny,
+            reason: ReasonCode::Malformed,
+        }
+    ));
 }

@@ -245,7 +245,7 @@ fn first_fresh_request_reaches_fail_closed_evidence_result() {
         assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
         let outcome = verify_research_structure(&request(challenge, now), &guard);
         assert_eq!(outcome.decision(), Decision::Deny);
-        assert_eq!(outcome.reason(), ReasonCode::EvidenceInvalid);
+        assert_eq!(outcome.reason(), Some(ReasonCode::EvidenceInvalid));
     }
 }
 
@@ -258,7 +258,7 @@ fn research_scaffold_reports_without_authority() {
 
     let outcome = verify_research_structure(&request(challenge, 100), &guard);
     assert_eq!(outcome.decision(), Decision::Deny);
-    assert_eq!(outcome.reason(), ReasonCode::EvidenceInvalid);
+    assert_eq!(outcome.reason(), Some(ReasonCode::EvidenceInvalid));
 }
 
 #[test]
@@ -268,7 +268,7 @@ fn verifier_maps_strict_window_failures_before_claim() {
     let not_yet =
         verify_research_structure(&request(challenge("example.game", 12), 99), &not_yet_guard);
     assert_eq!(not_yet.decision(), Decision::Deny);
-    assert_eq!(not_yet.reason(), ReasonCode::NotYetValid);
+    assert_eq!(not_yet.reason(), Some(ReasonCode::NotYetValid));
     assert_eq!(not_yet_store.high_water(), Ok(Some(UnixTime::new(99))));
 
     for now in [200, 201] {
@@ -278,7 +278,7 @@ fn verifier_maps_strict_window_failures_before_claim() {
         assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
         let outcome = verify_research_structure(&request(challenge, now), &guard);
         assert_eq!(outcome.decision(), Decision::Deny);
-        assert_eq!(outcome.reason(), ReasonCode::Expired);
+        assert_eq!(outcome.reason(), Some(ReasonCode::Expired));
         assert_eq!(store.high_water(), Ok(Some(UnixTime::new(now))));
     }
 }
@@ -291,8 +291,8 @@ fn second_request_with_same_nonce_is_replay() {
     assert_eq!(guard.register(UnixTime::new(100), &challenge), Ok(()));
     let first = verify_research_structure(&request(challenge.clone(), 100), &guard);
     let second = verify_research_structure(&request(challenge, 100), &guard);
-    assert_eq!(first.reason(), ReasonCode::EvidenceInvalid);
-    assert_eq!(second.reason(), ReasonCode::ReplayDetected);
+    assert_eq!(first.reason(), Some(ReasonCode::EvidenceInvalid));
+    assert_eq!(second.reason(), Some(ReasonCode::ReplayDetected));
 }
 
 #[test]
@@ -331,11 +331,11 @@ fn every_context_mismatch_rejects_without_consuming_registered_nonce() {
                 &guard,
             )
             .reason(),
-            ReasonCode::SessionBindingMismatch
+            Some(ReasonCode::ContextBindingMismatch)
         );
         assert_eq!(
             verify_research_structure(&request(challenge, 100), &guard).reason(),
-            ReasonCode::EvidenceInvalid
+            Some(ReasonCode::EvidenceInvalid)
         );
     }
 }
@@ -354,18 +354,21 @@ fn context_mismatch_observes_time_before_rejection_and_preserves_issued_state() 
         &guard,
     );
     assert_eq!(rejected.decision(), Decision::Deny);
-    assert_eq!(rejected.reason(), ReasonCode::SessionBindingMismatch);
+    assert_eq!(rejected.reason(), Some(ReasonCode::ContextBindingMismatch));
     assert_eq!(store.high_water(), Ok(Some(UnixTime::new(150))));
 
     let reopened = ReferenceReplayStore::reopen(snapshot(&store));
     let reopened_guard = FreshnessGuard::new(&reopened, limits());
     let rolled_back = verify_research_structure(&request(challenge.clone(), 140), &reopened_guard);
     assert_eq!(rolled_back.decision(), Decision::Retry);
-    assert_eq!(rolled_back.reason(), ReasonCode::AttestationUnavailable);
+    assert_eq!(
+        rolled_back.reason(),
+        Some(ReasonCode::AttestationUnavailable)
+    );
 
     let original = verify_research_structure(&request(challenge, 150), &reopened_guard);
     assert_eq!(original.decision(), Decision::Deny);
-    assert_eq!(original.reason(), ReasonCode::EvidenceInvalid);
+    assert_eq!(original.reason(), Some(ReasonCode::EvidenceInvalid));
 }
 
 #[test]
@@ -374,7 +377,7 @@ fn unavailable_state_returns_retry_without_allow() {
     let guard = FreshnessGuard::new(&store, limits());
     let outcome = verify_research_structure(&request(challenge("example.game", 10), 100), &guard);
     assert_eq!(outcome.decision(), Decision::Retry);
-    assert_eq!(outcome.reason(), ReasonCode::AttestationUnavailable);
+    assert_eq!(outcome.reason(), Some(ReasonCode::AttestationUnavailable));
 }
 
 #[test]
@@ -385,7 +388,7 @@ fn clock_rollback_returns_retry_without_allow() {
     assert_eq!(guard.register(UnixTime::new(150), &challenge), Ok(()));
     let outcome = verify_research_structure(&request(challenge, 140), &guard);
     assert_eq!(outcome.decision(), Decision::Retry);
-    assert_eq!(outcome.reason(), ReasonCode::AttestationUnavailable);
+    assert_eq!(outcome.reason(), Some(ReasonCode::AttestationUnavailable));
 }
 
 #[test]
@@ -397,14 +400,17 @@ fn rejected_future_time_persists_floor_across_restart() {
 
     let expired = verify_research_structure(&request(challenge.clone(), 300), &guard);
     assert_eq!(expired.decision(), Decision::Deny);
-    assert_eq!(expired.reason(), ReasonCode::Expired);
+    assert_eq!(expired.reason(), Some(ReasonCode::Expired));
     assert_eq!(store.high_water(), Ok(Some(UnixTime::new(300))));
 
     let reopened = ReferenceReplayStore::reopen(snapshot(&store));
     let reopened_guard = FreshnessGuard::new(&reopened, limits());
     let rolled_back = verify_research_structure(&request(challenge, 150), &reopened_guard);
     assert_eq!(rolled_back.decision(), Decision::Retry);
-    assert_eq!(rolled_back.reason(), ReasonCode::AttestationUnavailable);
+    assert_eq!(
+        rolled_back.reason(),
+        Some(ReasonCode::AttestationUnavailable)
+    );
 }
 
 #[test]
@@ -514,7 +520,7 @@ fn poisoned_replay_store_locks_fail_closed_without_allow() {
 
         let outcome = verify_research_structure(&request(challenge, 100), &guard);
         assert_eq!(outcome.decision(), Decision::Retry);
-        assert_eq!(outcome.reason(), ReasonCode::AttestationUnavailable);
+        assert_eq!(outcome.reason(), Some(ReasonCode::AttestationUnavailable));
     }
 }
 

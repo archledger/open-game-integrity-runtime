@@ -120,9 +120,11 @@ and cannot be converted into the capability. Full and restricted policies use
 the same seven gates; restricted is selected by a satisfied policy, never by a
 failed full-policy path.
 
-The flow owns the raw request only while nonterminal. Successful completion or
-any failure terminal releases that ownership while retaining the minimal
-binding and outcome state. M1-010 makes no secure-memory-erasure claim.
+Under the historical M1-010 behavior, the flow owns the raw request only while
+nonterminal. Successful completion or any failure terminal releases that
+ownership while retaining the minimal binding and outcome state. The M1-011
+refinement below replaces that terminal-retention rule. M1-010 makes no secure-
+memory-erasure claim.
 
 No production gate producer is added. Future trusted validation adapters must
 perform their real operation before constructing the corresponding capability.
@@ -168,10 +170,12 @@ malicious verifier that fabricates its own trusted inputs.
 
 ## Privacy impact
 
-The exact request remains owned only during the eight nonterminal phases and is
-released at all six terminals. The attempt binding retains a redacted replay
-registration until the flow and final capability are dropped. This is a finite
-ownership/retention rule, not an allocator-zeroization guarantee.
+Under the historical M1-010 behavior, the exact request remains owned only
+during the eight nonterminal phases and is released at all six terminals. The
+attempt binding retains a redacted replay registration until the flow and final
+capability are dropped. The M1-011 refinement below replaces that binding-
+retention rule. This historical ownership rule made no allocator-zeroization
+guarantee.
 
 Default diagnostics for the request, flow, all seven capabilities, binding,
 errors, outcomes, final capability, and `EvidenceBundle` are fixed redaction
@@ -189,7 +193,9 @@ documentation boundaries are unchanged.
 
 ## Validation
 
-Completed executable evidence compares 14 phases × 13 actions = 182 pairs
+### Historical M1-010 evidence
+
+Completed M1-010 executable evidence compares 14 phases × 13 actions = 182 pairs
 against an independent literal model, with exactly 48 successes and 134
 state-preserving rejections. Seven omissions and all 7! = 5,040 gate orderings
 admit exactly one canonical ordering. All seven capability types reject equal
@@ -214,6 +220,21 @@ transition-error Debug and exact outcome Debug; request presence is checked in
 all 14 phases. A typed unknown-mandatory-gate observation is exercised
 separately from ordinary version/profile unsupported state. Five verifier
 scenarios are part of the 14-scenario validated aggregate.
+
+### M1-011 refinement
+
+ADR-0009 and M1-011 replace the earlier all-failure-actions-from-all-active-
+phases rule with typed phase eligibility and direct unsuccessful
+`AppraisalResult` emission. This is a later semantic refinement, not an error in
+the historical M1-010 `182/48/134` evidence above. Current M1-011 evidence is
+recorded in ADR-0009 and does not rewrite the earlier action domain.
+
+ADR-0009 additionally refines terminal retention. An active flow owns the
+attempt binding. Successful completion moves its sole owner into
+`VerifiedAttestation` until consuming conversion, while failure drops the
+binding before returning an `AppraisalResult`. A terminal flow retains no
+binding, `ReplayRegistration`, or `AttemptRecord`. This current ownership rule
+makes no secure-erasure or allocator-zeroization claim.
 
 Completion of M1-010 additionally requires the exact 93 disposable-worktree
 mutations and separate fresh trusted-computing-base and privacy reviews. Those

@@ -25,3 +25,4 @@ stay traceable.
 | [ADR-0006](0006-local-session-lifecycle-capabilities.md) | Accepted | A private checked runtime graph and session-bound capabilities govern local lifecycle and cleanup. | None | None |
 | [ADR-0007](0007-verifier-flow-capabilities.md) | Accepted | One attempt-bound checked graph is the only path to verifier appraisal authority. | None | None |
 | [ADR-0008](0008-session-public-key-id-is-not-authority.md) | Accepted | A session public-key identifier is a non-authoritative lookup handle; actual key binding and proof remain later boundaries. | None | None |
+| [ADR-0009](0009-capability-gated-appraisal-results.md) | Accepted | Unsigned Appraisal Results preserve exact context, claim-free phase-eligible failures, and one-use allow construction. | None | None |

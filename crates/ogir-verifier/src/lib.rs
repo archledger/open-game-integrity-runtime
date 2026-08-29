@@ -10,8 +10,9 @@ pub use freshness::{
     ChallengeBinding, FreshnessChecked, FreshnessGuard, ReplayKey, ReplayRegistration, ReplayStore,
 };
 pub use verification::{
-    ChallengeAuthenticated, DenialReason, EvidenceAppraised, ExpectedContext, IdentityChecked,
-    PolicySatisfied, RevocationChecked, SessionBound, TransitionError, UnsupportedRequirement,
-    VerificationAction, VerificationOutcome, VerificationPhase, VerificationRequest,
-    VerifiedAttestation, VerifierFlow, verify_research_structure,
+    AcceptedClaims, AppraisalResult, AppraisalResultView, ChallengeAuthenticated, DenialReason,
+    EvidenceAppraised, ExpectedContext, IdentityChecked, PolicySatisfied, RetryReason,
+    RevocationChecked, SessionBound, TransitionError, UnsupportedRequirement, VerificationAction,
+    VerificationOutcome, VerificationPhase, VerificationRequest, VerifiedAttestation, VerifierFlow,
+    verify_research_structure,
 };

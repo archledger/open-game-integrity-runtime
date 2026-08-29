@@ -1,14 +1,218 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Checked verifier-flow and report-only outcome contracts.
+//!
+//! Appraisal results have no public constructor:
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, ExpectedContext};
+//! fn forbidden(context: ExpectedContext) {
+//!     let _ = AppraisalResult::new(context);
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden() {
+//!     let _ = AppraisalResult::builder();
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden() {
+//!     let _ = AppraisalResult::default();
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden(result: AppraisalResult) {
+//!     let _ = result.clone();
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden(result: AppraisalResult) {
+//!     let _first = result;
+//!     let _second = result;
+//! }
+//! ```
+//!
+//! Accepted claims cannot be constructed outside the verifier:
+//!
+//! ```compile_fail
+//! use ogir_model::{EvidenceProfile, SessionPublicKeyId};
+//! use ogir_verifier::AcceptedClaims;
+//! fn forbidden(profile: EvidenceProfile, key_id: SessionPublicKeyId) {
+//!     let _ = AcceptedClaims::new(profile, key_id);
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_model::{EvidenceProfile, SessionPublicKeyId};
+//! use ogir_verifier::{AcceptedClaims, AppraisalResultView};
+//! fn forbidden(profile: EvidenceProfile, session_public_key_id: SessionPublicKeyId) {
+//!     let claims = AcceptedClaims { accepted_profile: profile, session_public_key_id };
+//!     let _ = AppraisalResultView::Allow(&claims);
+//! }
+//! ```
+//!
+//! Reports cannot be converted into appraisal results:
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, VerificationOutcome};
+//! fn forbidden(outcome: VerificationOutcome) {
+//!     let _ = AppraisalResult::from_outcome(outcome);
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, VerificationOutcome};
+//! fn forbidden(report: VerificationOutcome) {
+//!     let _: AppraisalResult = report.into();
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, VerificationRequest};
+//! fn forbidden(request: VerificationRequest) {
+//!     let _: AppraisalResult = request.into();
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, ExpectedContext};
+//! fn forbidden(mut result: AppraisalResult, replacement: ExpectedContext) {
+//!     result.set_context(replacement);
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, AppraisalResultView};
+//! fn forbidden(view: AppraisalResultView<'_>) {
+//!     let _: AppraisalResult = view.into();
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_model::Decision;
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden() {
+//!     let _ = AppraisalResult::from_decision(Decision::Allow);
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_model::Decision;
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden() {
+//!     let _: AppraisalResult = Decision::Allow.into();
+//! }
+//! ```
+//!
+//! Appraisal results grant no signing, permit, or admission authority:
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! struct TestSigner;
+//! fn forbidden(result: AppraisalResult, signer: TestSigner) {
+//!     let _ = result.sign(signer);
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! struct ValidatedPermit;
+//! fn forbidden(result: AppraisalResult) -> ValidatedPermit {
+//!     result.into_permit()
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! struct Admission;
+//! fn forbidden(result: AppraisalResult) -> Admission {
+//!     result.admit()
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! struct ProtectedResult;
+//! fn forbidden(result: AppraisalResult) -> ProtectedResult {
+//!     result.into_protected_result()
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! struct ProofOfPossession;
+//! fn forbidden(result: AppraisalResult) -> ProofOfPossession {
+//!     result.into_proof_of_possession()
+//! }
+//! ```
+//!
+//! Result and accepted-claim fields remain private:
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, ExpectedContext};
+//! fn forbidden(context: ExpectedContext) {
+//!     let _ = AppraisalResult { context, payload: unreachable!() };
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_model::{EvidenceProfile, SessionPublicKeyId};
+//! use ogir_verifier::AcceptedClaims;
+//! fn forbidden(profile: EvidenceProfile, session_public_key_id: SessionPublicKeyId) {
+//!     let _ = AcceptedClaims { accepted_profile: profile, session_public_key_id };
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden(result: AppraisalResult) {
+//!     let _ = result.context;
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AppraisalResult;
+//! fn forbidden(result: AppraisalResult) {
+//!     let _ = result.payload;
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::{AppraisalResult, ExpectedContext};
+//! fn forbidden(result: &AppraisalResult, replacement: ExpectedContext) {
+//!     *result.context() = replacement;
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AcceptedClaims;
+//! fn forbidden(claims: AcceptedClaims) {
+//!     let _ = claims.accepted_profile;
+//! }
+//! ```
+//!
+//! ```compile_fail
+//! use ogir_verifier::AcceptedClaims;
+//! fn forbidden(claims: AcceptedClaims) {
+//!     let _ = claims.session_public_key_id;
+//! }
+//! ```
 
 use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 
 use ogir_model::{
-    AccountScope, BuildId, Decision, FreshnessError, GameId, MatchId, PolicyId, PolicyVersion,
-    PublisherChallenge, PublisherId, ReasonCode, UnixTime,
+    AccountScope, BuildId, Decision, EvidenceProfile, FreshnessError, GameId, MatchId, PolicyId,
+    PolicyVersion, PublisherChallenge, PublisherId, ReasonCode, SessionPublicKeyId, UnixTime,
 };
 use ogir_protocol::EvidenceBundle;
 
@@ -66,13 +270,13 @@ impl fmt::Debug for VerificationRequest {
 ///
 /// let forged = VerificationOutcome {
 ///     decision: Decision::Allow,
-///     reason: ReasonCode::None,
+///     reason: None,
 /// };
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VerificationOutcome {
     decision: Decision,
-    reason: ReasonCode,
+    reason: Option<ReasonCode>,
 }
 
 impl VerificationOutcome {
@@ -84,56 +288,56 @@ impl VerificationOutcome {
 
     /// Returns the structured non-disciplinary reason report.
     #[must_use]
-    pub const fn reason(self) -> ReasonCode {
+    pub const fn reason(self) -> Option<ReasonCode> {
         self.reason
     }
 
     const fn allowed_full() -> Self {
         Self {
             decision: Decision::Allow,
-            reason: ReasonCode::None,
+            reason: None,
         }
     }
 
     const fn allowed_restricted() -> Self {
         Self {
             decision: Decision::AllowRestricted,
-            reason: ReasonCode::None,
+            reason: None,
         }
     }
 
     const fn malformed() -> Self {
         Self {
             decision: Decision::Deny,
-            reason: ReasonCode::Malformed,
+            reason: Some(ReasonCode::Malformed),
         }
     }
 
-    const fn unsupported() -> Self {
+    const fn unsupported(requirement: UnsupportedRequirement) -> Self {
         Self {
             decision: Decision::Unsupported,
-            reason: ReasonCode::UnsupportedVersion,
+            reason: Some(requirement.as_reason_code()),
         }
     }
 
-    const fn retryable() -> Self {
+    const fn retryable(reason: RetryReason) -> Self {
         Self {
             decision: Decision::Retry,
-            reason: ReasonCode::AttestationUnavailable,
+            reason: Some(reason.as_reason_code()),
         }
     }
 
     const fn revoked() -> Self {
         Self {
             decision: Decision::Deny,
-            reason: ReasonCode::Revoked,
+            reason: Some(ReasonCode::Revoked),
         }
     }
 
     const fn denied(reason: DenialReason) -> Self {
         Self {
             decision: Decision::Deny,
-            reason: reason.as_reason_code(),
+            reason: Some(reason.as_reason_code()),
         }
     }
 }
@@ -205,14 +409,16 @@ pub enum VerificationAction {
 /// Fixed non-disciplinary reasons accepted by the denied terminal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DenialReason {
+    /// Publisher challenge authentication failed.
+    ChallengeAuthenticationFailed,
     /// The request predates its validity window.
     NotYetValid,
     /// The request has expired.
     Expired,
     /// The challenge has already been used.
     ReplayDetected,
-    /// The relying-party or session binding did not match.
-    SessionBindingMismatch,
+    /// The relying-party, identity, or session context did not match.
+    ContextBindingMismatch,
     /// Evidence appraisal failed.
     EvidenceInvalid,
     /// The selected policy denied the request.
@@ -226,17 +432,48 @@ pub enum DenialReason {
 pub enum UnsupportedRequirement {
     /// A protocol version or evidence profile is not implemented.
     VersionOrProfile,
-    /// A required gate is unknown and therefore cannot be safely skipped.
-    UnknownMandatoryGate,
+    /// The platform is not supported for the selected policy.
+    Platform,
+    /// A critical requirement is unknown and cannot be safely skipped.
+    UnknownCriticalRequirement,
+}
+
+/// Typed causes accepted by the non-disciplinary retry terminal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RetryReason {
+    /// A required attestation service or resource was unavailable.
+    AttestationUnavailable,
+    /// A transient verifier failure may be retried.
+    TransientFailure,
+}
+
+impl UnsupportedRequirement {
+    const fn as_reason_code(self) -> ReasonCode {
+        match self {
+            Self::VersionOrProfile => ReasonCode::UnsupportedVersionOrProfile,
+            Self::Platform => ReasonCode::UnsupportedPlatform,
+            Self::UnknownCriticalRequirement => ReasonCode::UnsupportedCriticalRequirement,
+        }
+    }
+}
+
+impl RetryReason {
+    const fn as_reason_code(self) -> ReasonCode {
+        match self {
+            Self::AttestationUnavailable => ReasonCode::AttestationUnavailable,
+            Self::TransientFailure => ReasonCode::TransientFailure,
+        }
+    }
 }
 
 impl DenialReason {
     const fn as_reason_code(self) -> ReasonCode {
         match self {
+            Self::ChallengeAuthenticationFailed => ReasonCode::ChallengeAuthenticationFailed,
             Self::NotYetValid => ReasonCode::NotYetValid,
             Self::Expired => ReasonCode::Expired,
             Self::ReplayDetected => ReasonCode::ReplayDetected,
-            Self::SessionBindingMismatch => ReasonCode::SessionBindingMismatch,
+            Self::ContextBindingMismatch => ReasonCode::ContextBindingMismatch,
             Self::EvidenceInvalid => ReasonCode::EvidenceInvalid,
             Self::PolicyDenied => ReasonCode::PolicyDenied,
             Self::ProtectedSessionLost => ReasonCode::ProtectedSessionLost,
@@ -280,22 +517,267 @@ impl AllowedClass {
     const RESTRICTED: Self = Self::Restricted;
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
 enum VerificationState {
-    EvidenceReceived,
-    ChallengeAuthenticated,
-    FreshnessChecked,
-    IdentityChecked,
-    EvidenceAppraised,
-    SessionBound,
-    RevocationChecked,
-    PolicySatisfied(AllowedClass),
-    Verified(AllowedClass),
-    Malformed,
+    EvidenceReceived {
+        request: VerificationRequest,
+    },
+    ChallengeAuthenticated {
+        request: VerificationRequest,
+    },
+    FreshnessChecked {
+        request: VerificationRequest,
+    },
+    IdentityChecked {
+        request: VerificationRequest,
+    },
+    EvidenceAppraised {
+        request: VerificationRequest,
+        accepted_profile: EvidenceProfile,
+    },
+    SessionBound {
+        request: VerificationRequest,
+        accepted_profile: EvidenceProfile,
+        session_public_key_id: SessionPublicKeyId,
+    },
+    RevocationChecked {
+        request: VerificationRequest,
+        accepted_profile: EvidenceProfile,
+        session_public_key_id: SessionPublicKeyId,
+    },
+    PolicySatisfied {
+        request: VerificationRequest,
+        accepted_profile: EvidenceProfile,
+        session_public_key_id: SessionPublicKeyId,
+        allowed: AllowedClass,
+    },
+    Verified {
+        outcome: VerificationOutcome,
+    },
+    Malformed {
+        outcome: VerificationOutcome,
+    },
+    Unsupported {
+        outcome: VerificationOutcome,
+    },
+    Retryable {
+        outcome: VerificationOutcome,
+    },
+    Denied {
+        outcome: VerificationOutcome,
+    },
+    Revoked {
+        outcome: VerificationOutcome,
+    },
+}
+
+/// Opaque unsigned semantic result of one verifier appraisal.
+///
+/// ```compile_fail
+/// use ogir_verifier::AppraisalResult;
+/// fn forbidden(result: AppraisalResult) {
+///     let _ = result.clone();
+/// }
+/// ```
+#[must_use]
+#[deny(private_interfaces)]
+pub struct AppraisalResult {
+    context: ExpectedContext,
+    payload: AppraisalPayload,
+}
+
+enum AppraisalPayload {
+    Allow(AcceptedClaims),
+    AllowRestricted(AcceptedClaims),
+    Failure(FailurePayload),
+}
+
+/// Accepted claims retained only by an allowed appraisal result.
+///
+/// ```compile_fail
+/// use ogir_verifier::AcceptedClaims;
+/// fn forbidden(claims: AcceptedClaims) {
+///     let _ = claims.clone();
+/// }
+/// ```
+#[must_use]
+pub struct AcceptedClaims {
+    accepted_profile: EvidenceProfile,
+    session_public_key_id: SessionPublicKeyId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct FailurePayload {
+    decision: FailureDecision,
+    reason: ReasonCode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum FailureDecision {
+    Deny,
     Unsupported,
-    Retryable,
-    Denied(DenialReason),
+    Retry,
+}
+
+impl FailureDecision {
+    const fn as_decision(self) -> Decision {
+        match self {
+            Self::Deny => Decision::Deny,
+            Self::Unsupported => Decision::Unsupported,
+            Self::Retry => Decision::Retry,
+        }
+    }
+}
+
+/// Private normalized failure action used for eligibility and terminal mapping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum FailureKind {
+    /// Malformed evidence.
+    Malformed,
+    /// A typed unsupported requirement.
+    Unsupported(UnsupportedRequirement),
+    /// A typed retryable failure.
+    Retry(RetryReason),
+    /// A typed denial.
+    Deny(DenialReason),
+    /// Revocation discovered at the approved phase.
     Revoked,
+}
+
+impl FailureKind {
+    const fn action(self) -> VerificationAction {
+        match self {
+            Self::Malformed => VerificationAction::MarkMalformed,
+            Self::Unsupported(_) => VerificationAction::MarkUnsupported,
+            Self::Retry(_) => VerificationAction::MarkRetryable,
+            Self::Deny(_) => VerificationAction::Deny,
+            Self::Revoked => VerificationAction::MarkRevoked,
+        }
+    }
+}
+
+fn is_active_phase(phase: VerificationPhase) -> bool {
+    ::std::matches!(
+        phase,
+        VerificationPhase::EvidenceReceived
+            | VerificationPhase::ChallengeAuthenticated
+            | VerificationPhase::FreshnessChecked
+            | VerificationPhase::IdentityChecked
+            | VerificationPhase::EvidenceAppraised
+            | VerificationPhase::SessionBound
+            | VerificationPhase::RevocationChecked
+            | VerificationPhase::PolicySatisfied
+    )
+}
+
+fn failure_is_eligible(phase: VerificationPhase, failure: FailureKind) -> bool {
+    match failure {
+        FailureKind::Malformed => phase == VerificationPhase::EvidenceReceived,
+        FailureKind::Unsupported(UnsupportedRequirement::VersionOrProfile) => {
+            phase == VerificationPhase::ChallengeAuthenticated
+        }
+        FailureKind::Unsupported(UnsupportedRequirement::Platform) => {
+            phase == VerificationPhase::IdentityChecked
+        }
+        FailureKind::Unsupported(UnsupportedRequirement::UnknownCriticalRequirement)
+        | FailureKind::Retry(_) => is_active_phase(phase),
+        FailureKind::Deny(DenialReason::ChallengeAuthenticationFailed) => {
+            phase == VerificationPhase::EvidenceReceived
+        }
+        FailureKind::Deny(
+            DenialReason::NotYetValid | DenialReason::Expired | DenialReason::ReplayDetected,
+        ) => phase == VerificationPhase::ChallengeAuthenticated,
+        FailureKind::Deny(DenialReason::ContextBindingMismatch) => ::std::matches!(
+            phase,
+            VerificationPhase::ChallengeAuthenticated
+                | VerificationPhase::FreshnessChecked
+                | VerificationPhase::EvidenceAppraised
+        ),
+        FailureKind::Deny(DenialReason::EvidenceInvalid) => {
+            phase == VerificationPhase::IdentityChecked
+        }
+        FailureKind::Deny(DenialReason::PolicyDenied) => {
+            phase == VerificationPhase::RevocationChecked
+        }
+        FailureKind::Deny(DenialReason::ProtectedSessionLost) => ::std::matches!(
+            phase,
+            VerificationPhase::EvidenceAppraised
+                | VerificationPhase::SessionBound
+                | VerificationPhase::RevocationChecked
+                | VerificationPhase::PolicySatisfied
+        ),
+        FailureKind::Revoked => phase == VerificationPhase::SessionBound,
+    }
+}
+
+/// Borrowed report-only view of an appraisal result.
+pub enum AppraisalResultView<'a> {
+    /// Full-policy allow with opaque accepted claims.
+    Allow(&'a AcceptedClaims),
+    /// Restricted-policy allow with opaque accepted claims.
+    AllowRestricted(&'a AcceptedClaims),
+    /// Unsuccessful report with one coarse reason.
+    Failure {
+        /// Non-authoritative unsuccessful decision report.
+        decision: Decision,
+        /// Non-disciplinary reason report.
+        reason: ReasonCode,
+    },
+}
+
+impl AppraisalResult {
+    /// Returns the exact relying-party context retained by this result.
+    #[must_use]
+    pub const fn context(&self) -> &ExpectedContext {
+        &self.context
+    }
+
+    /// Returns the non-authoritative decision report.
+    #[must_use]
+    pub const fn decision(&self) -> Decision {
+        match &self.payload {
+            AppraisalPayload::Allow(_) => Decision::Allow,
+            AppraisalPayload::AllowRestricted(_) => Decision::AllowRestricted,
+            AppraisalPayload::Failure(failure) => failure.decision.as_decision(),
+        }
+    }
+
+    /// Returns no reason for allows and one coarse reason for failures.
+    #[must_use]
+    pub const fn reason(&self) -> Option<ReasonCode> {
+        match &self.payload {
+            AppraisalPayload::Allow(_) | AppraisalPayload::AllowRestricted(_) => None,
+            AppraisalPayload::Failure(failure) => Some(failure.reason),
+        }
+    }
+
+    /// Returns a borrowed report-only view of this result.
+    #[must_use]
+    pub const fn view(&self) -> AppraisalResultView<'_> {
+        match &self.payload {
+            AppraisalPayload::Allow(claims) => AppraisalResultView::Allow(claims),
+            AppraisalPayload::AllowRestricted(claims) => {
+                AppraisalResultView::AllowRestricted(claims)
+            }
+            AppraisalPayload::Failure(failure) => AppraisalResultView::Failure {
+                decision: failure.decision.as_decision(),
+                reason: failure.reason,
+            },
+        }
+    }
+}
+
+impl AcceptedClaims {
+    /// Returns the accepted evidence profile.
+    #[must_use]
+    pub const fn accepted_profile(&self) -> &EvidenceProfile {
+        &self.accepted_profile
+    }
+
+    /// Returns the accepted session public-key lookup handle.
+    #[must_use]
+    pub const fn session_public_key_id(&self) -> &SessionPublicKeyId {
+        &self.session_public_key_id
+    }
 }
 
 /// Opaque proof that the publisher challenge was authenticated for one attempt.
@@ -311,15 +793,23 @@ pub struct IdentityChecked {
 }
 
 /// Opaque proof that evidence appraisal passed for one attempt.
+///
+/// Attempt binding proves flow association, not the truth of the profile
+/// supplied by the trusted producer.
 #[must_use]
 pub struct EvidenceAppraised {
     binding: VerificationBinding,
+    accepted_profile: EvidenceProfile,
 }
 
 /// Opaque proof that the live session was bound to one attempt.
+///
+/// Attempt binding proves flow association, not the truth of the key handle
+/// supplied by the trusted producer.
 #[must_use]
 pub struct SessionBound {
     binding: VerificationBinding,
+    session_public_key_id: SessionPublicKeyId,
 }
 
 /// Opaque proof that revocation checks passed for one attempt.
@@ -339,7 +829,58 @@ pub struct PolicySatisfied {
 #[must_use]
 pub struct VerifiedAttestation {
     binding: VerificationBinding,
+    context: ExpectedContext,
+    accepted_profile: EvidenceProfile,
+    session_public_key_id: SessionPublicKeyId,
     allowed: AllowedClass,
+}
+
+/// Completed authority can be converted only once because conversion consumes it:
+///
+/// ```compile_fail
+/// use ogir_verifier::{AppraisalResult, VerifiedAttestation};
+/// fn forbidden(value: VerifiedAttestation) {
+///     let _: AppraisalResult = value.into_appraisal_result();
+///     let _: AppraisalResult = value.into_appraisal_result();
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::VerifiedAttestation;
+/// fn forbidden(verified: VerifiedAttestation) {
+///     let _first = verified.into_appraisal_result();
+///     let _second = verified.into_appraisal_result();
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use ogir_verifier::VerifiedAttestation;
+/// fn forbidden(verified: VerifiedAttestation) {
+///     let _ = verified.clone();
+/// }
+/// ```
+impl VerifiedAttestation {
+    /// Consumes completed verifier authority to create the only allowed result shape.
+    #[must_use = "the appraisal result carries the completed verifier outcome"]
+    pub fn into_appraisal_result(self) -> AppraisalResult {
+        let Self {
+            binding,
+            context,
+            accepted_profile,
+            session_public_key_id,
+            allowed,
+        } = self;
+        drop(binding);
+        let claims = AcceptedClaims {
+            accepted_profile,
+            session_public_key_id,
+        };
+        let payload = match allowed {
+            AllowedClass::FULL => AppraisalPayload::Allow(claims),
+            AllowedClass::RESTRICTED => AppraisalPayload::AllowRestricted(claims),
+        };
+        AppraisalResult { context, payload }
+    }
 }
 
 macro_rules! impl_redacted_debug {
@@ -358,6 +899,9 @@ impl_redacted_debug!(EvidenceAppraised, "EvidenceAppraised([REDACTED])");
 impl_redacted_debug!(SessionBound, "SessionBound([REDACTED])");
 impl_redacted_debug!(RevocationChecked, "RevocationChecked([REDACTED])");
 impl_redacted_debug!(PolicySatisfied, "PolicySatisfied([REDACTED])");
+impl_redacted_debug!(AppraisalResult, "AppraisalResult([REDACTED])");
+impl_redacted_debug!(AcceptedClaims, "AcceptedClaims([REDACTED])");
+impl_redacted_debug!(AppraisalResultView<'_>, "AppraisalResultView([REDACTED])");
 
 impl fmt::Debug for VerifiedAttestation {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -653,8 +1197,7 @@ impl Error for TransitionError {}
 /// ```
 #[must_use]
 pub struct VerifierFlow {
-    binding: VerificationBinding,
-    request: Option<VerificationRequest>,
+    binding: Option<VerificationBinding>,
     state: VerificationState,
 }
 
@@ -663,56 +1206,52 @@ impl VerifierFlow {
     pub fn begin(request: VerificationRequest) -> Self {
         let binding = VerificationBinding::new(&request.challenge);
         Self {
-            binding,
-            request: Some(request),
-            state: VerificationState::EvidenceReceived,
+            binding: Some(binding),
+            state: VerificationState::EvidenceReceived { request },
         }
     }
 
     /// Returns the redacted current phase.
     #[must_use]
     pub const fn phase(&self) -> VerificationPhase {
-        match self.state {
-            VerificationState::EvidenceReceived => VerificationPhase::EvidenceReceived,
-            VerificationState::ChallengeAuthenticated => VerificationPhase::ChallengeAuthenticated,
-            VerificationState::FreshnessChecked => VerificationPhase::FreshnessChecked,
-            VerificationState::IdentityChecked => VerificationPhase::IdentityChecked,
-            VerificationState::EvidenceAppraised => VerificationPhase::EvidenceAppraised,
-            VerificationState::SessionBound => VerificationPhase::SessionBound,
-            VerificationState::RevocationChecked => VerificationPhase::RevocationChecked,
-            VerificationState::PolicySatisfied(_) => VerificationPhase::PolicySatisfied,
-            VerificationState::Verified(_) => VerificationPhase::Verified,
-            VerificationState::Malformed => VerificationPhase::Malformed,
-            VerificationState::Unsupported => VerificationPhase::Unsupported,
-            VerificationState::Retryable => VerificationPhase::Retryable,
-            VerificationState::Denied(_) => VerificationPhase::Denied,
-            VerificationState::Revoked => VerificationPhase::Revoked,
+        match &self.state {
+            VerificationState::EvidenceReceived { .. } => VerificationPhase::EvidenceReceived,
+            VerificationState::ChallengeAuthenticated { .. } => {
+                VerificationPhase::ChallengeAuthenticated
+            }
+            VerificationState::FreshnessChecked { .. } => VerificationPhase::FreshnessChecked,
+            VerificationState::IdentityChecked { .. } => VerificationPhase::IdentityChecked,
+            VerificationState::EvidenceAppraised { .. } => VerificationPhase::EvidenceAppraised,
+            VerificationState::SessionBound { .. } => VerificationPhase::SessionBound,
+            VerificationState::RevocationChecked { .. } => VerificationPhase::RevocationChecked,
+            VerificationState::PolicySatisfied { .. } => VerificationPhase::PolicySatisfied,
+            VerificationState::Verified { .. } => VerificationPhase::Verified,
+            VerificationState::Malformed { .. } => VerificationPhase::Malformed,
+            VerificationState::Unsupported { .. } => VerificationPhase::Unsupported,
+            VerificationState::Retryable { .. } => VerificationPhase::Retryable,
+            VerificationState::Denied { .. } => VerificationPhase::Denied,
+            VerificationState::Revoked { .. } => VerificationPhase::Revoked,
         }
     }
 
     /// Returns a report only after the flow reaches a terminal.
     #[must_use]
     pub const fn outcome(&self) -> Option<VerificationOutcome> {
-        match self.state {
-            VerificationState::Verified(AllowedClass::FULL) => {
-                Some(VerificationOutcome::allowed_full())
-            }
-            VerificationState::Verified(AllowedClass::RESTRICTED) => {
-                Some(VerificationOutcome::allowed_restricted())
-            }
-            VerificationState::Malformed => Some(VerificationOutcome::malformed()),
-            VerificationState::Unsupported => Some(VerificationOutcome::unsupported()),
-            VerificationState::Retryable => Some(VerificationOutcome::retryable()),
-            VerificationState::Denied(reason) => Some(VerificationOutcome::denied(reason)),
-            VerificationState::Revoked => Some(VerificationOutcome::revoked()),
-            VerificationState::EvidenceReceived
-            | VerificationState::ChallengeAuthenticated
-            | VerificationState::FreshnessChecked
-            | VerificationState::IdentityChecked
-            | VerificationState::EvidenceAppraised
-            | VerificationState::SessionBound
-            | VerificationState::RevocationChecked
-            | VerificationState::PolicySatisfied(_) => None,
+        match &self.state {
+            VerificationState::Verified { outcome }
+            | VerificationState::Malformed { outcome }
+            | VerificationState::Unsupported { outcome }
+            | VerificationState::Retryable { outcome }
+            | VerificationState::Denied { outcome }
+            | VerificationState::Revoked { outcome } => Some(*outcome),
+            VerificationState::EvidenceReceived { .. }
+            | VerificationState::ChallengeAuthenticated { .. }
+            | VerificationState::FreshnessChecked { .. }
+            | VerificationState::IdentityChecked { .. }
+            | VerificationState::EvidenceAppraised { .. }
+            | VerificationState::SessionBound { .. }
+            | VerificationState::RevocationChecked { .. }
+            | VerificationState::PolicySatisfied { .. } => None,
         }
     }
 
@@ -726,14 +1265,23 @@ impl VerifierFlow {
         &mut self,
         capability: ChallengeAuthenticated,
     ) -> Result<(), TransitionError> {
-        if self.state != VerificationState::EvidenceReceived {
+        if !::std::matches!(&self.state, VerificationState::EvidenceReceived { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordChallengeAuthenticated));
         }
         self.ensure_binding(
             VerificationAction::RecordChallengeAuthenticated,
             &capability.binding,
         )?;
-        self.state = VerificationState::ChallengeAuthenticated;
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::EvidenceReceived { request } = previous else {
+            ::std::unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::ChallengeAuthenticated { request };
         Ok(())
     }
 
@@ -747,14 +1295,26 @@ impl VerifierFlow {
         &mut self,
         capability: FreshnessChecked,
     ) -> Result<(), TransitionError> {
-        if self.state != VerificationState::ChallengeAuthenticated {
+        if !::std::matches!(
+            &self.state,
+            VerificationState::ChallengeAuthenticated { .. }
+        ) {
             return Err(self.invalid_transition(VerificationAction::RecordFreshnessChecked));
         }
         self.ensure_binding(
             VerificationAction::RecordFreshnessChecked,
             capability.binding(),
         )?;
-        self.state = VerificationState::FreshnessChecked;
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::ChallengeAuthenticated { request } = previous else {
+            ::std::unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::FreshnessChecked { request };
         Ok(())
     }
 
@@ -768,14 +1328,23 @@ impl VerifierFlow {
         &mut self,
         capability: IdentityChecked,
     ) -> Result<(), TransitionError> {
-        if self.state != VerificationState::FreshnessChecked {
+        if !::std::matches!(&self.state, VerificationState::FreshnessChecked { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordIdentityChecked));
         }
         self.ensure_binding(
             VerificationAction::RecordIdentityChecked,
             &capability.binding,
         )?;
-        self.state = VerificationState::IdentityChecked;
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::FreshnessChecked { request } = previous else {
+            ::std::unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::IdentityChecked { request };
         Ok(())
     }
 
@@ -789,14 +1358,26 @@ impl VerifierFlow {
         &mut self,
         capability: EvidenceAppraised,
     ) -> Result<(), TransitionError> {
-        if self.state != VerificationState::IdentityChecked {
+        if !::std::matches!(&self.state, VerificationState::IdentityChecked { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordEvidenceAppraised));
         }
         self.ensure_binding(
             VerificationAction::RecordEvidenceAppraised,
             &capability.binding,
         )?;
-        self.state = VerificationState::EvidenceAppraised;
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::IdentityChecked { request } = previous else {
+            ::std::unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::EvidenceAppraised {
+            request,
+            accepted_profile: capability.accepted_profile,
+        };
         Ok(())
     }
 
@@ -810,11 +1391,28 @@ impl VerifierFlow {
         &mut self,
         capability: SessionBound,
     ) -> Result<(), TransitionError> {
-        if self.state != VerificationState::EvidenceAppraised {
+        if !::std::matches!(&self.state, VerificationState::EvidenceAppraised { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordSessionBound));
         }
         self.ensure_binding(VerificationAction::RecordSessionBound, &capability.binding)?;
-        self.state = VerificationState::SessionBound;
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::EvidenceAppraised {
+            request,
+            accepted_profile,
+        } = previous
+        else {
+            ::std::unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::SessionBound {
+            request,
+            accepted_profile,
+            session_public_key_id: capability.session_public_key_id,
+        };
         Ok(())
     }
 
@@ -828,14 +1426,32 @@ impl VerifierFlow {
         &mut self,
         capability: RevocationChecked,
     ) -> Result<(), TransitionError> {
-        if self.state != VerificationState::SessionBound {
+        if !::std::matches!(&self.state, VerificationState::SessionBound { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordRevocationChecked));
         }
         self.ensure_binding(
             VerificationAction::RecordRevocationChecked,
             &capability.binding,
         )?;
-        self.state = VerificationState::RevocationChecked;
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::SessionBound {
+            request,
+            accepted_profile,
+            session_public_key_id,
+        } = previous
+        else {
+            ::std::unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::RevocationChecked {
+            request,
+            accepted_profile,
+            session_public_key_id,
+        };
         Ok(())
     }
 
@@ -849,14 +1465,33 @@ impl VerifierFlow {
         &mut self,
         capability: PolicySatisfied,
     ) -> Result<(), TransitionError> {
-        if self.state != VerificationState::RevocationChecked {
+        if !::std::matches!(&self.state, VerificationState::RevocationChecked { .. }) {
             return Err(self.invalid_transition(VerificationAction::RecordPolicySatisfied));
         }
         self.ensure_binding(
             VerificationAction::RecordPolicySatisfied,
             &capability.binding,
         )?;
-        self.state = VerificationState::PolicySatisfied(capability.allowed);
+        let previous = std::mem::replace(
+            &mut self.state,
+            VerificationState::Retryable {
+                outcome: VerificationOutcome::retryable(RetryReason::TransientFailure),
+            },
+        );
+        let VerificationState::RevocationChecked {
+            request,
+            accepted_profile,
+            session_public_key_id,
+        } = previous
+        else {
+            ::std::unreachable!("phase was checked before active-state replacement")
+        };
+        self.state = VerificationState::PolicySatisfied {
+            request,
+            accepted_profile,
+            session_public_key_id,
+            allowed: capability.allowed,
+        };
         Ok(())
     }
 
@@ -867,104 +1502,165 @@ impl VerifierFlow {
     /// Returns a redacted invalid-transition error unless policy satisfaction
     /// is the current phase.
     pub fn complete(&mut self) -> Result<VerifiedAttestation, TransitionError> {
-        let allowed = match self.state {
-            VerificationState::PolicySatisfied(allowed) => allowed,
+        let outcome = match &self.state {
+            VerificationState::PolicySatisfied {
+                allowed: AllowedClass::FULL,
+                ..
+            } => VerificationOutcome::allowed_full(),
+            VerificationState::PolicySatisfied {
+                allowed: AllowedClass::RESTRICTED,
+                ..
+            } => VerificationOutcome::allowed_restricted(),
             _ => return Err(self.invalid_transition(VerificationAction::Complete)),
         };
-        self.state = VerificationState::Verified(allowed);
-        self.request = None;
-        Ok(VerifiedAttestation {
-            binding: self.binding.clone(),
+        let previous = std::mem::replace(&mut self.state, VerificationState::Verified { outcome });
+        let binding = self.binding.take();
+        let VerificationState::PolicySatisfied {
+            request,
+            accepted_profile,
+            session_public_key_id,
             allowed,
-        })
+        } = previous
+        else {
+            ::std::unreachable!("phase was checked before terminal replacement")
+        };
+        match binding {
+            Some(binding) => Ok(VerifiedAttestation {
+                binding,
+                context: request.expected,
+                accepted_profile,
+                session_public_key_id,
+                allowed,
+            }),
+            None => Err(self.invalid_transition(VerificationAction::Complete)),
+        }
     }
 
     /// Terminates this attempt because its input was malformed.
     ///
     /// # Errors
     ///
-    /// Returns a redacted invalid-transition error when the flow is already
-    /// terminal.
-    pub fn mark_malformed(&mut self) -> Result<(), TransitionError> {
-        self.enter_failure(
-            VerificationAction::MarkMalformed,
-            VerificationState::Malformed,
-        )
+    /// Returns a redacted invalid-transition error when malformed input is not
+    /// eligible in the current phase.
+    pub fn mark_malformed(&mut self) -> Result<AppraisalResult, TransitionError> {
+        self.emit_failure(FailureKind::Malformed)
     }
 
     /// Terminates this attempt because a mandatory feature was unsupported.
     ///
     /// # Errors
     ///
-    /// Returns a redacted invalid-transition error when the flow is already
-    /// terminal.
+    /// Returns a redacted invalid-transition error when the requirement is not
+    /// eligible in the current phase.
     pub fn mark_unsupported(
         &mut self,
         requirement: UnsupportedRequirement,
-    ) -> Result<(), TransitionError> {
-        let _checked_requirement = requirement;
-        self.enter_failure(
-            VerificationAction::MarkUnsupported,
-            VerificationState::Unsupported,
-        )
+    ) -> Result<AppraisalResult, TransitionError> {
+        self.emit_failure(FailureKind::Unsupported(requirement))
     }
 
     /// Terminates this attempt with a retryable unavailable result.
     ///
     /// # Errors
     ///
-    /// Returns a redacted invalid-transition error when the flow is already
-    /// terminal.
-    pub fn mark_retryable(&mut self) -> Result<(), TransitionError> {
-        self.enter_failure(
-            VerificationAction::MarkRetryable,
-            VerificationState::Retryable,
-        )
+    /// Returns a redacted invalid-transition error when the retry reason is not
+    /// eligible in the current phase.
+    pub fn mark_retryable(
+        &mut self,
+        reason: RetryReason,
+    ) -> Result<AppraisalResult, TransitionError> {
+        self.emit_failure(FailureKind::Retry(reason))
     }
 
     /// Terminates this attempt with one fixed typed denial reason.
     ///
     /// # Errors
     ///
-    /// Returns a redacted invalid-transition error when the flow is already
-    /// terminal.
-    pub fn deny(&mut self, reason: DenialReason) -> Result<(), TransitionError> {
-        self.enter_failure(VerificationAction::Deny, VerificationState::Denied(reason))
+    /// Returns a redacted invalid-transition error when the denial reason is
+    /// not eligible in the current phase.
+    pub fn deny(&mut self, reason: DenialReason) -> Result<AppraisalResult, TransitionError> {
+        self.emit_failure(FailureKind::Deny(reason))
     }
 
     /// Terminates this attempt because a required input was revoked.
     ///
     /// # Errors
     ///
-    /// Returns a redacted invalid-transition error when the flow is already
-    /// terminal.
-    pub fn mark_revoked(&mut self) -> Result<(), TransitionError> {
-        self.enter_failure(VerificationAction::MarkRevoked, VerificationState::Revoked)
+    /// Returns a redacted invalid-transition error when revocation is not
+    /// eligible in the current phase.
+    pub fn mark_revoked(&mut self) -> Result<AppraisalResult, TransitionError> {
+        self.emit_failure(FailureKind::Revoked)
     }
 
-    fn is_terminal(&self) -> bool {
-        matches!(
-            self.state,
-            VerificationState::Verified(_)
-                | VerificationState::Malformed
-                | VerificationState::Unsupported
-                | VerificationState::Retryable
-                | VerificationState::Denied(_)
-                | VerificationState::Revoked
-        )
-    }
-
-    fn enter_failure(
-        &mut self,
-        action: VerificationAction,
-        next: VerificationState,
-    ) -> Result<(), TransitionError> {
-        if self.is_terminal() {
+    fn emit_failure(&mut self, failure: FailureKind) -> Result<AppraisalResult, TransitionError> {
+        let action = failure.action();
+        if !failure_is_eligible(self.phase(), failure) {
             return Err(self.invalid_transition(action));
         }
-        self.request = None;
-        self.state = next;
-        Ok(())
+
+        let (decision, reason, terminal) = match failure {
+            FailureKind::Malformed => (
+                FailureDecision::Deny,
+                ReasonCode::Malformed,
+                VerificationState::Malformed {
+                    outcome: VerificationOutcome::malformed(),
+                },
+            ),
+            FailureKind::Unsupported(requirement) => (
+                FailureDecision::Unsupported,
+                requirement.as_reason_code(),
+                VerificationState::Unsupported {
+                    outcome: VerificationOutcome::unsupported(requirement),
+                },
+            ),
+            FailureKind::Retry(retry_reason) => (
+                FailureDecision::Retry,
+                retry_reason.as_reason_code(),
+                VerificationState::Retryable {
+                    outcome: VerificationOutcome::retryable(retry_reason),
+                },
+            ),
+            FailureKind::Deny(denial_reason) => (
+                FailureDecision::Deny,
+                denial_reason.as_reason_code(),
+                VerificationState::Denied {
+                    outcome: VerificationOutcome::denied(denial_reason),
+                },
+            ),
+            FailureKind::Revoked => (
+                FailureDecision::Deny,
+                ReasonCode::Revoked,
+                VerificationState::Revoked {
+                    outcome: VerificationOutcome::revoked(),
+                },
+            ),
+        };
+
+        let previous = std::mem::replace(&mut self.state, terminal);
+        let request = match previous {
+            VerificationState::EvidenceReceived { request }
+            | VerificationState::ChallengeAuthenticated { request }
+            | VerificationState::FreshnessChecked { request }
+            | VerificationState::IdentityChecked { request }
+            | VerificationState::EvidenceAppraised { request, .. }
+            | VerificationState::SessionBound { request, .. }
+            | VerificationState::RevocationChecked { request, .. }
+            | VerificationState::PolicySatisfied { request, .. } => request,
+            VerificationState::Verified { .. }
+            | VerificationState::Malformed { .. }
+            | VerificationState::Unsupported { .. }
+            | VerificationState::Retryable { .. }
+            | VerificationState::Denied { .. }
+            | VerificationState::Revoked { .. } => {
+                ::std::unreachable!("eligibility excluded terminal state before replacement")
+            }
+        };
+        drop(self.binding.take());
+
+        Ok(AppraisalResult {
+            context: request.expected,
+            payload: AppraisalPayload::Failure(FailurePayload { decision, reason }),
+        })
     }
 
     fn invalid_transition(&self, action: VerificationAction) -> TransitionError {
@@ -979,7 +1675,11 @@ impl VerifierFlow {
         action: VerificationAction,
         candidate: &VerificationBinding,
     ) -> Result<(), TransitionError> {
-        if self.binding.matches(candidate) {
+        if self
+            .binding
+            .as_ref()
+            .is_some_and(|binding| binding.matches(candidate))
+        {
             Ok(())
         } else {
             Err(TransitionError::CapabilityRejected { action })
@@ -1023,7 +1723,7 @@ pub fn verify_research_structure<Store: ReplayStore + ?Sized>(
         && expected.policy_version == challenge.policy_version;
 
     if !binding_matches {
-        return VerificationOutcome::denied(DenialReason::SessionBindingMismatch);
+        return VerificationOutcome::denied(DenialReason::ContextBindingMismatch);
     }
 
     if let Err(error) = freshness.claim(request.now, &request.challenge) {
@@ -1044,7 +1744,9 @@ fn freshness_failure(error: FreshnessError) -> VerificationOutcome {
         FreshnessError::ReplayDetected => VerificationOutcome::denied(DenialReason::ReplayDetected),
         FreshnessError::ClockRollback
         | FreshnessError::StateUnavailable
-        | FreshnessError::CapacityExceeded => VerificationOutcome::retryable(),
+        | FreshnessError::CapacityExceeded => {
+            VerificationOutcome::retryable(RetryReason::AttestationUnavailable)
+        }
     }
 }
 

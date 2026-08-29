@@ -5,10 +5,10 @@
   "owner": "initial-maintainer",
   "required_assurance_profile": "all-protected-modes",
   "assets": ["protected_session_authorization"],
-  "preconditions": ["a verifier flow entered Verified or one failure terminal"],
+  "preconditions": ["a verifier flow entered Verified or one of five failure terminals and emitted its direct typed result"],
   "steps": [
-    "request another gate transition terminal reclassification or completion",
-    "attempt to obtain another VerifiedAttestation"
+    "attempt each of the twenty-four semantic actions from that terminal",
+    "attempt to obtain a second VerifiedAttestation or unsuccessful AppraisalResult"
   ],
   "expected": {
     "decision": "deny",
@@ -16,8 +16,9 @@
     "automatic_ban": false
   },
   "invariants": [
-    "all six terminals reject all thirteen actions",
-    "one flow can issue at most one non-cloneable VerifiedAttestation"
+    "all six terminals reject all twenty-four semantic actions",
+    "one flow terminal emits at most one result and cannot be reclassified",
+    "successful conversion consumes the one non-cloneable VerifiedAttestation"
   ],
-  "residual_risk": ["future result signing must consume rather than duplicate the verified capability"]
+  "residual_risk": ["future protected-result issuance validation and replay behavior remain separate protocol work"]
 }

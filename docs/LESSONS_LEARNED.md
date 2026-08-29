@@ -577,3 +577,81 @@ Do not use this document to expose embargoed vulnerability details before coordi
 - **Documentation or agent-policy updates:** Issue #18, its design/plan, and the
   test strategy record the assertion rule; no production or threat-model change
   is implied.
+
+## 2026-08-28 — Source-token authority proofs need closed expansion boundaries
+
+- **Context:** M1-011 Task 8 review of Appraisal Result authority and privacy
+  structure.
+- **Mistaken assumption:** Inspecting direct root declarations and
+  authority-named tokens was sufficient to prove the complete construction and
+  method surface of opaque result types.
+- **Observed failure:** Nested modules, aliases, imports, generic macros,
+  `include!`, declaration attributes, parent-module expansion, relative `std`
+  macro paths, and crate-local `std` bindings could create or redirect an
+  authority-bearing path outside the inspected inventory.
+- **Security or quality impact:** A source change could expand result
+  construction, conversion, failure issuance, or diagnostic behavior while the
+  claimed structural proof stayed green. Runtime behavior was not shown to be
+  exploitable; the defect was in the completeness of the test evidence.
+- **Permanent regression test:** The recursive literal-preserving authority
+  inventory rejects unapproved module sources, aliases, imports, definitions,
+  invocations, attributes, and reserved bindings; pins the complete parent
+  module inventory; and requires exact absolute `::std::matches!` and
+  `::std::unreachable!` calls. Isolated physical mutations exercise each layer.
+- **New prevention rule:** A source-token proof must enumerate every source and
+  expansion mechanism in scope, establish an otherwise-valid positive baseline
+  before each negative probe, and fail closed on uninspected mechanisms. It must
+  also state that it is not a Rust parser, macro-expansion engine,
+  cryptographic proof, or secure-erasure proof.
+- **Documentation or agent-policy updates:** ADR-0009 and the M1-011 Task 8
+  report record the closed inventory, layered regressions, and explicit proof
+  limits.
+
+## 2026-08-28 — Terminal state shape does not prove allocation release
+
+- **Context:** M1-011 Task 10 independent privacy review.
+- **Mistaken assumption:** Replacing the request-bearing active state with a
+  claim-free terminal was sufficient to prove all attempt-private data was
+  released.
+- **Observed failure:** `VerifierFlow.binding` lived outside the state enum, so
+  failures retained its `AttemptRecord` and `ReplayRegistration`; success cloned
+  the binding and left a second owner in the terminal flow.
+- **Security or quality impact:** Privacy evidence claimed terminal retention
+  bounds that the real allocation lifetime contradicted.
+- **Permanent regression test:** Test-only `Weak<AttemptRecord>` probes keep the
+  terminal flow alive and prove failure release before return plus sole success
+  ownership by `VerifiedAttestation`; one-cause physical mutations remove the
+  release and restore the clone.
+- **New prevention rule:** Retention reviews must test allocation lifetime, not
+  infer it from state shape. Registered owner `initial-maintainer` must gate
+  privacy review before result fields, diagnostics, wire adapters, storage or
+  backups, logging, or telemetry expand.
+- **Documentation or agent-policy updates:** Invariant 38, architecture,
+  threat/privacy models, roadmap, issue, ADR-0009, test strategy, and scenario
+  `OGIR-PRIVACY-VERIFIER-DIAGNOSTICS-001` now state the ownership bound and gate
+  without claiming secure erasure.
+
+## 2026-08-28 — Mutation kills must match their declared detector
+
+- **Context:** M1-011 Task 10 whole-branch mutation-evidence review.
+- **Mistaken assumption:** A nonzero focused test exit after one test executed
+  proved that each mutant was killed by the row's declared authority or
+  whole-state detector.
+- **Observed failure:** `R03`-`R06` added generic `unreachable!` invocations and
+  `A17` added `panic!`; the shared `STATE` test rejected those new macros before
+  reaching `validate_active_state_replacement` or the
+  `VerifiedAttestation` method/construction inventories. `A08` made a field
+  public while its type remained private, so the crate failed compilation
+  before rustdoc. The archive therefore supported 148, not 154, intended-cause
+  kills.
+- **Security or quality impact:** Campaign completion and review readiness were
+  overstated even though no runtime authority bypass was found.
+- **Permanent regression test:** Redesign all six mutants to compile, keep
+  `R03`-`R06` and `A17` free of added macro invocations, prove their focused
+  failures name the declared detector, then restart and audit the complete
+  154-row campaign from E01.
+- **New prevention rule:** A mutation row passes only when its raw output names
+  the declared assertion or compiler boundary. Treat earlier aggregate guards,
+  collateral failures, syntax failures, and zero-test runs as invalid evidence.
+- **Documentation or agent-policy updates:** The test strategy records the
+  corrected 148-row support and requires a 154-row cause audit before closure.

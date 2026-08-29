@@ -13,6 +13,8 @@ OGIR applies data minimization at the protocol boundary.
 - structured policy outcomes;
 - short-lived session public key.
 - opaque session public-key lookup handle scoped to one publisher and protected session;
+- exact relying-party context retained in every unsigned Appraisal Result;
+- accepted profile and session public-key handle retained only in allowed Appraisal Results;
 
 ## Disallowed information classes
 
@@ -40,3 +42,18 @@ OGIR applies data minimization at the protocol boundary.
 - privacy tests that fail when forbidden fields appear.
 - a fresh future key/handle for every new session or publisher, with renewal-only reuse inside one session;
 - fixed `SessionPublicKeyId` Debug redaction and explicit byte access treated as a trusted functional boundary;
+- fixed redaction for `AppraisalResult`, `AppraisalResultView`, and `AcceptedClaims`;
+- terminal-first failure emission discards every staged accepted profile and key-handle claim;
+- terminal flows retain no attempt binding, replay registration, or attempt allocation; success moves the sole binding into `VerifiedAttestation` until conversion and failure releases it before return;
+
+The retained context and allowed-result key handle are correlation-sensitive.
+Explicit accessors are trusted functional interfaces, not approved logging
+sinks. `AppraisalResult` is unsigned and has no intrinsic expiry, secure-erasure
+guarantee, or deletion enforcement. Future protected-result transport and
+storage must define finite retention, confidentiality, deletion, and backup
+behavior before operational use.
+
+Registered scenario owner `initial-maintainer` is the accountable privacy-review
+gate before expanding any result context or claim field, diagnostic surface,
+serializer or wire adapter, persistence, storage or backup path, or logging or
+telemetry path.

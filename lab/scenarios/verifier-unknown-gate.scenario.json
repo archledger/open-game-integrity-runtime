@@ -9,9 +9,12 @@
   "steps": ["treat the unknown gate as optional", "continue toward verifier completion"],
   "expected": {
     "decision": "unsupported",
-    "reason": "unsupported-version",
+    "reason": "unsupported-critical-requirement",
     "automatic_ban": false
   },
-  "invariants": ["unknown mandatory gate state terminates Unsupported and cannot be skipped"],
+  "invariants": [
+    "unknown mandatory gate state terminates Unsupported and cannot be skipped",
+    "unsupported critical requirement is phase eligible at every active verifier phase"
+  ],
   "residual_risk": ["later protocol parsing must preserve unknown-critical-field detection before this mapping"]
 }
