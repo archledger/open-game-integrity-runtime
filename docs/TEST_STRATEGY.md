@@ -75,10 +75,12 @@ A new flow is test setup after terminal entry and is not counted as one of the
 The frozen M1-011 mutation inventory contains exactly 154 one-cause probes for
 mapping, phase eligibility, claim transfer/discard, authority fields, terminal
 replacement, one-use paths, and diagnostic redaction. The initial Task 10
-campaign ran all 154 rows, but raw failure-cause review invalidated `R03`-`R06`
-and `A17`: generic macro-inventory checks rejected syntax introduced by those
-mutants before their declared detectors ran. That archive therefore supports
-149 intended-cause kills. Correction requires redesigned compiling mutants and
+campaign ran all 154 rows, but complete raw failure-cause review invalidated
+`R03`-`R06`, `A08`, and `A17`. Generic macro-inventory checks rejected syntax
+introduced by `R03`-`R06` and `A17` before their declared detectors ran, while
+`A08` failed crate compilation before rustdoc because its supporting payload
+type remained private. That archive therefore supports 148 intended-cause
+kills. Correction requires redesigned compiling mutants and
 a complete restart from E01 at the first documentation-correction head; only a
 154-row audit with 154 intended-cause kills, zero collateral/invalid/surviving
 rows, and 154 cleanup records closes the campaign.

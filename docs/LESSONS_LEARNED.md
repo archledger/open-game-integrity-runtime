@@ -640,15 +640,18 @@ Do not use this document to expose embargoed vulnerability details before coordi
 - **Observed failure:** `R03`-`R06` added generic `unreachable!` invocations and
   `A17` added `panic!`; the shared `STATE` test rejected those new macros before
   reaching `validate_active_state_replacement` or the
-  `VerifiedAttestation` method/construction inventories. The archive therefore
-  supported 149, not 154, intended-cause kills.
+  `VerifiedAttestation` method/construction inventories. `A08` made a field
+  public while its type remained private, so the crate failed compilation
+  before rustdoc. The archive therefore supported 148, not 154, intended-cause
+  kills.
 - **Security or quality impact:** Campaign completion and review readiness were
   overstated even though no runtime authority bypass was found.
-- **Permanent regression test:** Redesign all five mutants to compile without
-  adding a macro invocation, prove their focused failures name the declared
-  detector, then restart and audit the complete 154-row campaign from E01.
+- **Permanent regression test:** Redesign all six mutants to compile, keep
+  `R03`-`R06` and `A17` free of added macro invocations, prove their focused
+  failures name the declared detector, then restart and audit the complete
+  154-row campaign from E01.
 - **New prevention rule:** A mutation row passes only when its raw output names
   the declared assertion or compiler boundary. Treat earlier aggregate guards,
   collateral failures, syntax failures, and zero-test runs as invalid evidence.
 - **Documentation or agent-policy updates:** The test strategy records the
-  corrected 149-row support and requires a 154-row cause audit before closure.
+  corrected 148-row support and requires a 154-row cause audit before closure.
