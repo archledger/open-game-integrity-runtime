@@ -630,3 +630,25 @@ Do not use this document to expose embargoed vulnerability details before coordi
   threat/privacy models, roadmap, issue, ADR-0009, test strategy, and scenario
   `OGIR-PRIVACY-VERIFIER-DIAGNOSTICS-001` now state the ownership bound and gate
   without claiming secure erasure.
+
+## 2026-08-28 — Mutation kills must match their declared detector
+
+- **Context:** M1-011 Task 10 whole-branch mutation-evidence review.
+- **Mistaken assumption:** A nonzero focused test exit after one test executed
+  proved that each mutant was killed by the row's declared authority or
+  whole-state detector.
+- **Observed failure:** `R03`-`R06` added generic `unreachable!` invocations and
+  `A17` added `panic!`; the shared `STATE` test rejected those new macros before
+  reaching `validate_active_state_replacement` or the
+  `VerifiedAttestation` method/construction inventories. The archive therefore
+  supported 149, not 154, intended-cause kills.
+- **Security or quality impact:** Campaign completion and review readiness were
+  overstated even though no runtime authority bypass was found.
+- **Permanent regression test:** Redesign all five mutants to compile without
+  adding a macro invocation, prove their focused failures name the declared
+  detector, then restart and audit the complete 154-row campaign from E01.
+- **New prevention rule:** A mutation row passes only when its raw output names
+  the declared assertion or compiler boundary. Treat earlier aggregate guards,
+  collateral failures, syntax failures, and zero-test runs as invalid evidence.
+- **Documentation or agent-policy updates:** The test strategy records the
+  corrected 149-row support and requires a 154-row cause audit before closure.

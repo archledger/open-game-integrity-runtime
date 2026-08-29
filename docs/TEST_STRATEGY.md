@@ -74,11 +74,17 @@ A new flow is test setup after terminal entry and is not counted as one of the
 
 The frozen M1-011 mutation inventory contains exactly 154 one-cause probes for
 mapping, phase eligibility, claim transfer/discard, authority fields, terminal
-replacement, one-use paths, and diagnostic redaction. This is the required
-future mutation campaign count, not a claim that Task 10 has run or passed it.
+replacement, one-use paths, and diagnostic redaction. The initial Task 10
+campaign ran all 154 rows, but raw failure-cause review invalidated `R03`-`R06`
+and `A17`: generic macro-inventory checks rejected syntax introduced by those
+mutants before their declared detectors ran. That archive therefore supports
+149 intended-cause kills. Correction requires redesigned compiling mutants and
+a complete restart from E01 at the first documentation-correction head; only a
+154-row audit with 154 intended-cause kills, zero collateral/invalid/surviving
+rows, and 154 cleanup records closes the campaign.
 
 The current verifier documentation suite contains one ordinary public
-compile-pass and 69 single-cause compile-fail doctests. Structural tests cover
+compile-pass and 70 single-cause compile-fail doctests. Structural tests cover
 every inventoried authority-bearing type/field, result construction, raw-claim
 exclusion, and report/capability substitution. Exact diagnostic tests cover the
 request, flow, all gates, binding, errors, outcomes, completed capability,
