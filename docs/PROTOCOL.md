@@ -54,17 +54,47 @@ boundary before a protected Attestation Result exists.
 
 ## Binding transcript
 
-M1-012 must define the semantic inputs that a future transcript covers. Later
-M2 commitment/protection work must at least bind:
+M1-012 defines the **Evidence-binding transcript** as a closed semantic value,
+not bytes, a digest, a result, or a wire object. Its purpose is fixed to OGIR
+evidence binding. Initial appraisal and same-session renewal each create a new
+transcript with a fresh complete challenge; renewal authorization remains a
+separate semantic domain.
+
+The semantic transcript contains:
 
 ```text
-protocol version
-challenge digest
-publisher/game/build/account/match/policy
-agent and evidence profile
-boot/runtime/game/session manifest digests
-ephemeral session public key
-issued-at and expiry
+purpose: OGIR evidence binding
+complete typed PublisherChallenge, including ProtocolVersion
+one exact registered EvidenceProfile
+actual session public key + SessionPublicKeyId association
+profile-required evidence creation and validity semantics
+all eight Base claims
+the profile's declared subset of two profile-specific claims
+exactly one registered provenance class for every required claim
+semantic manifest and measurement identities
 ```
 
-The exact order, encoding, domain-separation label, and hash algorithm require an ADR and cryptographic review.
+The eight Base claims are attesting agent identity, platform identity, boot
+measurement identity, runtime manifest identity, game manifest identity,
+process binding identity, protected-session identity, and enforcement policy
+state. The only profile-specific claims are attestation identity and runtime
+measurement identity. Every required claim appears semantically exactly once
+with one of the registered `hardware-certified`, `measured-log-derived`, or
+`trusted-agent-observed` provenance classes.
+
+`EvidenceBundle` is the external carrier of those claims and profile-specific
+proof material; the complete carrier is not inside the transcript.
+`ExpectedContext` remains independently supplied relying-party authority and is
+not an evidence claim. The attester constructs the semantic transcript, while
+the publisher verifier independently reconstructs it before separate coverage,
+provenance, and appraisal checks. Received claims remain candidate inputs, and
+valid coverage does not prove their truth.
+
+M2 still owns canonical source representations, algorithms and identifiers,
+literal domain-separation labels, proof coverage, encoding, parsing, and
+conformance vectors. It must domain-separate the closed five semantic purposes:
+evidence binding; protected Attestation Result integrity; permit authorization;
+session proof of possession; and renewal authorization. Challenge
+authentication remains a separate verifier operation. Admission remains
+downstream and outside the evidence-binding transcript. No representation, byte
+order, algorithm, literal label, proof format, or runtime API is selected here.

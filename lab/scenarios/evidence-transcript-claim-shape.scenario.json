@@ -1,0 +1,21 @@
+{
+  "id": "OGIR-EVIDENCE-TRANSCRIPT-CLAIM-SHAPE-001",
+  "title": "Alter the registered transcript claim shape",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["evidence_appraisal_integrity", "player_privacy"],
+  "preconditions": ["one registered profile requires all eight Base claims and may add only Attestation identity and Runtime measurement identity from the closed profile-specific vocabulary with exact provenance"],
+  "steps": [
+    "independently omit one required claim or duplicate one singleton meaning",
+    "independently alias one meaning or inject one undeclared claim",
+    "independently duplicate one set element or use a known claim under a profile that did not declare it"
+  ],
+  "expected": {"decision": "deny", "reason": "malformed", "automatic_ban": false},
+  "invariants": [
+    "the closed vocabulary requires the eight Base claims Attesting agent identity Platform identity Boot measurement identity Runtime manifest identity Game manifest identity Process binding identity Protected-session identity and Enforcement policy state and permits only Attestation identity and Runtime measurement identity as profile-specific additions",
+    "every required claim appears semantically exactly once",
+    "the immutable profile contract rejects missing duplicate aliased and undeclared claim meanings"
+  ],
+  "residual_risk": ["a compromised trusted producer can emit a dishonest value with the registered claim shape"]
+}

@@ -259,6 +259,129 @@ scenario/owner/profile/residual-risk mapping.
 - file and process races;
 - supported GPU/runtime variations where relevant.
 
+## Evidence-binding transcript validation
+
+This section defines future semantic validation, not implemented runtime tests.
+It selects no transcript representation, bytes, cryptographic mechanism,
+algorithm, literal domain-separation label, or proof format.
+
+### Positive reconstruction
+
+| Case | Required semantic result |
+| --- | --- |
+| Initial appraisal | Independently constructed attester and verifier semantics match for the complete fresh challenge, registered profile, actual-key and `SessionPublicKeyId` association, evidence time, exact claims, and provenance. |
+| Same-session renewal | A new Evidence-binding transcript uses a fresh complete challenge, current claims, and a new evidence-time value accepted under the future evidence-time authority. The same actual key and `SessionPublicKeyId` may repeat only when the publisher, protected `SessionId`, and live subject are unchanged; renewal belongs to the existing session lifecycle; policy is not silently weakened; current claims describe current live state; and the future evidence-time authority accepts the new evidence. A new publisher or protected session requires a new key and handle. Profile identity and exact selected-policy identity need not remain unchanged. The purpose remains fixed to OGIR evidence binding; renewal authorization is separate. |
+| Profile with only Base claims | The profile requires and reconstructs exactly all eight Base claims and no profile-specific claim. |
+| Profile with additional registered claims | The profile requires all eight Base claims plus only its declared subset of attestation identity and runtime measurement identity. |
+| Hardware-certified provenance | A claim registered as `hardware-certified` is reconstructed exactly once under that provenance class. |
+| Measured-log-derived provenance | A claim registered as `measured-log-derived` is reconstructed exactly once under that provenance class. |
+| Trusted-agent-observed provenance | A claim registered as `trusted-agent-observed` is reconstructed exactly once under that provenance class. |
+
+### Single-change negative matrix
+
+Each row starts from one valid semantic fixture and changes only the named leaf
+or relationship.
+
+| Mutation | Expected result |
+| --- | --- |
+| Change one `PublisherChallenge` field | reject before successful appraisal. |
+| Change `ProtocolVersion` | reject before successful appraisal. |
+| Change `EvidenceProfile` | reject before successful appraisal. |
+| Omit one required claim | reject before successful appraisal. |
+| Duplicate one claim meaning | reject before successful appraisal. |
+| Inject one undeclared claim | reject before successful appraisal. |
+| Alias one meaning under two names | reject before successful appraisal. |
+| claim-provenance substitution: change one claim's provenance class | reject before successful appraisal. |
+| Change Attesting agent identity semantic value | reject before successful appraisal. |
+| Change Platform identity semantic value | reject before successful appraisal. |
+| Change Boot measurement identity semantic value | reject before successful appraisal. |
+| Change Runtime manifest identity semantic value | reject before successful appraisal. |
+| Change Game manifest identity semantic value | reject before successful appraisal. |
+| Change Process binding identity semantic value | reject before successful appraisal. |
+| Change Protected-session identity semantic value | reject before successful appraisal. |
+| Change Enforcement policy state semantic value | reject before successful appraisal. |
+| Change Attestation identity semantic value under a profile that declares it | reject before successful appraisal. |
+| Change Runtime measurement identity semantic value under a profile that declares it | reject before successful appraisal. |
+| Change actual session public key | reject before successful appraisal. |
+| Change `SessionPublicKeyId` | reject before successful appraisal. |
+| Change only the actual-key-to-handle association | reject before successful appraisal. |
+| Change protected-session subject | reject before successful appraisal. |
+| Change publisher | reject before successful appraisal. |
+| Change manifest identity namespace | reject before successful appraisal. |
+| Change manifest identity algorithm | reject before successful appraisal. |
+| Change manifest identity value | reject before successful appraisal. |
+| Change evidence-time producer/source | reject before successful appraisal. |
+| Change evidence-time clock/epoch | reject before successful appraisal. |
+| Change evidence-time creation value | reject before successful appraisal. |
+| Change evidence validity semantics | reject before successful appraisal. |
+| Reuse for another account/game/match/policy/session | reject before successful appraisal. |
+| Reuse for another build | reject before successful appraisal. |
+| Reuse initial evidence as renewal authorization | reject before successful appraisal. |
+| Reuse prior renewal evidence for a fresh challenge | reject before successful appraisal. |
+| Reuse the same actual key and `SessionPublicKeyId` after the publisher changes | reject before successful appraisal. |
+| Reuse the same actual key and `SessionPublicKeyId` after the protected `SessionId` changes | reject before successful appraisal. |
+| Reuse the same actual key and `SessionPublicKeyId` after the live subject changes | reject before successful appraisal. |
+| Reuse the same actual key and `SessionPublicKeyId` outside the existing session lifecycle, including after terminal end or invalidation | reject before successful appraisal. |
+| Reuse the same actual key and `SessionPublicKeyId` while silently weakening policy | reject before successful appraisal. |
+| Reuse the same actual key and `SessionPublicKeyId` when current claims do not describe current live state | reject before successful appraisal. |
+| Reuse evidence binding as protected Attestation Result integrity | reject before successful appraisal. |
+| Reuse evidence binding as permit authorization | reject before successful appraisal. |
+| Reuse evidence binding as session proof of possession | reject before successful appraisal. |
+| Reuse evidence binding as renewal authorization | reject before successful appraisal. |
+| Duplicate one semantically set-valued element | reject before successful appraisal. |
+| Add one unknown critical semantic | reject before successful appraisal. |
+| Use a known claim under a profile that did not declare it | reject before successful appraisal. |
+| Accept the complete `EvidenceBundle` payload as a transcript input | reject before successful appraisal. |
+| Accept an attester-supplied transcript without independent reconstruction | reject before successful appraisal. |
+| Accept only `EvidenceProfile` without the evidence instance claims | reject before successful appraisal. |
+| Use rolled-back evidence time | design-blocking until the evidence-time authority defines accepted temporal behavior; no runtime acceptance case is authorized. |
+| Reuse or substitute evidence across a trusted evidence-producer restart | design-blocking until the evidence-time authority defines restart behavior; no runtime acceptance case is authorized. |
+| Reuse or substitute evidence across a protected-session restart | design-blocking until the evidence-time authority defines restart behavior; no runtime acceptance case is authorized. |
+| Reuse the same actual key and `SessionPublicKeyId` without acceptance of the new evidence under the future evidence-time authority | design-blocking until the evidence-time authority defines renewal acceptance; no runtime accepted-time behavior is authorized. |
+
+These expected results preserve the existing M1-011 coarse, non-disciplinary
+failure mappings. M1-012 adds no failure code, runtime validator, or permissive
+fallback.
+
+The generic `EvidenceProfile`, challenge-field, and policy mutation rows compare
+one candidate transcript with its independently reconstructed expected current
+transcript. They do not require a renewal to retain the prior profile identity
+or exact selected-policy identity.
+
+### Shape and domain exclusions
+
+| Boundary | Required assertion |
+| --- | --- |
+| Evidence carrier | The whole `EvidenceBundle` is not a transcript semantic; it externally carries claims and proof material. |
+| Independent context | `ExpectedContext` is not transcript evidence and is never copied from candidate claims. |
+| Diagnostic exclusion | Ordinary diagnostics exclude all `ExpectedContext` values, all complete challenge-context values, all publisher/build/account/game/match/policy bindings, and all protected-session context values, as well as all transcript and proof material. |
+| Appraisal and protected result | `Decision`, `ReasonCode`, `VerificationOutcome`, `VerifiedAttestation`, `AcceptedClaims`, `AppraisalResult`, and protected-result identity, validity, commitment, and integrity are excluded. |
+| Permit and proof of possession | Permit contents and validity plus proof-of-possession challenges and responses are excluded and remain separate domains. |
+| Time authority | Verifier evaluation time, challenge issuance or expiry time, future protected-result validity, and placeholders do not replace evidence creation or validity time. The unresolved evidence-time authority remains a blocker. |
+| Key material | Private session keys are excluded; only the actual public key and its `SessionPublicKeyId` association are transcript semantics. |
+| Semantic identity | Raw digest bytes or a marker cannot replace a semantic manifest or measurement identity. |
+| Representation and mechanism | Literal byte, canonical representation, algorithm, domain-label, and proof-coverage expectations cannot be tested until M2 selects them. |
+
+The future property strategy keeps three assertions independent so one stage
+cannot mask another:
+
+1. Independently reconstruct the verifier transcript and assert exact semantic
+   equality with the valid attester transcript before coverage or appraisal.
+2. Mutate exactly one semantic leaf, assert reconstruction inequality, and
+   require profile proof-coverage rejection for every mutation without using an
+   appraisal result as the coverage oracle.
+3. Separately appraise claim values and provenance on coverage-valid fixtures,
+   including fixtures whose covered claim or provenance is unacceptable, so
+   coverage success cannot substitute for appraisal.
+
+A separate generated-claim-set strategy enforces the exact eight Base plus two
+profile-specific vocabulary: isolated value binding for every required meaning,
+required membership, no undeclared members, and exactly-once meanings.
+Membership and shape assertions remain separate from value mutations. These are
+future executable strategies; no runtime test or validator is implemented by
+M1-012. Evidence-time rollback and restart cases remain design-blocking and do
+not define accepted temporal behavior.
+
 ## Attack scenario format
 
 Every security claim receives a scenario under `lab/scenarios/`:

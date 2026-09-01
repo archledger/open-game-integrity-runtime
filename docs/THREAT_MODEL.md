@@ -187,6 +187,57 @@ Registered scenario owner `initial-maintainer` is the required privacy-review
 gate before any result context/claim field, diagnostic surface, serializer/wire
 adapter, persistence/storage/backup path, or logging/telemetry path expands.
 
+### Evidence-binding transcript substitution and underbinding
+
+Threat: An attacker or faulty trusted component changes, omits, duplicates,
+reclassifies, or reuses a semantic input while presenting evidence as if it
+covered the verifier's expected Evidence-binding transcript.
+
+The accepted attack families map to existing attacker classes:
+
+| Attack family | Attacker classes |
+| --- | --- |
+| Authenticated challenge field or protocol-version omission/substitution | A0, A1, A5 |
+| Profile substitution or profile-contract drift | A1, A5, A6 |
+| Required-claim omission, duplication, aliasing, or undeclared claim injection | A1, A4, A5 |
+| Claim-provenance reclassification | A4, A5 |
+| Actual session-public-key or `SessionPublicKeyId` substitution | A1, A4, A5 |
+| Manifest namespace, algorithm, or value substitution | A1, A4, A5, A6 |
+| Cross-account, game, match, policy, or session replay | A0, A1, A5 |
+| Evidence-time source, epoch, validity, rollback, restart, or renewal confusion | A1, A4, A5 |
+| Cross-purpose reuse of evidence binding as protected Attestation Result integrity, permit authorization, session proof of possession, or renewal authorization | A1, A5 |
+| Diagnostic or telemetry disclosure of transcript, proof, `ExpectedContext`, complete challenge context, or protected-session context material | A1, A5, A8 |
+
+Required response: The publisher verifier independently reconstructs the
+expected transcript from authenticated, registered, resolved, and candidate
+inputs and establishes semantic equality independently of later checks. Profile
+proof coverage must then reject every semantic mutation independently of claim
+and provenance appraisal; appraisal cannot mask defective coverage. Immutable
+closed profile contracts require every Base claim and only declared profile-
+specific claims, with each required meaning present exactly once under its
+registered provenance. Both the actual session public key and its handle
+association are checked. Manifest and measurement identities retain their
+semantic namespace, algorithm identity, and value. Exactly five semantic
+purposes remain distinct: evidence binding, protected Attestation Result
+integrity, permit authorization, session proof of possession, and renewal
+authorization. Challenge authentication remains a separate verifier operation,
+and admission remains downstream; neither expands the closed five-purpose set.
+`ExpectedContext` remains independently supplied relying-party authority.
+Evidence-time rollback and evidence-producer or protected-session
+restart semantics remain design blockers until the evidence-time authority is
+approved. All transcript and proof material, all `ExpectedContext` and complete
+challenge-context values, all publisher/build/account/game/match/policy
+bindings, and all protected-session context values remain confidential by
+default.
+
+Residual risks: A compromised trusted producer can emit dishonest but correctly
+classified claims. Cryptographic strength depends on later profile mechanisms.
+Evidence-time authority and soundness remain unresolved and block runtime
+transcript representation, coverage validation, proof implementation, and
+protected-result issuance. Verifier or issuer compromise remains inside the
+TCB. Privacy continues to depend on profile minimization and separately governed
+retention policy.
+
 ### Cuckoo or relay
 
 Threat: A cheating machine relays attestation to a separate clean machine.

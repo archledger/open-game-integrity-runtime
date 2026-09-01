@@ -165,11 +165,23 @@ wire/serializer, storage/backup, logging, or telemetry expansion.
 
 The unsigned semantic value is distinct from a future protected
 `AttestationResult` and grants no permit, proof, admission, or discipline.
-M1-012 defines semantic binding-transcript inputs without choosing cryptography.
-Later M2 work owns commitment representation and algorithm identifiers,
-signature or integrity protection, wire format and parsing, validation,
-issued-at/expiry, and the trusted issuer. Permit lifecycle, renewal, revocation,
-retention, and admission remain with their later roadmap issues.
+M1-012 is complete only at the semantic documentation boundary: it defines the
+Evidence-binding transcript, external `EvidenceBundle`, complete challenge,
+closed eight-Base-plus-two-profile-specific claim vocabulary, provenance,
+actual-key and handle association, and independent reconstruction without
+choosing representation or cryptography. A separately approved evidence-time
+authority design is an earlier blocker for runtime transcript representation,
+coverage validation, evidence-proof implementation, or protected-result
+issuance; challenge time, verifier time, result time, and placeholders cannot
+substitute for it.
+
+Later M2 work owns canonical source representations, commitment and protection
+algorithms and identifiers, literal domain-separation labels, proof coverage,
+wire format and parsing, validation, issued-at/expiry, trusted issuance, and
+conformance vectors. M3 owns TPM-specific coverage, including qualifying-data
+mapping and quote validation. Permit lifecycle, renewal authorization,
+revocation, retention, proof of possession, and admission remain with their
+later roadmap issues.
 
 ### Failure taxonomy
 

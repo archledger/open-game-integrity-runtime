@@ -1,0 +1,21 @@
+{
+  "id": "OGIR-EVIDENCE-TRANSCRIPT-PROVENANCE-SUBSTITUTION-001",
+  "title": "Reclassify one evidence claim provenance",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["evidence_appraisal_integrity", "protected_session_authorization"],
+  "preconditions": ["one registered profile assigns exactly one provenance class to every required claim"],
+  "steps": [
+    "retain one claim meaning and value while changing hardware-certified to measured-log-derived",
+    "independently relabel a measured-log-derived claim as trusted-agent-observed",
+    "supply a declared provenance label through a validation path that does not satisfy that class"
+  ],
+  "expected": {"decision": "deny", "reason": "evidence-invalid", "automatic_ban": false},
+  "invariants": [
+    "each required claim binds exactly one profile-registered provenance class",
+    "provenance classes describe origin and assurance limits rather than interchangeable strength labels",
+    "the verifier rejects a claim whose actual validation path does not satisfy its declared provenance"
+  ],
+  "residual_risk": ["a compromised trusted producer can emit dishonest claim content through an otherwise accepted provenance path"]
+}

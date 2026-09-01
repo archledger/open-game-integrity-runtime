@@ -1,0 +1,21 @@
+{
+  "id": "OGIR-PRIVACY-EVIDENCE-TRANSCRIPT-DIAGNOSTICS-001",
+  "title": "Disclose transcript claims proof or correlation data through diagnostics",
+  "attacker": "A8",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["player_privacy", "session_key_binding"],
+  "preconditions": ["an attester or verifier handles transcript semantics an EvidenceBundle or profile proof material"],
+  "steps": [
+    "request formatting logging tracing metrics crash output or audit output for transcript processing",
+    "search output for claims provenance manifest identities evidence time public key key handle proof bytes or challenge context",
+    "attempt to treat EvidenceProfile visibility as permission to disclose profile claims"
+  ],
+  "expected": {"decision": "deny", "reason": "privacy-boundary", "automatic_ban": false},
+  "invariants": [
+    "future aggregate diagnostics use one fixed complete redaction marker",
+    "ordinary diagnostic surfaces reveal no transcript value proof material or correlation identifier",
+    "private session-key material is never a transcript input evidence claim diagnostic value or fixture"
+  ],
+  "residual_risk": ["future explicit access storage transport retention deletion and protected audit disclosure require separate privacy review"]
+}
