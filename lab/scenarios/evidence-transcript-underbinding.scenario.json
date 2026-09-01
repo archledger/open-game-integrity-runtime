@@ -1,0 +1,21 @@
+{
+  "id": "OGIR-EVIDENCE-TRANSCRIPT-UNDERBINDING-001",
+  "title": "Omit or substitute one authenticated transcript semantic",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["protected_session_authorization", "evidence_appraisal_integrity"],
+  "preconditions": ["one profile mechanism covers an otherwise valid independently reconstructed evidence-binding transcript"],
+  "steps": [
+    "establish an accepted baseline with equal complete PublisherChallenge and EvidenceProfile semantics",
+    "repeat the mutation independently for every PublisherChallenge semantic including ProtocolVersion",
+    "independently substitute the EvidenceProfile while retaining the original carrier proof"
+  ],
+  "expected": {"decision": "deny", "reason": "evidence-invalid", "automatic_ban": false},
+  "invariants": [
+    "the complete typed PublisherChallenge is one semantic input without a copied subset or challenge digest",
+    "the verifier reconstructs the expected transcript independently from authenticated and registered semantics",
+    "changing any transcript semantic causes profile coverage validation to fail before successful appraisal"
+  ],
+  "residual_risk": ["coverage strength depends on a later approved profile mechanism and representation"]
+}

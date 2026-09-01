@@ -1,0 +1,21 @@
+{
+  "id": "OGIR-EVIDENCE-TRANSCRIPT-CONTEXT-REUSE-001",
+  "title": "Reuse covered evidence across relying-party or session context",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["protected_session_authorization", "verifier_freshness_state"],
+  "preconditions": ["one evidence carrier was created for one authenticated challenge and one live appraisal subject"],
+  "steps": [
+    "independently reuse the carrier under another publisher game build account match or policy",
+    "independently reuse one session key or handle under another protected session",
+    "replay prior evidence for renewal or renew after terminal end under changed publisher session or silently weakened policy semantics"
+  ],
+  "expected": {"decision": "deny", "reason": "context-binding-mismatch", "automatic_ban": false},
+  "invariants": [
+    "ExpectedContext remains independently supplied rather than attester-originated evidence",
+    "overlapping challenge claim key and session meanings agree before successful appraisal",
+    "same key and handle reuse is conditional on an unchanged publisher protected SessionId and live subject an existing session lifecycle non-weakened policy current claims and future evidence-time acceptance; a new publisher or protected session requires a new key and handle; the evidence-binding purpose remains fixed and renewal authorization remains separate"
+  ],
+  "residual_risk": ["a valid full-session relay remains outside evidence transcript binding alone"]
+}

@@ -29,6 +29,33 @@ verifier TCB. Future validity, signing/integrity, wire validation, key
 resolution, proof of possession, permit, and admission boundaries must be
 validated separately.
 
+## Evidence-binding transcript authorities
+
+- The publisher challenge issuer creates the complete challenge semantics;
+  those semantics become trusted only after publisher authentication and
+  publisher-verifier validation.
+- The relying party independently supplies authoritative `ExpectedContext` for
+  exact publisher, game, build, account, match, and selected-policy comparison.
+- The trusted local key owner owns the actual session public key and supplies
+  its association with `SessionPublicKeyId` for the same publisher and
+  protected session.
+- Registered trusted evidence producers supply claims and satisfy the profile's
+  exact `hardware-certified`, `measured-log-derived`, or
+  `trusted-agent-observed` provenance assignment.
+- The attester constructs the semantic transcript and external
+  `EvidenceBundle`; construction grants no authority to attester-selected
+  values.
+- The publisher verifier independently reconstructs the transcript, validates
+  profile coverage and provenance, and appraises claims.
+- A future protected-result issuer separately establishes protected-result
+  provenance, validity, commitment, and integrity.
+
+Received claims are candidate inputs rather than authority. Valid coverage
+proves association with the reconstructed Evidence-binding transcript under the
+selected profile mechanism; it does not prove claim truth, provenance
+acceptability, policy success, result integrity, permit validity, renewal
+authorization, proof of possession, or admission.
+
 ## Player trusts
 
 - publicly inspectable protocol and source;

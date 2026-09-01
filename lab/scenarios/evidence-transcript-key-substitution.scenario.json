@@ -1,0 +1,21 @@
+{
+  "id": "OGIR-EVIDENCE-TRANSCRIPT-KEY-SUBSTITUTION-001",
+  "title": "Substitute the covered session public key or lookup handle",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["protected_session_authorization", "session_key_binding"],
+  "preconditions": ["one trusted key owner associated an actual session public key and SessionPublicKeyId with one publisher and protected session"],
+  "steps": [
+    "independently replace the actual session public key while retaining the covered SessionPublicKeyId",
+    "independently replace the SessionPublicKeyId while retaining the covered actual key",
+    "pair one session actual key with another session lookup handle"
+  ],
+  "expected": {"decision": "deny", "reason": "context-binding-mismatch", "automatic_ban": false},
+  "invariants": [
+    "the transcript binds both the actual public key and SessionPublicKeyId",
+    "SessionPublicKeyId remains a non-authoritative lookup handle under ADR-0008",
+    "the verifier checks one trusted-owner key handle publisher and protected-session association"
+  ],
+  "residual_risk": ["proof of possession and concrete key representation remain later protocol work"]
+}

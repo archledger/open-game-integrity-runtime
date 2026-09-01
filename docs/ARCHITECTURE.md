@@ -356,7 +356,7 @@ Claim-bearing gates accumulate the accepted `EvidenceProfile` and
 `SessionPublicKeyId` only after phase and exact-allocation binding checks. Only
 `PolicySatisfied -> Verified` emits one non-cloneable `VerifiedAttestation`.
 Its consuming `into_appraisal_result()` conversion is the sole allowed-result
-path and accepts no context or claim refill input. `Decision`, `ReasonCode`,
+path and accepts no context or claim supplementation input. `Decision`, `ReasonCode`,
 `VerificationOutcome`, and `AppraisalResultView` are reporting views and cannot
 substitute for that capability. Restricted success is a class selected under
 the exact policy already present in `ExpectedContext`, never fallback or policy
@@ -401,6 +401,46 @@ expiry, and the trusted protected-result issuer. Permit issuance and
 validation, session-key resolution and proof of possession, matchmaking
 admission, persistence, renewal, and retention enforcement remain outside
 M1-011.
+
+### Evidence-binding transcript boundary
+
+The semantic evidence flow is directional:
+
+```text
+publisher challenge issuer -> authenticated PublisherChallenge
+relying party -> independent ExpectedContext
+trusted local key owner -> actual session public key + SessionPublicKeyId
+trusted evidence producers -> registered claims + provenance
+attester -> constructed semantic transcript + external EvidenceBundle
+publisher verifier -> independently reconstructed transcript
+publisher verifier -> coverage validation, then claim appraisal
+future protected-result issuer -> separately protected result
+```
+
+The `EvidenceBundle` carries profile-specific claims and proof material outside
+the Evidence-binding transcript. The attester constructs the semantic
+transcript, but its construction does not make received values authoritative.
+The publisher verifier independently reconstructs the expected transcript from
+authenticated, registered, resolved, and candidate inputs.
+
+The verifier rejects before successful appraisal when a required semantic is
+absent, duplicated, invented, reclassified, or unequal. Carrier parsing,
+transcript reconstruction, coverage validation, claim appraisal,
+`ExpectedContext` comparison, and protected-result issuance are separate
+architectural operations. Valid coverage does not establish claim truth or
+policy acceptance.
+
+The closed five semantic purposes are evidence binding; protected Attestation
+Result integrity; permit authorization; session proof of possession; and
+renewal authorization. Later representations must domain-separate these
+purposes; M1-012 selects no literal label. Challenge authentication remains a
+separate verifier operation. Admission remains downstream and outside the
+evidence-binding transcript.
+
+Initial appraisal and same-session renewal each construct a new
+evidence-binding transcript with a fresh complete challenge. The transcript
+purpose remains fixed to OGIR evidence binding; renewal authorization is not a
+different transcript purpose.
 
 ### 7.1 PublisherChallenge
 

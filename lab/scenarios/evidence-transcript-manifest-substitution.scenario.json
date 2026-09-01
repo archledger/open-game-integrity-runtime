@@ -1,0 +1,21 @@
+{
+  "id": "OGIR-EVIDENCE-TRANSCRIPT-MANIFEST-SUBSTITUTION-001",
+  "title": "Substitute one semantic manifest identity component",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["evidence_appraisal_integrity", "reference_value_integrity"],
+  "preconditions": ["one accepted profile identifies an exact appraised boot runtime game or protected-session semantic object"],
+  "steps": [
+    "independently replace the semantic identity namespace",
+    "independently replace the algorithm identity",
+    "independently replace the value or substitute raw digest bytes or an opaque commitment marker"
+  ],
+  "expected": {"decision": "deny", "reason": "evidence-invalid", "automatic_ban": false},
+  "invariants": [
+    "manifest and measurement identities bind explicit semantic namespace algorithm identity and value",
+    "raw bytes and opaque commitment markers do not identify the appraised semantic object",
+    "each isolated identity change causes semantic inequality and future coverage failure"
+  ],
+  "residual_risk": ["canonical source objects algorithms and compact commitments remain deferred to M2"]
+}

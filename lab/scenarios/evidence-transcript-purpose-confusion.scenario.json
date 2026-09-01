@@ -1,0 +1,22 @@
+{
+  "id": "OGIR-EVIDENCE-TRANSCRIPT-PURPOSE-CONFUSION-001",
+  "title": "Reuse evidence coverage as another protocol authority",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["protected_session_authorization", "permit_integrity"],
+  "preconditions": ["one mechanism establishes coverage for the OGIR evidence-binding semantic purpose"],
+  "steps": [
+    "present evidence coverage as protected Attestation Result integrity",
+    "present evidence coverage as permit authorization",
+    "present evidence coverage as session proof of possession",
+    "present an initial-appraisal transcript as same-session renewal authorization"
+  ],
+  "expected": {"decision": "deny", "reason": "evidence-invalid", "automatic_ban": false},
+  "invariants": [
+    "the five distinct purposes are evidence binding protected Attestation Result integrity permit authorization session proof of possession and renewal authorization",
+    "an evidence-binding transcript is not a protected Attestation Result permit session proof of possession renewal authorization or disciplinary signal",
+    "later representation work must domain-separate all five purposes"
+  ],
+  "residual_risk": ["literal domain labels and cryptographic enforcement remain deferred to M2"]
+}

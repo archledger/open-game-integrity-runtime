@@ -29,6 +29,28 @@ OGIR applies data minimization at the protocol boundary.
 - persistent global monitoring after the game session.
 - session-key or key-handle reuse as a stable cross-session/cross-publisher correlation identifier;
 
+## Evidence-binding transcript disclosure boundary
+
+The complete Evidence-binding transcript, decoded claims, provenance, actual
+session public key, `SessionPublicKeyId`, semantic manifest and measurement
+identities, evidence-time statement, and proof material are
+confidential-by-default attestation data.
+
+- Ordinary `Debug`, error, tracing, metric, crash, and audit output must not
+  contain transcript contents, proof bytes, claim values, manifest identities,
+  key bytes, key handles, or evidence time. It must also exclude
+  all `ExpectedContext` values, all complete challenge-context values, all publisher/build/account/game/match/policy bindings, and all protected-session context values.
+  This prohibition applies even though `ExpectedContext` is independent
+  authority rather than transcript evidence.
+- `EvidenceProfile` alone is not permission to log the profile's claims.
+- Profiles must declare disclosure class and data minimization expectations.
+- Retention, deletion, and protected audit disclosure remain separately
+  governed and are not selected by M1-012.
+- The private session key is never evidence, transcript input, or telemetry.
+
+Documentation examples use semantic names, never realistic account identifiers,
+key material, proof bytes, or biometric or device fingerprints.
+
 ## Controls
 
 - fixed claim schema;
