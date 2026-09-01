@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-31
-- Owners: Initial maintainers
+- Owners: Initial maintainer
 - Related issues: [M1-012](../../planning/issues/012-evidence-binding-transcript-inputs.md)
 - Supersedes: None
 - Superseded by: None

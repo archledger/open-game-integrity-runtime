@@ -484,7 +484,7 @@ Create `docs/adr/0010-semantic-evidence-binding-transcript.md` with this exact m
 
 - Status: Accepted
 - Date: 2026-08-31
-- Owners: Initial maintainers
+- Owners: Initial maintainer
 - Related issues: [M1-012](../../planning/issues/012-evidence-binding-transcript-inputs.md)
 - Supersedes: None
 - Superseded by: None
@@ -621,27 +621,27 @@ Create `lab/scenarios/evidence-transcript-underbinding.scenario.json` with this 
 }
 ```
 
-- [ ] **Step 3: Create the claim shape and provenance scenario**
+- [ ] **Step 3: Create the claim shape scenario**
 
 Create `lab/scenarios/evidence-transcript-claim-shape.scenario.json`:
 
 ```json
 {
   "id": "OGIR-EVIDENCE-TRANSCRIPT-CLAIM-SHAPE-001",
-  "title": "Alter the registered transcript claim shape or provenance",
+  "title": "Alter the registered transcript claim shape",
   "attacker": "A1",
   "owner": "initial-maintainer",
   "required_assurance_profile": "all-protected-modes",
   "assets": ["evidence_appraisal_integrity", "player_privacy"],
-  "preconditions": ["one registered profile defines all eight Base claims and any required profile-specific claims with exact provenance"],
+  "preconditions": ["one registered profile requires all eight Base claims and may add only Attestation identity and Runtime measurement identity from the closed profile-specific vocabulary with exact provenance"],
   "steps": [
     "independently omit one required claim or duplicate one singleton meaning",
-    "independently alias one meaning inject one undeclared claim or add one unknown critical semantic",
+    "independently alias one meaning or inject one undeclared claim",
     "independently duplicate one set element or use a known claim under a profile that did not declare it"
   ],
   "expected": {"decision": "deny", "reason": "malformed", "automatic_ban": false},
   "invariants": [
-    "every profile requires all eight Base claims and only declared profile-specific claims",
+    "the closed vocabulary requires the eight Base claims Attesting agent identity Platform identity Boot measurement identity Runtime manifest identity Game manifest identity Process binding identity Protected-session identity and Enforcement policy state and permits only Attestation identity and Runtime measurement identity as profile-specific additions",
     "every required claim appears semantically exactly once",
     "the immutable profile contract rejects missing duplicate aliased and undeclared claim meanings"
   ],
