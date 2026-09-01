@@ -5,17 +5,17 @@
   "owner": "initial-maintainer",
   "required_assurance_profile": "all-protected-modes",
   "assets": ["evidence_appraisal_integrity", "verifier_freshness_state"],
-  "preconditions": ["runtime evidence-time producer clock validity rollback restart renewal and privacy semantics are unresolved"],
+  "preconditions": ["a registered profile requires challenge-anchored protected collection time"],
   "steps": [
-    "copy challenge issued_at or expires_at into evidence creation or expiry semantics",
-    "substitute verifier evaluation time or client wall-clock time",
-    "omit evidence time or use an always-valid or zero-valued placeholder"
+    "copy challenge issued_at expires_at verifier now result time permit time client UTC or process uptime into evidence time",
+    "omit authority epoch sequence start or freeze end or replace one with zero maximum or always-valid data",
+    "ask the verifier to apply skew clamp or normalize the substituted value"
   ],
-  "expected": {"decision": "blocked", "reason": "evidence-time-authority-unresolved", "automatic_ban": false},
+  "expected": {"decision": "deny", "reason": "evidence-invalid", "automatic_ban": false},
   "invariants": [
-    "evidence creation and validity time are distinct from challenge verifier result permit and renewal time domains",
-    "no implicit source clock ordering or accepted interval is authorized",
-    "runtime transcript representation proof implementation and protected-result issuance remain blocked"
+    "only the registered collection-authority statement supplies evidence-time semantics",
+    "client UTC and every other protocol time domain have no evidence-time skew allowance",
+    "malformed or unsupported temporal semantics never normalize into acceptance"
   ],
-  "residual_risk": ["accepted positive temporal behavior requires a separately approved evidence-time authority design"]
+  "residual_risk": ["a compromised registered collection authority remains inside the trusted computing base"]
 }

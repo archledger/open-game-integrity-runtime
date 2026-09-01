@@ -371,3 +371,10 @@ acceptable rollback.
 These sources guide the semantic boundary only. This ADR adopts no TPM wire
 layout, qualifying-data mapping, PCR selection, canonical representation,
 commitment, key encoding, cryptographic algorithm, or runtime TPM mechanism.
+
+## Follow-up resolution
+
+[ADR-0011](0011-challenge-anchored-evidence-time.md) resolves the common
+evidence-time semantic prerequisite with a challenge-anchored protected
+collection interval. Representation, cryptography, profile mechanisms, numeric
+limits, persistence implementation, and TPM mapping remain deferred.

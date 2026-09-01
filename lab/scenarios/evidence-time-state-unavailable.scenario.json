@@ -1,0 +1,22 @@
+{
+  "id": "OGIR-EVIDENCE-TIME-STATE-UNAVAILABLE-001",
+  "title": "Bypass temporarily unavailable authoritative temporal state",
+  "attacker": "A5",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["verifier_temporal_high_water", "protected_session_authorization"],
+  "preconditions": ["authoritative continuity state remains intact but is temporarily inaccessible"],
+  "steps": [
+    "make the intact authority or verifier temporal state temporarily unavailable",
+    "request stateless fallback or repair from client-supplied evidence",
+    "retry after the exact authoritative state becomes available again"
+  ],
+  "expected": {"decision": "retry", "reason": "attestation-unavailable", "automatic_ban": false},
+  "invariants": [
+    "authoritative continuity state remains unchanged and recoverable",
+    "the outage does not mutate advance or release temporal high-water",
+    "no stateless fallback or client repair exists",
+    "retry uses a fresh challenge"
+  ],
+  "residual_risk": ["temporary fail-closed unavailability can interrupt protected play"]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "OGIR-EVIDENCE-TIME-DURATION-EXPIRY-001",
+  "title": "Exceed collection duration or challenge expiry boundaries",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["evidence_appraisal_integrity", "verifier_freshness_state"],
+  "preconditions": ["the profile has a finite collection ceiling and the challenge has a half-open validity window"],
+  "steps": [
+    "extend collection beyond the effective profile or tighter publisher ceiling",
+    "delay proof or transport until the exact challenge expiry boundary",
+    "request skew normalization or an invented post-freeze latency field"
+  ],
+  "expected": {"decision": "deny", "reason": "evidence-invalid", "automatic_ban": false},
+  "invariants": [
+    "the immutable profile sets a finite collection ceiling and publisher policy may only tighten it",
+    "challenge validity uses the existing half-open expiry boundary",
+    "no unverifiable post-freeze latency field or skew allowance is invented"
+  ],
+  "residual_risk": ["challenge expiry bounds but does not independently measure proof and transport latency after freeze"]
+}

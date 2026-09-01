@@ -1,0 +1,22 @@
+{
+  "id": "OGIR-EVIDENCE-TIME-TEMPORAL-REUSE-001",
+  "title": "Reuse prior temporal authority across challenge or session boundaries",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["protected_session_authorization", "verifier_temporal_high_water"],
+  "preconditions": ["the verifier has accepted temporal high-water for an active protected session"],
+  "steps": [
+    "submit the same or a lower collection sequence and a prior or overlapping interval",
+    "reuse the prior challenge or substitute a cross-session epoch relation",
+    "request recovery of the old protected session after terminal continuity loss"
+  ],
+  "expected": {"decision": "deny", "reason": "protected-session-lost", "automatic_ban": false},
+  "invariants": [
+    "renewal sequences strictly increase but need not be contiguous",
+    "same-session renewal preserves one uninterrupted scoped epoch and non-overlapping intervals",
+    "evidence is valid for one exact challenge only",
+    "terminal continuity loss requires a new session key handle challenge and epoch"
+  ],
+  "residual_risk": ["a compromised trusted authority and verifier remain inside the trusted computing base"]
+}

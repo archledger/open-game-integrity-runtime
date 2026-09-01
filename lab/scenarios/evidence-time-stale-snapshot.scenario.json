@@ -1,0 +1,20 @@
+{
+  "id": "OGIR-EVIDENCE-TIME-STALE-SNAPSHOT-001",
+  "title": "Relabel stale cached claims with a recent collection interval",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["evidence_appraisal_integrity", "protected_session_authorization"],
+  "preconditions": ["the collection authority can access cached boot manifest or enforcement observations"],
+  "steps": [
+    "receive a fresh publisher challenge and open a valid protected collection interval",
+    "reuse an old claim without current-subject revalidation",
+    "present recent snapshot freeze as proof that the old claim still describes current state"
+  ],
+  "expected": {"decision": "deny", "reason": "evidence-invalid", "automatic_ban": false},
+  "invariants": [
+    "snapshot time never replaces registered claim provenance or current-state validation",
+    "every bound claim is newly collected or revalidated for the live appraisal subject"
+  ],
+  "residual_risk": ["a compromised registered producer can provide dishonest but structurally current evidence"]
+}

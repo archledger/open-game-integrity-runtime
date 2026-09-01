@@ -111,7 +111,34 @@ material. The carrier is not itself a transcript semantic.
 
 The immutable semantic definition named by an `EvidenceProfile`: exact required
 claims, permitted provenance, coverage, assurance meaning, disclosure class,
-and evidence-time requirements.
+and evidence-time requirements. Each profile registers exactly one Evidence
+Collection Authority contract, protected monotonic source semantics, and finite
+collection-duration ceiling.
+
+## Evidence Collection Authority
+
+The immutable-profile-registered trusted local component that opens one exact-
+challenge collection, controls protected local start and freeze semantics, and
+coordinates current claim collection. It does not authenticate publisher
+policy, grant provenance to producer values, appraise claims, or issue a result.
+
+## Frozen evidence snapshot
+
+The complete immutable profile-required claim and provenance set at protected
+collection end, before proof creation. Later mutation requires a new collection
+operation and evidence instance.
+
+## Protected epoch relation
+
+An opaque publisher/session-scoped proof of one uninterrupted local collection-
+authority lifetime. It is not UTC or a raw boot identifier, clock, reset count,
+restart count, or device-wide epoch.
+
+## Temporal high-water
+
+Active-session publisher-verifier authorization state containing the accepted
+epoch relation, greatest validated collection sequence, and latest validated
+freeze end. It is not telemetry and is deleted at terminal session end.
 
 ## Semantic identity
 

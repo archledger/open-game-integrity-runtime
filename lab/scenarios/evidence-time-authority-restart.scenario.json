@@ -1,0 +1,20 @@
+{
+  "id": "OGIR-EVIDENCE-TIME-AUTHORITY-RESTART-001",
+  "title": "Resume renewal after collection authority restart or rollback",
+  "attacker": "A4",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["protected_session_authorization", "evidence_appraisal_integrity"],
+  "preconditions": ["a protected session has accepted temporal continuity state"],
+  "steps": [
+    "restart or roll back the collection authority or its protected monotonic source",
+    "bind a fresh challenge under changed or reused epoch state",
+    "request same-session renewal with the old session key and handle"
+  ],
+  "expected": {"decision": "deny", "reason": "protected-session-lost", "automatic_ban": false},
+  "invariants": [
+    "authority restart rollback epoch change or protected-source discontinuity terminates the current protected session",
+    "recovery requires a new session key handle challenge and scoped epoch"
+  ],
+  "residual_risk": ["safe durable authority migration requires a separately approved mechanism"]
+}

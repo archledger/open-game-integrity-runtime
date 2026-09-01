@@ -926,8 +926,6 @@ full gate.
 Run:
 
 ```bash
-git diff --binary 2bc3a6d4f9a3edeee829e3a8e620daa3df7d3f85 > /tmp/ogir-m1-012f-documentation.patch
-sha256sum /tmp/ogir-m1-012f-documentation.patch
 candidate_index="$(mktemp)"
 rm -f "$candidate_index"
 GIT_INDEX_FILE="$candidate_index" git read-tree HEAD
@@ -944,6 +942,7 @@ GIT_INDEX_FILE="$candidate_index" git add -- \
   docs/adr/0010-semantic-evidence-binding-transcript.md \
   docs/adr/0011-challenge-anchored-evidence-time.md \
   docs/adr/index.md \
+  docs/superpowers/plans/2026-09-01-m1-012f-evidence-time-authority-documentation.md \
   lab/scenarios/evidence-transcript-diagnostics-privacy.scenario.json \
   lab/scenarios/evidence-transcript-time-authority-confusion.scenario.json \
   lab/scenarios/evidence-time-authority-restart.scenario.json \
@@ -955,6 +954,10 @@ GIT_INDEX_FILE="$candidate_index" git add -- \
   lab/scenarios/evidence-time-temporal-reuse.scenario.json \
   planning/issues/012-evidence-binding-transcript-inputs.md \
   planning/issues/012f-evidence-time-authority.md
+GIT_INDEX_FILE="$candidate_index" git diff --cached --binary \
+  2bc3a6d4f9a3edeee829e3a8e620daa3df7d3f85 \
+  > /tmp/ogir-m1-012f-documentation.patch
+sha256sum /tmp/ogir-m1-012f-documentation.patch
 GIT_INDEX_FILE="$candidate_index" git write-tree
 rm -f "$candidate_index"
 git status --short --branch

@@ -42,11 +42,22 @@ validated separately.
 - Registered trusted evidence producers supply claims and satisfy the profile's
   exact `hardware-certified`, `measured-log-derived`, or
   `trusted-agent-observed` provenance assignment.
+- The immutable profile registry selects exactly one Evidence Collection
+  Authority contract, protected monotonic source semantics, and finite hard
+  collection-duration ceiling.
+- The Evidence Collection Authority owns only the protected local epoch,
+  sequence, collection interval, and complete-snapshot freeze for the exact
+  challenge and publisher/protected-session scope. It cannot grant producer
+  provenance, appraise policy, or issue a result.
 - The attester constructs the semantic transcript and external
   `EvidenceBundle`; construction grants no authority to attester-selected
   values.
+- The profile evidence mechanism covers the complete frozen transcript,
+  including the registered evidence-time semantics.
 - The publisher verifier independently reconstructs the transcript, validates
-  profile coverage and provenance, and appraises claims.
+  profile coverage and the protected temporal statement, atomically advances
+  active-session temporal high-water, validates provenance, and appraises
+  claims.
 - A future protected-result issuer separately establishes protected-result
   provenance, validity, commitment, and integrity.
 
@@ -55,6 +66,14 @@ proves association with the reconstructed Evidence-binding transcript under the
 selected profile mechanism; it does not prove claim truth, provenance
 acceptability, policy success, result integrity, permit validity, renewal
 authorization, proof of possession, or admission.
+
+The publisher does not trust client UTC, copied challenge time, verifier time,
+result or permit time, process uptime, raw boot/reset/restart/TPM-clock values,
+an unregistered sequence, or client-supplied repair of missing temporal high-
+water. The local collection authority need not authenticate publisher policy;
+it covers the exact received challenge, which the publisher verifier later
+authenticates. A fake local request can waste bounded work but cannot authorize
+protected mode.
 
 ## Player trusts
 

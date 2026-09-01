@@ -1,0 +1,21 @@
+{
+  "id": "OGIR-EVIDENCE-TIME-CONCURRENT-COLLECTION-001",
+  "title": "Race concurrent collections against one temporal high-water",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["verifier_temporal_high_water", "protected_session_authorization"],
+  "preconditions": ["one active session has an accepted prior temporal high-water"],
+  "steps": [
+    "race two local collection requests from the same prior continuity state",
+    "submit both candidate intervals to the publisher verifier",
+    "attempt to obtain two successful transitions from one prior high-water"
+  ],
+  "expected": {"decision": "deny", "reason": "protected-session-lost", "automatic_ban": false},
+  "invariants": [
+    "only one local collection is active for a protected session",
+    "the verifier atomically compares and advances temporal high-water",
+    "one prior high-water cannot authorize two successful transitions"
+  ],
+  "residual_risk": ["availability can be reduced by deliberate collection races"]
+}
