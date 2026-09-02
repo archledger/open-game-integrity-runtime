@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Execute inline with `superpowers:executing-plans`; the user has explicitly requested no subagents for this work.
+- Execute inline with `superpowers:executing-plans`; do not dispatch subagents for this plan.
 - Delivery is documentation-only: do not modify Rust source, Cargo manifests, lockfiles, shell gates, CI workflows, dependencies, generated artifacts, runtime APIs, wire formats, parsers, persistence adapters, or production configuration.
 - The approved spec is signed commit `2bc3a6d4f9a3edeee829e3a8e620daa3df7d3f85`; its file SHA-256 is `6d0c2f5f9625a584dba06468bf9b7016ef3223ddcaa3336ad168f299abe89bd4`.
 - Work from branch `docs/m1-012f-evidence-time-authority` based on exact `origin/main` `f97e3a77f5e4521888d9f136f506d23aa857d367`; never reconcile, reset, merge, or rewrite the intentionally divergent local `main`.
