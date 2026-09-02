@@ -442,6 +442,62 @@ evidence-binding transcript with a fresh complete challenge. The transcript
 purpose remains fixed to OGIR evidence binding; renewal authorization is not a
 different transcript purpose.
 
+### Evidence-time collection authority
+
+Each immutable profile registers exactly one trusted local Evidence Collection
+Authority contract, protected monotonic source semantics, and finite collection-
+duration ceiling. The authority controls only the protected local interval and
+snapshot freeze. Registered claim producers retain claim/provenance authority,
+the generic attester remains a non-authoritative constructor and transporter,
+and the publisher verifier remains the sole acceptance authority.
+
+```text
+generic attester -> exact received challenge + collection request
+collection authority -> publisher/session scope + epoch + sequence + start
+registered producers -> current claims + registered provenance
+collection authority -> atomic complete-snapshot freeze at end
+profile evidence mechanism -> complete frozen transcript coverage
+publisher verifier -> challenge authentication + atomic freshness claim
+publisher verifier -> coverage + protected temporal statement validation
+publisher verifier -> atomic temporal high-water compare/advance
+publisher verifier -> later provenance, current-subject, and policy appraisal
+```
+
+The collection authority opens only after receiving the exact challenge later
+covered. It need not authenticate publisher policy locally; a fake local request
+can consume bounded work but cannot pass publisher verification. The complete
+claim snapshot freezes before proof creation, avoiding proof-completion self-
+reference. Evidence is valid only for its challenge and must arrive before the
+existing publisher-verifier expiry boundary.
+
+The semantic temporal value identifies the registered authority contract, an
+opaque publisher/session-scoped epoch relation, a protected sequence, protected
+start, and protected freeze end. It contains no UTC or wall-clock skew
+tolerance. A profile defines the finite collection-duration ceiling and
+publisher policy may only tighten it. Challenge expiry, not an invented local-
+to-server timestamp, bounds proof creation and transport after freeze.
+
+One local collection may be active per protected session. Initial appraisal
+establishes verifier temporal high-water. Renewal requires the same uninterrupted
+epoch, a strictly increasing sequence, and `new.start >= prior.end`. Sequences
+are not required to be contiguous because dropped or rejected collections may
+never reach the verifier. Local serialization does not replace atomic verifier
+compare-and-advance; two submissions cannot both advance from one prior state.
+
+After challenge freshness and exact coverage establish authority for the
+temporal statement, the verifier atomically advances the active session's epoch,
+greatest sequence, and latest end before later appraisal. A later claim or
+policy rejection cannot hide that observation. Invalid proof never advances
+candidate time.
+
+Authority/protected-source restart, rollback, epoch change, reused/decreased
+sequence, overlap, impossible interval, source discontinuity, or missing,
+corrupt, or rolled-back verifier high-water terminates the current protected
+session. Recovery requires a new session, key/handle, challenge, and scoped
+epoch. Temporary unavailability is retryable only when the same authoritative
+state remains intact and recoverable; there is no stateless or client-repaired
+fallback.
+
 ### 7.1 PublisherChallenge
 
 Required fields:

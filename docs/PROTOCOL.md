@@ -67,7 +67,11 @@ purpose: OGIR evidence binding
 complete typed PublisherChallenge, including ProtocolVersion
 one exact registered EvidenceProfile
 actual session public key + SessionPublicKeyId association
-profile-required evidence creation and validity semantics
+registered Evidence Collection Authority contract
+opaque publisher/session-scoped protected epoch relation
+protected collection sequence
+protected collection start
+protected snapshot-freeze end
 all eight Base claims
 the profile's declared subset of two profile-specific claims
 exactly one registered provenance class for every required claim
@@ -89,6 +93,40 @@ not an evidence claim. The attester constructs the semantic transcript, while
 the publisher verifier independently reconstructs it before separate coverage,
 provenance, and appraisal checks. Received claims remain candidate inputs, and
 valid coverage does not prove their truth.
+
+The collection authority opens one operation only after receiving the exact
+complete challenge later covered by evidence. It records protected start,
+collects or revalidates every required current claim, and atomically freezes the
+complete snapshot at protected end before proof creation. The local authority
+does not need publisher trust roots: the publisher verifier later authenticates
+the challenge through the existing freshness path.
+
+One evidence instance is valid only for that challenge and must reach the
+publisher verifier before the challenge's existing half-open expiry boundary.
+Each profile defines a finite collection-duration ceiling; publisher policy may
+only tighten it. Challenge expiry bounds proof creation, transport, and receipt
+after freeze, so there is no separate claimed post-freeze latency.
+
+Evidence time contains no client UTC and has no wall-clock skew allowance.
+Challenge issuance, verifier evaluation, result validity, permit validity,
+process uptime, zero, and always-valid values cannot substitute for the
+registered protected local semantics.
+
+Initial appraisal establishes active-session temporal high-water. Same-session
+renewal is serialized and requires a fresh challenge, the same uninterrupted
+epoch relation, a strictly increasing collection sequence, and an interval
+whose start is not earlier than the latest validated end. Accepted sequences
+need not be contiguous because a locally created collection can be lost before
+the verifier observes it. Reuse or decrease, epoch change, overlap, rollback,
+restart, protected-source discontinuity, or lost high-water terminates the
+protected session without implying cheating.
+
+After validating coverage and the protected authority statement, the verifier
+atomically compares and advances temporal high-water before later claim and
+policy appraisal. Later rejection cannot erase a validated temporal
+observation; invalid or unauthenticated proof cannot advance candidate time.
+Temporary unavailability is retryable only while authoritative continuity state
+remains intact and recoverable, and retry requires a fresh challenge.
 
 M2 still owns canonical source representations, algorithms and identifiers,
 literal domain-separation labels, proof coverage, encoding, parsing, and

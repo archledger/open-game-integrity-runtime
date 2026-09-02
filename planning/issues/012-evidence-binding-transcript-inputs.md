@@ -228,19 +228,32 @@ No failure is evidence that a player cheated. Any failure after the ADR-0005
 atomic freshness claim leaves the challenge consumed and requires a newly
 issued challenge.
 
-## Evidence-time prerequisite
+## Evidence-time prerequisite at M1-012 completion
 
-The producer, authority, clock or epoch, validity model, skew rule, rollback and
-restart behavior, renewal behavior, and privacy treatment for evidence creation
-time are not yet approved. No runtime transcript representation or coverage
-validator may be designed as final until that prerequisite is resolved.
+At M1-012 completion, the producer, authority, clock or epoch, validity model,
+skew rule, rollback and restart behavior, renewal behavior, and privacy treatment
+for evidence creation time had not been approved. No runtime transcript
+representation or coverage validator could be designed as final until that
+prerequisite was resolved.
 `PublisherChallenge.issued_at`, verifier evaluation time, and client wall-clock
 time are not substitutes.
 
-This unresolved prerequisite also blocks evidence-proof implementation and
-protected-result issuance. It cannot be bypassed with an omitted, zero-valued,
-always-valid, challenge-derived, verifier-time-derived, or result-time-derived
+The prerequisite could not be bypassed with an omitted, zero-valued, always-
+valid, challenge-derived, verifier-time-derived, or result-time-derived
 placeholder.
+
+## Evidence-time prerequisite resolution
+
+[M1-012F](012f-evidence-time-authority.md) resolves the common semantic
+prerequisite with one challenge-anchored protected local collection interval,
+an immutable-profile-registered Evidence Collection Authority, an opaque
+publisher/session-scoped epoch relation, a strictly increasing sequence,
+snapshot freeze before proof, no client UTC/skew, single-challenge validity,
+atomic active-session temporal high-water, and terminal continuity loss.
+
+This is a documentation-level resolution. M2 still owns runtime representation,
+profile coverage, parsing, cryptography, and exact numeric limits; M3 owns TPM-
+specific mapping. No placeholder is authorized while those prerequisites remain.
 
 ## Required tests
 

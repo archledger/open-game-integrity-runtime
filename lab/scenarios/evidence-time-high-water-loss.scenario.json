@@ -1,0 +1,21 @@
+{
+  "id": "OGIR-EVIDENCE-TIME-HIGH-WATER-LOSS-001",
+  "title": "Repair lost or contradictory verifier temporal high-water from client evidence",
+  "attacker": "A5",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": ["verifier_temporal_high_water", "protected_session_authorization"],
+  "preconditions": ["an active protected session depends on verifier temporal high-water"],
+  "steps": [
+    "make active-session high-water missing corrupt contradictory or rolled back",
+    "ask the verifier to reconstruct continuity from client-supplied evidence",
+    "request same-session renewal with the old session key and handle"
+  ],
+  "expected": {"decision": "deny", "reason": "protected-session-lost", "automatic_ban": false},
+  "invariants": [
+    "missing corrupt contradictory or rolled-back high-water is terminal continuity loss",
+    "no client repair or stateless fallback exists",
+    "recovery requires a new session key handle challenge and epoch"
+  ],
+  "residual_risk": ["verifier storage failure can terminate otherwise honest protected sessions"]
+}

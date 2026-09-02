@@ -223,20 +223,60 @@ integrity, permit authorization, session proof of possession, and renewal
 authorization. Challenge authentication remains a separate verifier operation,
 and admission remains downstream; neither expands the closed five-purpose set.
 `ExpectedContext` remains independently supplied relying-party authority.
-Evidence-time rollback and evidence-producer or protected-session
-restart semantics remain design blockers until the evidence-time authority is
-approved. All transcript and proof material, all `ExpectedContext` and complete
+Evidence time uses the immutable profile's registered local collection
+authority, one publisher/session-scoped protected epoch relation, a strictly
+increasing sequence, and a bounded start-to-freeze interval for the exact fresh
+challenge. All transcript and proof material, all `ExpectedContext` and complete
 challenge-context values, all publisher/build/account/game/match/policy
 bindings, and all protected-session context values remain confidential by
 default.
 
 Residual risks: A compromised trusted producer can emit dishonest but correctly
 classified claims. Cryptographic strength depends on later profile mechanisms.
-Evidence-time authority and soundness remain unresolved and block runtime
-transcript representation, coverage validation, proof implementation, and
-protected-result issuance. Verifier or issuer compromise remains inside the
-TCB. Privacy continues to depend on profile minimization and separately governed
-retention policy.
+Verifier or issuer compromise remains inside the TCB. Privacy continues to
+depend on profile minimization and separately governed production persistence.
+Runtime representation, exact profile mechanisms/limits, cryptography, and TPM
+mapping remain later work.
+
+### Evidence-time collection, continuity, and privacy attacks
+
+Threat: An attacker or faulty trusted component relabels stale cached claims
+with a recent interval, substitutes another challenge/time domain, reuses old
+epoch/sequence/interval state, races two collections, rolls back or restarts an
+authority/store, exceeds duration/expiry, or leaks temporal correlation data.
+
+Required response:
+
+- The collection authority opens only after receiving the exact challenge later
+  covered, and evidence is valid only for that authenticated challenge before
+  its half-open expiry boundary.
+- Every required claim is newly collected or revalidated for the current live
+  subject before the complete snapshot freezes. Recent collection never grants
+  claim truth or provenance to stale data.
+- Client UTC, challenge time, verifier time, result/permit time, uptime, zero,
+  maximum, and always-valid values have no evidence-time authority or skew
+  normalization path.
+- One local collection is active at a time. The verifier atomically checks and
+  advances epoch, greatest validated sequence, and latest end after coverage/
+  authority validation and before later appraisal.
+- Accepted sequences strictly increase but may have gaps for unobserved dropped
+  collections. Reuse/decrease, epoch change, overlap, impossible intervals,
+  source discontinuity, restart, rollback, or lost/corrupt high-water terminates
+  the current session and requires new session/key/handle/epoch recovery.
+- Temporary unavailability is retryable only with intact recoverable authority
+  state and a fresh challenge. No stateless or client-repaired fallback exists.
+- The profile ceiling is finite and publisher policy only tightens it. Challenge
+  expiry bounds proof/transport after freeze; no unverifiable post-freeze field
+  is accepted.
+- Epoch and temporal state are publisher/session scoped, active-session only,
+  terminally deleted, and absent from ordinary diagnostics.
+
+Residual risks: A compromised registered producer or collection authority may
+emit dishonest but structurally valid current evidence. A compromised verifier
+remains in the TCB. Full-session relay and post-appraisal state change remain.
+The challenge window bounds total proof/transport latency but does not measure
+post-freeze latency independently. Exact mechanisms, limits, persistence,
+backup, and deletion enforcement require later approval.
 
 ### Cuckoo or relay
 
@@ -316,6 +356,9 @@ not by itself evidence that a player cheated and grants no automatic discipline.
   compromised TCB code honest;
 - replay-store/clock outage or a forward time jump causing fail-closed
   protected-mode unavailability;
+- collection-authority or verifier temporal-state outage causing fail-closed
+  protected-session loss or retry according to whether continuity remains
+  intact;
 - social engineering and account abuse.
 
 ## 8. Threat-to-test rule
@@ -356,5 +399,19 @@ M1-008 freshness threat mapping:
 | Time rollback, restart loss, or unavailable state | `OGIR-PROTOCOL-FRESHNESS-001` | `initial-maintainer` | `all-protected-modes` |
 | Capacity/rate exhaustion and live-record eviction | `OGIR-PROTOCOL-FRESHNESS-CAPACITY-001` | `initial-maintainer` | `all-protected-modes` |
 | Diagnostic disclosure or over-retention | `OGIR-PRIVACY-FRESHNESS-001` | `initial-maintainer` | `all-protected-modes` |
+
+M1-012F evidence-time threat mapping:
+
+| Accepted threat | Scenario | Owner | Required assurance profile |
+| --- | --- | --- | --- |
+| Time-domain or authority substitution | `OGIR-EVIDENCE-TRANSCRIPT-TIME-AUTHORITY-001` | `initial-maintainer` | `all-protected-modes` |
+| Stale snapshot relabeling | `OGIR-EVIDENCE-TIME-STALE-SNAPSHOT-001` | `initial-maintainer` | `all-protected-modes` |
+| Sequence, interval, challenge, or epoch reuse | `OGIR-EVIDENCE-TIME-TEMPORAL-REUSE-001` | `initial-maintainer` | `all-protected-modes` |
+| Authority/protected-source restart or rollback | `OGIR-EVIDENCE-TIME-AUTHORITY-RESTART-001` | `initial-maintainer` | `all-protected-modes` |
+| Concurrent collection/high-water race | `OGIR-EVIDENCE-TIME-CONCURRENT-COLLECTION-001` | `initial-maintainer` | `all-protected-modes` |
+| Duration or challenge-expiry abuse | `OGIR-EVIDENCE-TIME-DURATION-EXPIRY-001` | `initial-maintainer` | `all-protected-modes` |
+| Temporary intact-state unavailability | `OGIR-EVIDENCE-TIME-STATE-UNAVAILABLE-001` | `initial-maintainer` | `all-protected-modes` |
+| Missing, corrupt, or rolled-back high-water | `OGIR-EVIDENCE-TIME-HIGH-WATER-LOSS-001` | `initial-maintainer` | `all-protected-modes` |
+| Diagnostic/correlation disclosure | `OGIR-PRIVACY-EVIDENCE-TRANSCRIPT-DIAGNOSTICS-001` | `initial-maintainer` | `all-protected-modes` |
 
 The threat model is updated in the same pull request as any changed trust boundary, privilege, protocol field, evidence claim, policy control, or signing/update path.

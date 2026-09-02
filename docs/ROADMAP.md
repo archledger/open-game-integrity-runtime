@@ -169,11 +169,14 @@ M1-012 is complete only at the semantic documentation boundary: it defines the
 Evidence-binding transcript, external `EvidenceBundle`, complete challenge,
 closed eight-Base-plus-two-profile-specific claim vocabulary, provenance,
 actual-key and handle association, and independent reconstruction without
-choosing representation or cryptography. A separately approved evidence-time
-authority design is an earlier blocker for runtime transcript representation,
-coverage validation, evidence-proof implementation, or protected-result
-issuance; challenge time, verifier time, result time, and placeholders cannot
-substitute for it.
+choosing representation or cryptography. M1-012F resolves the common evidence-
+time semantic prerequisite with one challenge-anchored protected collection
+interval, registered local authority, publisher/session-scoped epoch relation,
+strictly increasing sequence, freeze-before-proof boundary, and terminal
+continuity loss. Task 13 may define abstract semantic fixtures. Runtime
+representation and profile validation remain M2 work, and TPM mapping remains
+M3 work. Challenge time, verifier time, result time, client UTC, and placeholders
+cannot substitute for the registered protected local semantics.
 
 Later M2 work owns canonical source representations, commitment and protection
 algorithms and identifiers, literal domain-separation labels, proof coverage,
@@ -760,6 +763,7 @@ Starts in M0. Owns GitHub controls, dependency policy, releases, provenance, upd
 10. Define verifier state machine.
 11. Define result and reason-code taxonomy.
 12. Define binding-transcript inputs without choosing crypto.
+    M1-012F resolves its evidence-time semantic prerequisite before fixtures.
 13. Define abstract JSON conformance fixtures.
 14. Implement in-memory replay cache and tests.
 15. Specify renewal and revocation semantics.

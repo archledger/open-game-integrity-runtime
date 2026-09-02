@@ -48,6 +48,28 @@ confidential-by-default attestation data.
   governed and are not selected by M1-012.
 - The private session key is never evidence, transcript input, or telemetry.
 
+The evidence-time authority contract, scoped epoch relation, collection
+sequence, interval start and freeze end, duration, temporal high-water,
+protected-source statement, and proof are confidential. The transcript exposes
+no raw boot identifier, boot seed, reset/restart counter, TPM clock, daemon
+uptime, host UTC, or device-wide epoch. Epoch equality is opaque and scoped to
+one publisher and protected session; it is not an analytics, telemetry, player,
+or discipline identifier.
+
+The publisher verifier retains temporal high-water only for the active
+protected session and deletes it at terminal end after resolving any atomic in-
+flight operation. Existing challenge replay retention remains separately
+governed by ADR-0005. Local collection state is limited to one active operation
+and the minimum same-session continuity state. M1-012F selects no backup,
+replication, disaster recovery, migration, telemetry, or secure-deletion
+implementation.
+
+Ordinary `Debug`, `Display`, errors, logs, traces, metrics, crash reports, audit
+events, support bundles, and test assertion messages expose only coarse redacted
+class and operational disposition. They never expose authority contract detail,
+epoch, sequence, interval, duration, high-water, raw protected-source state,
+complete challenge/context, key/handle, carrier, or proof values.
+
 Documentation examples use semantic names, never realistic account identifiers,
 key material, proof bytes, or biometric or device fingerprints.
 

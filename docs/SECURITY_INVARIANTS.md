@@ -16,7 +16,7 @@ These invariants are release-blocking. A change that weakens one requires a publ
 7. The publisher-controlled issuer generates a fresh cryptographically random nonce and durably registers its challenge before returning it.
 8. A challenge is eligible only during its exact publisher-verifier window `[issued_at, expires_at)`, and only the ordered verifier context/claim path can create the single freshness capability for `(PublisherId, Nonce)` in any context.
 9. Every authoritative time observation durably advances/checks the verifier-time high-water mark before later window or context rejection; the floor and issued/consumed replay state survive restart, while rollback, missing/corrupt/unavailable state, or capacity exhaustion fails closed without stateless fallback or unexpired-record eviction.
-10. Evidence and permits have explicit issued-at and expiry values; renewal requires a fresh challenge and cannot silently downgrade policy.
+10. Evidence collection is bound to one fresh challenge and one uninterrupted publisher/session-scoped protected epoch; rollback, restart, reused/decreased sequence, overlap, or lost temporal high-water terminates the protected session. Permits have explicit issued-at and expiry values, and renewal requires a fresh challenge and cannot silently downgrade policy.
 
 ## Caller and session identity
 

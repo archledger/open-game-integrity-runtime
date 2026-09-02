@@ -334,10 +334,10 @@ or relationship.
 | Accept the complete `EvidenceBundle` payload as a transcript input | reject before successful appraisal. |
 | Accept an attester-supplied transcript without independent reconstruction | reject before successful appraisal. |
 | Accept only `EvidenceProfile` without the evidence instance claims | reject before successful appraisal. |
-| Use rolled-back evidence time | design-blocking until the evidence-time authority defines accepted temporal behavior; no runtime acceptance case is authorized. |
-| Reuse or substitute evidence across a trusted evidence-producer restart | design-blocking until the evidence-time authority defines restart behavior; no runtime acceptance case is authorized. |
-| Reuse or substitute evidence across a protected-session restart | design-blocking until the evidence-time authority defines restart behavior; no runtime acceptance case is authorized. |
-| Reuse the same actual key and `SessionPublicKeyId` without acceptance of the new evidence under the future evidence-time authority | design-blocking until the evidence-time authority defines renewal acceptance; no runtime accepted-time behavior is authorized. |
+| Use rolled-back evidence time, a reused/decreased sequence, changed epoch, or overlapping interval | terminate with coarse non-disciplinary `ProtectedSessionLost`. |
+| Reuse or substitute evidence across a trusted collection-authority or protected-source restart | terminate the protected session; recovery requires new session/key/handle/epoch. |
+| Reuse or substitute evidence across a protected-session restart | terminate the old lifecycle and require new initial appraisal. |
+| Reuse the same actual key and `SessionPublicKeyId` without a fresh challenge and accepted strictly greater non-overlapping collection | reject before successful appraisal. |
 
 These expected results preserve the existing M1-011 coarse, non-disciplinary
 failure mappings. M1-012 adds no failure code, runtime validator, or permissive
@@ -357,7 +357,7 @@ or exact selected-policy identity.
 | Diagnostic exclusion | Ordinary diagnostics exclude all `ExpectedContext` values, all complete challenge-context values, all publisher/build/account/game/match/policy bindings, and all protected-session context values, as well as all transcript and proof material. |
 | Appraisal and protected result | `Decision`, `ReasonCode`, `VerificationOutcome`, `VerifiedAttestation`, `AcceptedClaims`, `AppraisalResult`, and protected-result identity, validity, commitment, and integrity are excluded. |
 | Permit and proof of possession | Permit contents and validity plus proof-of-possession challenges and responses are excluded and remain separate domains. |
-| Time authority | Verifier evaluation time, challenge issuance or expiry time, future protected-result validity, and placeholders do not replace evidence creation or validity time. The unresolved evidence-time authority remains a blocker. |
+| Time authority | Only the registered collection-authority contract supplies scoped epoch, sequence, start, and freeze end. Client UTC, verifier time, challenge time, result/permit time, uptime, skew, zero, and always-valid placeholders never replace it. |
 | Key material | Private session keys are excluded; only the actual public key and its `SessionPublicKeyId` association are transcript semantics. |
 | Semantic identity | Raw digest bytes or a marker cannot replace a semantic manifest or measurement identity. |
 | Representation and mechanism | Literal byte, canonical representation, algorithm, domain-label, and proof-coverage expectations cannot be tested until M2 selects them. |
@@ -379,8 +379,39 @@ profile-specific vocabulary: isolated value binding for every required meaning,
 required membership, no undeclared members, and exactly-once meanings.
 Membership and shape assertions remain separate from value mutations. These are
 future executable strategies; no runtime test or validator is implemented by
-M1-012. Evidence-time rollback and restart cases remain design-blocking and do
-not define accepted temporal behavior.
+M1-012. M1-012F defines evidence-time semantic behavior; runtime representation
+and mechanism tests remain M2/M3 work.
+
+### Evidence-time authority matrix
+
+| Case | Required semantic result |
+| --- | --- |
+| Valid initial collection | Establish scoped epoch, greatest sequence, and latest freeze end. |
+| Valid same-session renewal | Same epoch, strictly greater sequence, non-overlapping interval, and advanced high-water. |
+| Sequence gaps after dropped unobserved collections | Accept when strict increase, protected continuity, non-overlap, and every other check holds. |
+| Reused or decreased sequence | Terminal `ProtectedSessionLost`; no accusation. |
+| Changed epoch, restart, rollback, or source discontinuity | Terminal `ProtectedSessionLost`; require new session/key/handle/epoch. |
+| Concurrent/overlapping collection | Atomic local/verifier ordering permits at most one advance; continuity violation is terminal. |
+| Duration over effective profile/publisher ceiling | `EvidenceInvalid`; candidate time does not advance high-water. |
+| Proof received at exact challenge expiry or later | Existing challenge-expiry failure; challenge remains consumed when already claimed. |
+| Stale cached or boot-origin claim | Fail current-state/provenance validation unless revalidated for the live subject during collection. |
+| UTC or another time-domain substitution | Malformed or unsupported according to shape/profile; never normalize or clamp. |
+| Temporary outage with intact recoverable state | `Retry`/`AttestationUnavailable`; no mutation/fallback; retry uses a fresh challenge. |
+| Missing, corrupt, contradictory, or rolled-back high-water | Terminal continuity loss; no client repair or stateless fallback. |
+| Later claim or policy rejection | Validated temporal high-water remains advanced. |
+| Invalid or unauthenticated proof | Candidate temporal values never advance high-water. |
+| Profile transition | Must prove same scoped epoch and preserve sequence/end high-water; otherwise cannot renew. |
+| Terminal session end | Delete active temporal state; old epoch cannot recover the ended session. |
+| Diagnostics | Reveal no authority, epoch, sequence, interval, duration, high-water, protected-source, challenge, key/handle, or proof value. |
+
+Future finite model tests cover arbitrary histories of collection open, freeze,
+drop, submit, validate, reject, renew, concurrent submit, outage, rollback,
+restart, terminal end, and deletion. Properties require strict sequence increase
+with allowed sequence gaps, interval non-overlap, no cross-epoch renewal, high-
+water monotonicity, appraisal-rejection ordering, no authority from invalid
+proof/unavailability, and value-independent diagnostics. Mutation counts follow
+the frozen semantic inventory. No byte fuzz target is added before M2 selects a
+representation and parser.
 
 ## Attack scenario format
 
