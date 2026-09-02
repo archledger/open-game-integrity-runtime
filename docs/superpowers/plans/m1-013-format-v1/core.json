@@ -1,0 +1,414 @@
+{
+  "format_version": 1,
+  "registry_kind": "m1-013-sharded-planning-registry-core",
+  "authority": "machine-validated-format-v1-planning-proposal",
+  "scope": "repository-test-planning-only",
+  "production_representation": false,
+  "production_choices_authorized": false,
+  "closed_top_level": true,
+  "counts": {
+    "snapshots": 69,
+    "histories": 55,
+    "fixtures": 124,
+    "validator_cases": 202,
+    "focused_rows": 98,
+    "focused_invocations": 294,
+    "history_actions": 14
+  },
+  "paths": {
+    "registry_root": "docs/superpowers/plans/m1-013-format-v1/",
+    "core": "docs/superpowers/plans/m1-013-format-v1/core.json",
+    "corpus_manifest": "lab/conformance/corpus.json",
+    "snapshot_prefix": "snapshots/",
+    "history_prefix": "histories/",
+    "fixture_suffix": ".json",
+    "baseline_module": "scripts/abstract_conformance_registry.py",
+    "loader_module": "scripts/bounded_json.py",
+    "validator_module": "scripts/abstract_conformance.py",
+    "validator_cli": "scripts/check-abstract-conformance.py"
+  },
+  "shards": {
+    "allowed_names": [
+      "core",
+      "snapshots",
+      "histories",
+      "validators"
+    ],
+    "allowed_filenames": [
+      "core.json",
+      "snapshots.json",
+      "histories.json",
+      "validators.json"
+    ],
+    "files": {
+      "core": "docs/superpowers/plans/m1-013-format-v1/core.json",
+      "snapshots": "docs/superpowers/plans/m1-013-format-v1/snapshots.json",
+      "histories": "docs/superpowers/plans/m1-013-format-v1/histories.json",
+      "validators": "docs/superpowers/plans/m1-013-format-v1/validators.json"
+    },
+    "name_pattern": "[a-z0-9]+(?:-[a-z0-9]+)*",
+    "extension": ".json",
+    "closed_inventory": true,
+    "unlisted_shards_forbidden": true,
+    "duplicate_shard_names_forbidden": true,
+    "duplicate_ids_across_shards_forbidden": true,
+    "dependency_order": [
+      "core",
+      "snapshots",
+      "histories",
+      "validators"
+    ],
+    "dependencies": {
+      "core": [],
+      "snapshots": ["core"],
+      "histories": ["core", "snapshots"],
+      "validators": ["core", "snapshots", "histories"]
+    },
+    "cycles_forbidden": true,
+    "references_must_point_backward_in_dependency_order": true
+  },
+  "ast_meta_schema": {
+    "closed": true,
+    "node_required_members": ["opcode", "operands"],
+    "node_optional_members": [],
+    "unknown_members_forbidden": true,
+    "unknown_opcodes_forbidden": true,
+    "recursive_values": ["node", "literal"],
+    "opcodes": {
+      "literal": {
+        "operands": ["value"],
+        "arity": 1,
+        "result": "json-value"
+      },
+      "read": {
+        "operands": ["namespace", "json_pointer"],
+        "arity": 2,
+        "result": "json-value"
+      },
+      "object": {
+        "operands": ["members"],
+        "arity": 1,
+        "operand_contract": "closed-object-of-id-to-node",
+        "result": "json-object"
+      },
+      "array": {
+        "operands": ["items"],
+        "arity": 1,
+        "operand_contract": "array-of-node",
+        "result": "json-array"
+      },
+      "replace": {
+        "operands": ["source", "json_pointer", "expected_old", "replacement"],
+        "arity": 4,
+        "precondition": "pointer-exists-once-and-value-matches-expected-old",
+        "result": "same-json-kind-as-source"
+      },
+      "remove": {
+        "operands": ["source", "json_pointer", "expected_old"],
+        "arity": 3,
+        "precondition": "pointer-exists-once-and-value-matches-expected-old",
+        "result": "same-json-kind-as-source"
+      },
+      "insert": {
+        "operands": ["source", "json_pointer", "value"],
+        "arity": 3,
+        "precondition": "target-does-not-exist-and-parent-exists-once",
+        "result": "same-json-kind-as-source"
+      },
+      "append": {
+        "operands": ["source", "json_pointer", "value"],
+        "arity": 3,
+        "precondition": "pointer-identifies-one-array",
+        "result": "same-json-kind-as-source"
+      },
+      "bytes-replace": {
+        "operands": ["source", "expected_occurrences", "old_ascii", "new_ascii"],
+        "arity": 4,
+        "precondition": "actual-occurrences-equal-expected-occurrences",
+        "result": "bytes"
+      },
+      "concat": {
+        "operands": ["values"],
+        "arity": 1,
+        "operand_contract": "nonempty-array-of-uniform-string-or-bytes-nodes",
+        "result": "same-kind-as-values"
+      },
+      "repeat": {
+        "operands": ["value", "count"],
+        "arity": 2,
+        "precondition": "count-is-nonnegative-integer-not-boolean",
+        "result": "array"
+      },
+      "resource-boundary": {
+        "operands": ["scope", "dimension", "relation"],
+        "arity": 3,
+        "operand_contract": "scope-and-dimension-exist-in-resource-limits-and-relation-is-exact-or-over",
+        "result": "bounded-json-constructor"
+      }
+    }
+  },
+  "snapshot_baseline_serialization": {
+    "scope": "test-only-canonical-snapshot-baseline",
+    "encoding": "UTF-8",
+    "serializer": "json.dumps",
+    "parameters": {
+      "sort_keys": true,
+      "separators": [",", ":"],
+      "ensure_ascii": true,
+      "allow_nan": false
+    },
+    "final_newline": false,
+    "production_representation": false,
+    "canonical_protocol_bytes": false,
+    "must_not_be_used_as_production_or_canonical_protocol_bytes": true
+  },
+  "namespace_policy": {
+    "closed": true,
+    "namespaces": {
+      "candidate-bytes": {
+        "trust": "untrusted",
+        "mutable_by_fixture_transform": true,
+        "may_depend_on": ["candidate-bytes"]
+      },
+      "candidate": {
+        "trust": "untrusted",
+        "mutable_by_fixture_transform": true,
+        "may_depend_on": ["candidate"]
+      },
+      "candidate-coverage": {
+        "trust": "untrusted",
+        "mutable_by_fixture_transform": true,
+        "may_depend_on": ["candidate-coverage"]
+      },
+      "trusted-challenge-input": {
+        "trust": "independent-trusted-input",
+        "mutable_by_fixture_transform": false,
+        "may_depend_on": ["trusted-challenge-input"]
+      },
+      "trusted-authority-input": {
+        "trust": "independent-trusted-input",
+        "mutable_by_fixture_transform": false,
+        "may_depend_on": ["trusted-authority-input"]
+      },
+      "trusted-recovery-input": {
+        "trust": "independent-trusted-input",
+        "mutable_by_fixture_transform": false,
+        "may_depend_on": ["trusted-recovery-input"]
+      },
+      "oracle": {
+        "trust": "immutable-independent-oracle",
+        "mutable_by_fixture_transform": false,
+        "may_depend_on": ["oracle", "trusted-challenge-input", "trusted-authority-input", "trusted-recovery-input"]
+      }
+    },
+    "fixture_transform_allowed_targets": [
+      "candidate-bytes",
+      "candidate",
+      "candidate-coverage"
+    ],
+    "fixture_transform_forbidden_targets": [
+      "trusted-challenge-input",
+      "trusted-authority-input",
+      "trusted-recovery-input",
+      "oracle"
+    ],
+    "candidate_to_trusted_dependency_forbidden": true,
+    "candidate_to_oracle_dependency_forbidden": true,
+    "trusted_or_oracle_runtime_derivation_from_candidate_forbidden": true,
+    "fixture_transform_must_change_exactly_one_declared_candidate_semantic": true,
+    "fixture_transform_precondition_must_match_exactly_once": true,
+    "fixture_transform_postcondition_must_prove_trusted_and_oracle_bytes_unchanged": true
+  },
+  "resource_limits": {
+    "dimensions": [
+      "bytes",
+      "depth",
+      "object_fields",
+      "array_items",
+      "string_characters",
+      "object_key_characters",
+      "number_token_characters",
+      "total_nodes"
+    ],
+    "fixture": {
+      "bytes": 65536,
+      "depth": 16,
+      "object_fields": 64,
+      "array_items": 256,
+      "string_characters": 4096,
+      "object_key_characters": 4096,
+      "number_token_characters": 64,
+      "total_nodes": 4096
+    },
+    "manifest": {
+      "bytes": 524288,
+      "depth": 16,
+      "object_fields": 512,
+      "array_items": 512,
+      "string_characters": 4096,
+      "object_key_characters": 4096,
+      "number_token_characters": 64,
+      "total_nodes": 32768
+    },
+    "wall_clock_seconds": 30,
+    "max_fixture_files": 128
+  },
+  "resource_constructors": {
+    "closed": true,
+    "id_pattern": "(?:fixture|manifest)-(?:bytes|depth|object-fields|array-items|string-characters|object-key-characters|number-token-characters|total-nodes)-(?:exact|over)",
+    "scopes": ["fixture", "manifest"],
+    "relations": {
+      "exact": {
+        "value_rule": "equal-to-selected-scope-dimension-limit",
+        "expected_disposition": "Conform"
+      },
+      "over": {
+        "value_rule": "selected-scope-dimension-limit-plus-one",
+        "expected_disposition": "Malformed"
+      }
+    },
+    "constructor_opcode": "resource-boundary",
+    "all_scope_dimension_relation_products_required": true,
+    "validator_case_per_product_required": false,
+    "product_admission_rule": "All 32 scope x dimension x relation products must be constructible and validated by the planning checker; validator cases consume only admitted products and are not in one-to-one correspondence with those products.",
+    "constructor_ids_globally_unique": true,
+    "unqualified_legacy_ids_forbidden": [
+      "bytes_exact",
+      "bytes_over",
+      "depth_exact",
+      "depth_over",
+      "fields_exact",
+      "fields_over",
+      "items_exact",
+      "items_over",
+      "string_exact",
+      "string_over",
+      "key_exact",
+      "key_over",
+      "integer_exact",
+      "integer_over",
+      "float_exact",
+      "float_over",
+      "fixture_nodes_exact",
+      "fixture_nodes_over",
+      "manifest_nodes_exact",
+      "manifest_nodes_over"
+    ]
+  },
+  "diagnostics": {
+    "closed_pairs": [
+      ["layer-1", "malformed"],
+      ["layer-2", "malformed"],
+      ["layer-3", "malformed"],
+      ["layer-3", "unsupported"],
+      ["layer-4", "context-binding-mismatch"],
+      ["layer-4", "evidence-invalid"],
+      ["layer-5", "evidence-invalid"],
+      ["layer-6", "evidence-invalid"],
+      ["layer-6", "expired"],
+      ["layer-6", "attestation-unavailable"],
+      ["layer-6", "protected-session-lost"],
+      ["layer-6", "policy-denied"],
+      ["attack-parity", "malformed"],
+      ["internal", "internal-failure"],
+      ["internal", "operation-budget-exhausted"]
+    ],
+    "unknown_pairs_forbidden": true,
+    "rendered_pairs_only": true,
+    "line_column_for_conformance": false,
+    "candidate_labels_allowed": false,
+    "absolute_paths_allowed": false,
+    "raw_candidate_values_allowed": false,
+    "control_characters_allowed": false,
+    "ci_command_fragments_allowed": false,
+    "tracebacks_allowed": false
+  },
+  "comparison_rules": {
+    "strings": "unicode-code-point-exact",
+    "integers": "mathematical-integer-not-boolean",
+    "trim_strings": false,
+    "case_fold_strings": false,
+    "unicode_normalize_strings": false,
+    "object_member_order_semantic": false,
+    "claim_array_order_semantic_after-shape-validation": false,
+    "all_other_array_order_semantic": true,
+    "missing_member_equals_null": false,
+    "missing_member_equals_empty": false,
+    "objects_closed": true,
+    "duplicate_object_names_rejected_before_semantic_comparison": true,
+    "nonfinite_numbers_rejected_before_semantic_comparison": true,
+    "comparison_stops_at_first_failed_checkpoint": true
+  },
+  "checker_bootstrap": {
+    "limits_are_checker_constants_not_registry-derived": true,
+    "core_must_validate_before_any_shard_is_opened": true,
+    "shard_path_must_validate_before_file_access": true,
+    "symlinks_forbidden": true,
+    "nonregular_files_forbidden": true,
+    "path_escape_forbidden": true,
+    "duplicate_object_names_forbidden": true,
+    "utf8_required": true,
+    "single_json_document_required": true,
+    "nonfinite_numbers_forbidden": true,
+    "limits": {
+      "bytes_per_file": 524288,
+      "depth": 16,
+      "object_fields": 512,
+      "array_items": 512,
+      "string_characters": 4096,
+      "object_key_characters": 4096,
+      "number_token_characters": 64,
+      "total_nodes_per_file": 32768,
+      "shard_files": 4
+    },
+    "registry_cannot_raise_bootstrap_limits": true,
+    "bootstrap_failure_pair": ["internal", "internal-failure"]
+  },
+  "operation_charging": {
+    "closed_categories": [
+      "decoded_node_visits",
+      "schema_assertions",
+      "claim_comparisons",
+      "coverage_entry_comparisons",
+      "history_actions",
+      "lifecycle_state_field_comparisons",
+      "oracle_assertions"
+    ],
+    "category_order": [
+      "decoded_node_visits",
+      "schema_assertions",
+      "claim_comparisons",
+      "coverage_entry_comparisons",
+      "history_actions",
+      "lifecycle_state_field_comparisons",
+      "oracle_assertions"
+    ],
+    "charge_unit_per_operation": 1,
+    "increment_before_work": true,
+    "allowed_maximum": 1000000,
+    "first_rejected_operation": 1000001,
+    "exhaustion_pair": ["internal", "operation-budget-exhausted"],
+    "uncharged_categories_forbidden": true,
+    "category_reordering_forbidden": true,
+    "derived_total_required": false,
+    "operation_vectors_required": false,
+    "operation_vectors_are_implementation_evidence_derived_later": true,
+    "planning_checker_must_not_execute_future_validator_behavior": true
+  },
+  "planning_constraints": {
+    "fixture_data_synthetic_only": true,
+    "real_biometrics_forbidden": true,
+    "real_attestation_identities_forbidden": true,
+    "private_keys_forbidden": true,
+    "runtime_type_selected": false,
+    "production_parser_selected": false,
+    "production_schema_selected": false,
+    "wire_representation_selected": false,
+    "canonical_encoding_selected": false,
+    "cryptographic_mechanism_selected": false,
+    "tpm_mapping_selected": false,
+    "persistence_mechanism_selected": false,
+    "production_resource_limits_selected": false,
+    "passing_checker_authorizes_implementation": false
+  }
+}

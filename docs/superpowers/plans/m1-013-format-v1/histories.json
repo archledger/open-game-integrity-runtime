@@ -1,0 +1,6318 @@
+{
+  "format_version": 1,
+  "authority": "m1-013-format-v1-history-planning-authority",
+  "scope": "repository-test-planning-only",
+  "counts": {
+    "valid_baselines": 13,
+    "negative_transforms": 42,
+    "action_rules": 14
+  },
+  "separation": {
+    "candidate_root": "/baselines/*/candidate",
+    "trusted_root": "/baselines/*/oracle",
+    "candidate_ids_prefix": "c-",
+    "trusted_ids_prefix": "t-",
+    "cross_namespace_references": false,
+    "candidate_supplies_oracle": false,
+    "candidate_actions_supply_expected_actions": false,
+    "trusted_inputs_derived_from_candidate": false,
+    "trusted_inputs_mutable_by_transforms": false,
+    "expected_states_mutable_by_transforms": false,
+    "transforms_target": "candidate-only"
+  },
+  "domains": {
+    "disposition": [
+      "Conform",
+      "Malformed",
+      "Unsupported",
+      "ContextBindingMismatch",
+      "EvidenceInvalid",
+      "Expired",
+      "AttestationUnavailable",
+      "ProtectedSessionLost",
+      "PolicyDenied"
+    ],
+    "session_status": [
+      "absent",
+      "active",
+      "ended",
+      "lost"
+    ],
+    "continuity": [
+      "absent",
+      "intact",
+      "restarted",
+      "discontinuous",
+      "rolled-back",
+      "lost"
+    ],
+    "challenge_status": [
+      "absent",
+      "authenticated",
+      "expired"
+    ],
+    "collection_status": [
+      "absent",
+      "open",
+      "frozen",
+      "dropped"
+    ],
+    "proof_state": [
+      "absent",
+      "pending",
+      "covered",
+      "invalid",
+      "unauthenticated"
+    ],
+    "coverage_state": [
+      "absent",
+      "pending",
+      "valid",
+      "invalid"
+    ],
+    "authority_statement_state": [
+      "absent",
+      "authenticated",
+      "unauthenticated",
+      "unavailable"
+    ],
+    "high_water_status": [
+      "absent",
+      "available",
+      "unavailable",
+      "corrupt",
+      "contradictory",
+      "rolled-back",
+      "deleted"
+    ],
+    "claim_state": [
+      "not-appraised",
+      "accepted",
+      "rejected",
+      "stale"
+    ],
+    "policy_state": [
+      "not-appraised",
+      "accepted",
+      "rejected"
+    ],
+    "retention_state": [
+      "absent",
+      "retained",
+      "deleted"
+    ],
+    "origin_class": [
+      "new",
+      "cached",
+      "boot-origin"
+    ],
+    "component": [
+      "collection-authority",
+      "protected-source",
+      "protected-session",
+      "temporal-store"
+    ],
+    "event_component": [
+      "protected-source",
+      "profile-transition",
+      "new-session-recovery"
+    ],
+    "event_continuity": [
+      "intact",
+      "discontinuous",
+      "same-protected-epoch",
+      "new-key-handle-epoch"
+    ]
+  },
+  "schemas": {
+    "candidate": [
+      "observations",
+      "challenges",
+      "collections",
+      "sessions",
+      "temporal_states",
+      "recovery_inputs",
+      "events",
+      "actions"
+    ],
+    "oracle": [
+      "observation_oracles",
+      "trusted_challenges",
+      "trusted_authorities",
+      "trusted_recoveries",
+      "trusted_profiles",
+      "trusted_sessions",
+      "initial_state",
+      "actions"
+    ],
+    "state": [
+      "session",
+      "profile",
+      "challenge",
+      "collection",
+      "evidence",
+      "high_water",
+      "ordering",
+      "appraisal",
+      "retention"
+    ],
+    "action": [
+      "label",
+      "args"
+    ],
+    "transition": [
+      "action_index",
+      "action",
+      "expected_disposition",
+      "pre_state",
+      "post_state"
+    ]
+  },
+  "empty_values": {
+    "challenge": {
+      "status": "absent",
+      "challenge_ref": null,
+      "nonce": null,
+      "issued_tick": null,
+      "expires_tick": null,
+      "receipt_tick": null,
+      "consumed": false
+    },
+    "collection": {
+      "status": "absent",
+      "collection_ref": null,
+      "challenge_ref": null,
+      "authority_contract": null,
+      "protected_source": null,
+      "epoch_relation": null,
+      "sequence": null,
+      "collection_start": null,
+      "snapshot_freeze_end": null,
+      "observation_ref": null,
+      "current_subject_revalidated": false,
+      "origin_class": null
+    },
+    "evidence": {
+      "proof_state": "absent",
+      "coverage_state": "absent",
+      "authority_statement_state": "absent",
+      "submitted_observation_ref": null,
+      "submission_receipt_tick": null
+    },
+    "high_water_absent": {
+      "status": "absent",
+      "authority_contract": null,
+      "protected_source": null,
+      "epoch_relation": null,
+      "greatest_sequence": null,
+      "latest_freeze_end": null
+    },
+    "high_water_deleted": {
+      "status": "deleted",
+      "authority_contract": null,
+      "protected_source": null,
+      "epoch_relation": null,
+      "greatest_sequence": null,
+      "latest_freeze_end": null
+    }
+  },
+  "interpreter": {
+    "id": "history-action-interpreter-v1",
+    "input": [
+      "oracle.initial_state",
+      "oracle.actions",
+      "oracle.observation_oracles",
+      "oracle.trusted_challenges",
+      "oracle.trusted_authorities",
+      "oracle.trusted_recoveries",
+      "oracle.trusted_profiles",
+      "oracle.trusted_sessions"
+    ],
+    "forbidden_input": [
+      "candidate",
+      "negative_transforms",
+      "fixture_expected_disposition"
+    ],
+    "execution": [
+      "require oracle.initial_state to contain exactly one value for every state_tuple_fields entry, then materialize those values into the closed nested state object",
+      "deep-copy the materialized oracle.initial_state into current_state",
+      "for each oracle.actions item in array order, select the one action rule with an exact label",
+      "resolve every argument only in the trusted registry named by the rule",
+      "evaluate guards in array order and stop at the first false guard",
+      "on guard failure, apply that guard's failure_effect and emit its disposition",
+      "when every guard is true, apply success_effect and emit success_disposition",
+      "emit a deep copy of the complete current_state as pre_state and the complete resulting state as post_state",
+      "replace current_state with a deep copy of post_state",
+      "reject unknown labels, argument count mismatch, unknown trusted references, arithmetic overflow, missing state fields, or non-domain values as an internal planning error"
+    ],
+    "record_resolution": {
+      "collection-open": {
+        "trusted_challenge": [
+          "trusted_challenges",
+          "challenge_ref"
+        ],
+        "trusted_authority": [
+          "trusted_authorities",
+          "collection_ref"
+        ],
+        "trusted_session": [
+          "trusted_sessions",
+          "trusted_authority.session_ref"
+        ]
+      },
+      "snapshot-freeze": {
+        "trusted_authority": [
+          "trusted_authorities",
+          "collection_ref"
+        ],
+        "trusted_observation": [
+          "observation_oracles",
+          "observation_ref"
+        ]
+      },
+      "drop": {
+        "trusted_authority": [
+          "trusted_authorities",
+          "collection_ref"
+        ]
+      },
+      "submit": {
+        "trusted_observation": [
+          "observation_oracles",
+          "observation_ref"
+        ]
+      },
+      "validate": {
+        "trusted_observation": [
+          "observation_oracles",
+          "observation_ref"
+        ],
+        "trusted_profile": [
+          "trusted_profiles",
+          "trusted_observation.profile_id"
+        ]
+      },
+      "claim-rejection": {
+        "trusted_observation": [
+          "observation_oracles",
+          "observation_ref"
+        ]
+      },
+      "policy-rejection": {},
+      "renewal": {
+        "trusted_challenge": [
+          "trusted_challenges",
+          "challenge_ref"
+        ],
+        "trusted_authority": [
+          "trusted_authorities",
+          "collection_ref"
+        ],
+        "trusted_profile": [
+          "trusted_profiles",
+          "trusted_authority.profile_id"
+        ],
+        "trusted_session": [
+          "trusted_sessions",
+          "trusted_authority.session_ref"
+        ],
+        "trusted_recovery": {
+          "registry": "trusted_recoveries",
+          "selector": [
+            "unique-eq",
+            "fresh_challenge_ref",
+            "challenge_ref"
+          ],
+          "required_only_when": [
+            "eq",
+            "state.high_water.status",
+            "unavailable"
+          ]
+        }
+      },
+      "concurrent-submit": {
+        "first_trusted_observation": [
+          "observation_oracles",
+          "first_observation_ref"
+        ],
+        "second_trusted_observation": [
+          "observation_oracles",
+          "second_observation_ref"
+        ]
+      },
+      "outage": {
+        "trusted_recovery": [
+          "trusted_recoveries",
+          "recovery_ref"
+        ]
+      },
+      "rollback": {},
+      "restart": {},
+      "terminal-end": {
+        "trusted_session": [
+          "trusted_sessions",
+          "session_ref"
+        ]
+      },
+      "deletion": {}
+    },
+    "operand_and_resolution_language": {
+      "guard_tuple": [
+        "left-operand",
+        "operator",
+        "right-operand",
+        "failure-disposition",
+        "failure-effect"
+      ],
+      "state_operand": "a string beginning state. resolves the exact closed-state path after that prefix",
+      "argument_operand": "a string equal to one action argument name resolves that argument's literal value",
+      "bound_record_operand": "a string beginning with a record_resolution binding name resolves that record or its exact dotted field",
+      "literal_operand": "any other scalar, null, boolean or array is used as its literal JSON value",
+      "record_pair": "[registry-name,key-expression] performs exact ID equality lookup after resolving key-expression and requires exactly one record",
+      "unique-eq": "[unique-eq,field,key-expression] selects exactly one registry record whose field equals the resolved key-expression; zero or multiple matches are an internal planning error",
+      "required_only_when": "skip the record lookup unless its guard tuple is true; a skipped binding resolves to null",
+      "effect_tuple": "[set,state-path,value-operand] applies the defined set primitive after resolving value-operand",
+      "effect_string": "a string effect must exactly name one effect_primitives member"
+    },
+    "guard_operators": {
+      "eq": "true iff left and right are equal JSON values",
+      "in": "true iff left equals one member of the literal right array",
+      "lt": "checked mathematical integer comparison left < right",
+      "lte": "checked mathematical integer comparison left <= right",
+      "gt": "checked mathematical integer comparison left > right",
+      "is-null": "true iff the selected value is JSON null",
+      "trusted-ref-exists": "true iff the argument ID exists in the rule's named trusted registry",
+      "duration-within-effective-ceiling": "after start <= end, checked_sub(end,start) <= min(profile ceiling,publisher ceiling)",
+      "matches-active-session": "trusted record publisher, session, live subject, actual public key and key ID all equal state.session",
+      "matches-high-water": "when high_water.status is available, epoch equals high-water, sequence is greater, and start is at least latest_freeze_end; authority contract and protected source must equal high-water for an unchanged profile, but may change for a changed registered profile only when the trusted profile names the new pair and both trusted continuity fields are intact; when high-water is absent, true; otherwise false",
+      "recoverable": "true iff high-water is available, or unavailable and exactly one trusted recovery is intact, names the unavailable component, carries a complete available temporal state equal to retained high-water values, and names the action's fresh challenge",
+      "policy-not-weakened": "true iff trusted profile policy_strength is equal to or stronger than state.profile.policy_strength",
+      "different-new-session": "true when predecessor_session_id is null; otherwise true iff new session ID, actual public key, key ID and trusted authority epoch are each unequal to the trusted predecessor values"
+    },
+    "effect_primitives": {
+      "identity": "return a deep copy of pre_state without mutation",
+      "set": "replace exactly one existing state path with the supplied literal or resolved trusted value",
+      "clear-challenge": "replace state.challenge with empty_values.challenge",
+      "clear-collection": "replace state.collection with empty_values.collection and set ordering.active_collection_ref to null",
+      "clear-evidence": "replace state.evidence with empty_values.evidence and set ordering.in_flight_observation_ref to null",
+      "load-challenge": "copy every trusted challenge field into state.challenge, set status authenticated, and set consumed false",
+      "open-collection": "copy every trusted authority collection field into state.collection, set status open and observation_ref null, then set ordering.active_collection_ref",
+      "freeze-observation": "set collection status frozen and observation_ref; set proof and coverage pending; copy trusted authority statement state",
+      "submit-observation": "set challenge receipt and consumed=true; set proof covered; copy coverage and authority-statement states from the resolved trusted observation; set submitted observation, submission receipt and in-flight observation",
+      "advance-high-water": "copy authority contract, protected source, epoch, sequence and freeze end from collection; set status available; increment compare_generation by checked addition; clear in-flight; set retention retained",
+      "restore-high-water": "copy every high-water field from the one matching trusted recovery temporal_state and set status available",
+      "restore-high-water-if-needed": "apply restore-high-water exactly when pre_state.high_water.status is unavailable; otherwise apply identity",
+      "terminal-loss": "set session.status lost and session.continuity lost; clear challenge, collection and evidence; replace high_water with empty_values.high_water_deleted; set retention temporal_state deleted and deletion_required false",
+      "concurrent-first-wins-then-loss": "validate and advance the first observation atomically, then observe the second against the incremented compare_generation and apply terminal-loss",
+      "delete-high-water": "replace high_water with empty_values.high_water_deleted; set retention temporal_state deleted and deletion_required false"
+    },
+    "output": {
+      "transitions": "complete transition array",
+      "final_state": "last post_state or initial_state when actions is empty"
+    }
+  },
+  "action_rules": [
+    {
+      "label": "collection-open",
+      "arguments": [
+        "challenge_ref",
+        "collection_ref"
+      ],
+      "trusted_registries": [
+        "trusted_challenges",
+        "trusted_authorities",
+        "trusted_sessions"
+      ],
+      "guards": [
+        [
+          "state.session.status",
+          "eq",
+          "active",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "challenge_ref",
+          "trusted-ref-exists",
+          "trusted_challenges",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "collection_ref",
+          "trusted-ref-exists",
+          "trusted_authorities",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "state.collection.status",
+          "eq",
+          "absent",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "state.high_water.status",
+          "eq",
+          "absent",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "trusted_challenge.status",
+          "eq",
+          "authenticated",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "trusted_authority.availability",
+          "eq",
+          "available",
+          "AttestationUnavailable",
+          "identity"
+        ],
+        [
+          "trusted_authority.authority_continuity",
+          "eq",
+          "intact",
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ],
+        [
+          "trusted_authority.source_continuity",
+          "eq",
+          "intact",
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ],
+        [
+          "trusted_authority",
+          "matches-active-session",
+          true,
+          "ContextBindingMismatch",
+          "identity"
+        ],
+        [
+          "trusted_session",
+          "different-new-session",
+          "trusted_authority.epoch_relation",
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ]
+      ],
+      "success_disposition": "Conform",
+      "success_effect": [
+        "load-challenge",
+        "open-collection",
+        "clear-evidence",
+        [
+          "set",
+          "state.appraisal",
+          {
+            "claim_state": "not-appraised",
+            "rejected_claim_meaning": null,
+            "policy_state": "not-appraised"
+          }
+        ]
+      ]
+    },
+    {
+      "label": "snapshot-freeze",
+      "arguments": [
+        "collection_ref",
+        "observation_ref"
+      ],
+      "trusted_registries": [
+        "trusted_authorities",
+        "observation_oracles"
+      ],
+      "guards": [
+        [
+          "state.collection.status",
+          "eq",
+          "open",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "state.collection.collection_ref",
+          "eq",
+          "collection_ref",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "state.collection.collection_start",
+          "lte",
+          "state.collection.snapshot_freeze_end",
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ],
+        [
+          "trusted_observation.current_subject_revalidated",
+          "eq",
+          true,
+          "EvidenceInvalid",
+          "identity"
+        ]
+      ],
+      "success_disposition": "Conform",
+      "success_effect": [
+        "freeze-observation"
+      ]
+    },
+    {
+      "label": "drop",
+      "arguments": [
+        "collection_ref"
+      ],
+      "trusted_registries": [
+        "trusted_authorities"
+      ],
+      "guards": [
+        [
+          "state.collection.collection_ref",
+          "eq",
+          "collection_ref",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "state.collection.status",
+          "in",
+          [
+            "open",
+            "frozen"
+          ],
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "state.evidence.submitted_observation_ref",
+          "is-null",
+          true,
+          "EvidenceInvalid",
+          "identity"
+        ]
+      ],
+      "success_disposition": "Conform",
+      "success_effect": [
+        [
+          "set",
+          "state.collection.status",
+          "dropped"
+        ],
+        "clear-collection",
+        "clear-evidence"
+      ]
+    },
+    {
+      "label": "submit",
+      "arguments": [
+        "observation_ref",
+        "receipt_tick"
+      ],
+      "trusted_registries": [
+        "observation_oracles"
+      ],
+      "guards": [
+        [
+          "state.collection.status",
+          "eq",
+          "frozen",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "state.collection.observation_ref",
+          "eq",
+          "observation_ref",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "receipt_tick",
+          "lt",
+          "state.challenge.expires_tick",
+          "Expired",
+          "clear-evidence"
+        ],
+        [
+          "state.challenge.issued_tick",
+          "lte",
+          "receipt_tick",
+          "EvidenceInvalid",
+          "clear-evidence"
+        ],
+        [
+          "state.ordering.in_flight_observation_ref",
+          "is-null",
+          true,
+          "EvidenceInvalid",
+          "identity"
+        ]
+      ],
+      "success_disposition": "Conform",
+      "success_effect": [
+        "submit-observation"
+      ]
+    },
+    {
+      "label": "validate",
+      "arguments": [
+        "observation_ref"
+      ],
+      "trusted_registries": [
+        "observation_oracles",
+        "trusted_profiles"
+      ],
+      "guards": [
+        [
+          "state.evidence.submitted_observation_ref",
+          "eq",
+          "observation_ref",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "trusted_observation.coverage_state",
+          "eq",
+          "valid",
+          "EvidenceInvalid",
+          "clear-evidence"
+        ],
+        [
+          "trusted_observation.authority_statement_state",
+          "eq",
+          "authenticated",
+          "EvidenceInvalid",
+          "clear-evidence"
+        ],
+        [
+          "state.high_water.status",
+          "in",
+          [
+            "absent",
+            "available"
+          ],
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ],
+        [
+          "state.collection.collection_start",
+          "lte",
+          "state.collection.snapshot_freeze_end",
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ],
+        [
+          "state.collection",
+          "duration-within-effective-ceiling",
+          "state.profile",
+          "EvidenceInvalid",
+          "clear-evidence"
+        ],
+        [
+          "state.collection",
+          "matches-high-water",
+          "state.high_water",
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ]
+      ],
+      "success_disposition": "Conform",
+      "success_effect": [
+        "advance-high-water",
+        [
+          "set",
+          "state.appraisal.claim_state",
+          "accepted"
+        ],
+        [
+          "set",
+          "state.appraisal.rejected_claim_meaning",
+          null
+        ],
+        [
+          "set",
+          "state.appraisal.policy_state",
+          "accepted"
+        ]
+      ]
+    },
+    {
+      "label": "claim-rejection",
+      "arguments": [
+        "observation_ref",
+        "claim_meaning_ref"
+      ],
+      "trusted_registries": [
+        "observation_oracles"
+      ],
+      "guards": [
+        [
+          "state.high_water.status",
+          "eq",
+          "available",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "state.collection.observation_ref",
+          "eq",
+          "observation_ref",
+          "EvidenceInvalid",
+          "identity"
+        ]
+      ],
+      "success_disposition": "EvidenceInvalid",
+      "success_effect": [
+        [
+          "set",
+          "state.appraisal.claim_state",
+          "rejected"
+        ],
+        [
+          "set",
+          "state.appraisal.rejected_claim_meaning",
+          "claim_meaning_ref"
+        ],
+        [
+          "set",
+          "state.appraisal.policy_state",
+          "not-appraised"
+        ]
+      ]
+    },
+    {
+      "label": "policy-rejection",
+      "arguments": [],
+      "trusted_registries": [],
+      "guards": [
+        [
+          "state.high_water.status",
+          "eq",
+          "available",
+          "PolicyDenied",
+          "identity"
+        ],
+        [
+          "state.appraisal.claim_state",
+          "eq",
+          "accepted",
+          "PolicyDenied",
+          "identity"
+        ],
+        [
+          "state.appraisal.policy_state",
+          "eq",
+          "accepted",
+          "PolicyDenied",
+          "identity"
+        ]
+      ],
+      "success_disposition": "PolicyDenied",
+      "success_effect": [
+        [
+          "set",
+          "state.appraisal.claim_state",
+          "accepted"
+        ],
+        [
+          "set",
+          "state.appraisal.policy_state",
+          "rejected"
+        ]
+      ]
+    },
+    {
+      "label": "renewal",
+      "arguments": [
+        "challenge_ref",
+        "collection_ref"
+      ],
+      "trusted_registries": [
+        "trusted_challenges",
+        "trusted_authorities",
+        "trusted_recoveries",
+        "trusted_profiles"
+      ],
+      "guards": [
+        [
+          "state.session.status",
+          "eq",
+          "active",
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ],
+        [
+          "state.session.continuity",
+          "eq",
+          "intact",
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ],
+        [
+          "state.collection.status",
+          "in",
+          [
+            "absent",
+            "frozen",
+            "dropped"
+          ],
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "state.ordering.in_flight_observation_ref",
+          "is-null",
+          true,
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "challenge_ref",
+          "trusted-ref-exists",
+          "trusted_challenges",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "collection_ref",
+          "trusted-ref-exists",
+          "trusted_authorities",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "state.high_water",
+          "recoverable",
+          [
+            "trusted_recoveries",
+            "challenge_ref"
+          ],
+          "AttestationUnavailable",
+          "identity"
+        ],
+        [
+          "trusted_authority",
+          "matches-active-session",
+          true,
+          "ContextBindingMismatch",
+          "identity"
+        ],
+        [
+          "trusted_profile",
+          "policy-not-weakened",
+          "state.profile",
+          "PolicyDenied",
+          "identity"
+        ],
+        [
+          "trusted_authority.authority_continuity",
+          "eq",
+          "intact",
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ],
+        [
+          "trusted_authority.source_continuity",
+          "eq",
+          "intact",
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ]
+      ],
+      "success_disposition": "Conform",
+      "success_effect": [
+        "restore-high-water-if-needed",
+        "load-challenge",
+        "open-collection",
+        "clear-evidence",
+        [
+          "set",
+          "state.profile",
+          "trusted_profile"
+        ],
+        [
+          "set",
+          "state.appraisal",
+          {
+            "claim_state": "not-appraised",
+            "rejected_claim_meaning": null,
+            "policy_state": "not-appraised"
+          }
+        ]
+      ]
+    },
+    {
+      "label": "concurrent-submit",
+      "arguments": [
+        "first_observation_ref",
+        "second_observation_ref"
+      ],
+      "trusted_registries": [
+        "observation_oracles"
+      ],
+      "guards": [
+        [
+          "state.high_water.status",
+          "eq",
+          "available",
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ],
+        [
+          "first_observation_ref",
+          "trusted-ref-exists",
+          "observation_oracles",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "second_observation_ref",
+          "trusted-ref-exists",
+          "observation_oracles",
+          "EvidenceInvalid",
+          "identity"
+        ]
+      ],
+      "success_disposition": "ProtectedSessionLost",
+      "success_effect": [
+        "concurrent-first-wins-then-loss"
+      ]
+    },
+    {
+      "label": "outage",
+      "arguments": [
+        "component_ref",
+        "recovery_ref"
+      ],
+      "trusted_registries": [
+        "trusted_recoveries"
+      ],
+      "guards": [
+        [
+          "component_ref",
+          "in",
+          [
+            "collection-authority",
+            "temporal-store"
+          ],
+          "AttestationUnavailable",
+          "identity"
+        ],
+        [
+          "recovery_ref",
+          "trusted-ref-exists",
+          "trusted_recoveries",
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ],
+        [
+          "trusted_recovery.intact",
+          "eq",
+          true,
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ]
+      ],
+      "success_disposition": "AttestationUnavailable",
+      "success_effect": [
+        [
+          "set",
+          "state.high_water.status",
+          "unavailable"
+        ],
+        [
+          "set",
+          "state.evidence.authority_statement_state",
+          "unavailable"
+        ],
+        [
+          "set",
+          "state.ordering.in_flight_observation_ref",
+          null
+        ]
+      ]
+    },
+    {
+      "label": "rollback",
+      "arguments": [
+        "component_ref"
+      ],
+      "trusted_registries": [],
+      "guards": [
+        [
+          "component_ref",
+          "in",
+          [
+            "protected-source",
+            "temporal-store"
+          ],
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ]
+      ],
+      "success_disposition": "ProtectedSessionLost",
+      "success_effect": [
+        "terminal-loss"
+      ]
+    },
+    {
+      "label": "restart",
+      "arguments": [
+        "component_ref"
+      ],
+      "trusted_registries": [],
+      "guards": [
+        [
+          "component_ref",
+          "in",
+          [
+            "collection-authority",
+            "protected-source",
+            "protected-session"
+          ],
+          "ProtectedSessionLost",
+          "terminal-loss"
+        ]
+      ],
+      "success_disposition": "ProtectedSessionLost",
+      "success_effect": [
+        "terminal-loss"
+      ]
+    },
+    {
+      "label": "terminal-end",
+      "arguments": [
+        "session_ref"
+      ],
+      "trusted_registries": [
+        "trusted_sessions"
+      ],
+      "guards": [
+        [
+          "state.session.status",
+          "eq",
+          "active",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "state.session.session_id",
+          "eq",
+          "trusted_session.session_id",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "state.ordering.in_flight_observation_ref",
+          "is-null",
+          true,
+          "EvidenceInvalid",
+          "identity"
+        ]
+      ],
+      "success_disposition": "Conform",
+      "success_effect": [
+        [
+          "set",
+          "state.session.status",
+          "ended"
+        ],
+        [
+          "set",
+          "state.session.continuity",
+          "lost"
+        ],
+        "clear-challenge",
+        "clear-collection",
+        "clear-evidence",
+        [
+          "set",
+          "state.retention.temporal_state",
+          "retained"
+        ],
+        [
+          "set",
+          "state.retention.deletion_required",
+          true
+        ]
+      ]
+    },
+    {
+      "label": "deletion",
+      "arguments": [],
+      "trusted_registries": [],
+      "guards": [
+        [
+          "state.session.status",
+          "in",
+          [
+            "ended",
+            "lost"
+          ],
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "state.retention.temporal_state",
+          "eq",
+          "retained",
+          "EvidenceInvalid",
+          "identity"
+        ],
+        [
+          "state.retention.deletion_required",
+          "eq",
+          true,
+          "EvidenceInvalid",
+          "identity"
+        ]
+      ],
+      "success_disposition": "Conform",
+      "success_effect": [
+        "delete-high-water"
+      ]
+    }
+  ],
+  "state_tuple_fields": [
+    "session.status",
+    "session.session_id",
+    "session.publisher",
+    "session.live_subject",
+    "session.actual_public_key",
+    "session.session_public_key_id",
+    "session.continuity",
+    "profile.profile_id",
+    "profile.authority_contract",
+    "profile.protected_source",
+    "profile.profile_duration_ceiling",
+    "profile.publisher_duration_ceiling",
+    "profile.effective_duration_ceiling",
+    "profile.policy_strength",
+    "challenge.status",
+    "challenge.challenge_ref",
+    "challenge.nonce",
+    "challenge.issued_tick",
+    "challenge.expires_tick",
+    "challenge.receipt_tick",
+    "challenge.consumed",
+    "collection.status",
+    "collection.collection_ref",
+    "collection.challenge_ref",
+    "collection.authority_contract",
+    "collection.protected_source",
+    "collection.epoch_relation",
+    "collection.sequence",
+    "collection.collection_start",
+    "collection.snapshot_freeze_end",
+    "collection.observation_ref",
+    "collection.current_subject_revalidated",
+    "collection.origin_class",
+    "evidence.proof_state",
+    "evidence.coverage_state",
+    "evidence.authority_statement_state",
+    "evidence.submitted_observation_ref",
+    "evidence.submission_receipt_tick",
+    "high_water.status",
+    "high_water.authority_contract",
+    "high_water.protected_source",
+    "high_water.epoch_relation",
+    "high_water.greatest_sequence",
+    "high_water.latest_freeze_end",
+    "ordering.active_collection_ref",
+    "ordering.in_flight_observation_ref",
+    "ordering.compare_generation",
+    "appraisal.claim_state",
+    "appraisal.rejected_claim_meaning",
+    "appraisal.policy_state",
+    "retention.temporal_state",
+    "retention.deletion_required"
+  ],
+  "baseline_record_contract": {
+    "observation": [
+      "id",
+      "challenge_ref",
+      "collection_ref",
+      "session_ref",
+      "profile_id",
+      "purpose",
+      "claims_current",
+      "current_subject_revalidated",
+      "coverage_state",
+      "authority_statement_state",
+      "claim_state",
+      "policy_state"
+    ],
+    "challenge": [
+      "id",
+      "status",
+      "publisher",
+      "nonce",
+      "issued_tick",
+      "expires_tick",
+      "receipt_tick"
+    ],
+    "collection": [
+      "id",
+      "challenge_ref",
+      "profile_id",
+      "authority_contract",
+      "protected_source",
+      "epoch_relation",
+      "sequence",
+      "collection_start",
+      "snapshot_freeze_end",
+      "current_subject_revalidated",
+      "origin_class",
+      "time_domain"
+    ],
+    "session": [
+      "id",
+      "publisher",
+      "live_subject",
+      "key_handle_association",
+      "policy_strength",
+      "predecessor_session_id",
+      "predecessor_epoch"
+    ],
+    "temporal_state": [
+      "id",
+      "source",
+      "status",
+      "authority_contract",
+      "protected_source",
+      "epoch_relation",
+      "greatest_sequence",
+      "latest_freeze_end"
+    ],
+    "recovery_input": [
+      "id",
+      "component",
+      "intact",
+      "temporal_state_ref",
+      "fresh_challenge_ref"
+    ],
+    "event": [
+      "component",
+      "continuity"
+    ],
+    "action": [
+      "label",
+      "args"
+    ],
+    "observation_oracle": [
+      "id",
+      "challenge_ref",
+      "collection_ref",
+      "session_ref",
+      "profile_id",
+      "current_subject_revalidated",
+      "coverage_state",
+      "authority_statement_state",
+      "claim_state",
+      "rejected_claim_meaning",
+      "policy_state"
+    ],
+    "trusted_challenge": [
+      "id",
+      "status",
+      "publisher",
+      "nonce",
+      "issued_tick",
+      "expires_tick",
+      "receipt_tick"
+    ],
+    "trusted_authority": [
+      "id",
+      "challenge_ref",
+      "session_ref",
+      "profile_id",
+      "publisher",
+      "live_subject",
+      "actual_public_key",
+      "session_public_key_id",
+      "authority_contract",
+      "protected_source",
+      "epoch_relation",
+      "sequence",
+      "collection_start",
+      "snapshot_freeze_end",
+      "availability",
+      "authority_continuity",
+      "source_continuity",
+      "authority_statement_state"
+    ],
+    "trusted_recovery": [
+      "id",
+      "component",
+      "intact",
+      "temporal_state",
+      "fresh_challenge_ref"
+    ],
+    "trusted_recovery_temporal_state": [
+      "status",
+      "authority_contract",
+      "protected_source",
+      "epoch_relation",
+      "greatest_sequence",
+      "latest_freeze_end"
+    ],
+    "trusted_profile": [
+      "id",
+      "authority_contract",
+      "protected_source",
+      "profile_duration_ceiling",
+      "publisher_duration_ceiling",
+      "effective_duration_ceiling",
+      "policy_strength"
+    ],
+    "trusted_session": [
+      "id",
+      "session_id",
+      "publisher",
+      "live_subject",
+      "actual_public_key",
+      "session_public_key_id",
+      "predecessor_session_id",
+      "predecessor_actual_public_key",
+      "predecessor_session_public_key_id",
+      "predecessor_epoch"
+    ]
+  },
+  "baselines": [
+    {
+      "id": "history-valid-initial-collection",
+      "candidate": {
+        "observations": [
+          {
+            "id": "c-o0",
+            "challenge_ref": "c-q0",
+            "collection_ref": "c-c0",
+            "session_ref": "c-s0",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          }
+        ],
+        "challenges": [
+          {
+            "id": "c-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1500
+          },
+          {
+            "id": "c-q-alt",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000002",
+            "issued_tick": 1501,
+            "expires_tick": 2500,
+            "receipt_tick": 1700
+          }
+        ],
+        "collections": [
+          {
+            "id": "c-c0",
+            "challenge_ref": "c-q0",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1200,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          }
+        ],
+        "sessions": [
+          {
+            "id": "c-s0",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "key_handle_association": {
+              "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+              "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            "policy_strength": 2,
+            "predecessor_session_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "temporal_states": [],
+        "recovery_inputs": [],
+        "events": [],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "c-q0",
+              "c-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c0",
+              "c-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "c-o0",
+              1500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "c-o0"
+            ]
+          }
+        ]
+      },
+      "oracle": {
+        "observation_oracles": [
+          {
+            "id": "t-o0",
+            "challenge_ref": "t-q0",
+            "collection_ref": "t-c0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          }
+        ],
+        "trusted_challenges": [
+          {
+            "id": "t-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1500
+          }
+        ],
+        "trusted_authorities": [
+          {
+            "id": "t-c0",
+            "challenge_ref": "t-q0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1200,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          }
+        ],
+        "trusted_recoveries": [],
+        "trusted_profiles": [
+          {
+            "id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "profile_duration_ceiling": 100,
+            "publisher_duration_ceiling": 100,
+            "effective_duration_ceiling": 100,
+            "policy_strength": 2
+          }
+        ],
+        "trusted_sessions": [
+          {
+            "id": "t-s0",
+            "session_id": "session-alpha",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "predecessor_session_id": null,
+            "predecessor_actual_public_key": null,
+            "predecessor_session_public_key_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "initial_state": [
+          "active",
+          "session-alpha",
+          "publisher-alpha",
+          "subject-alpha",
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "intact",
+          "profile-base-v1",
+          "authority-alpha",
+          "source-alpha",
+          100,
+          100,
+          100,
+          2,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          null,
+          "absent",
+          "absent",
+          "absent",
+          null,
+          null,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          "not-appraised",
+          null,
+          "not-appraised",
+          "absent",
+          false
+        ],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "t-q0",
+              "t-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c0",
+              "t-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "t-o0",
+              1500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "t-o0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "history-valid-same-session-renewal",
+      "candidate": {
+        "observations": [
+          {
+            "id": "c-o0",
+            "challenge_ref": "c-q0",
+            "collection_ref": "c-c0",
+            "session_ref": "c-s0",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          },
+          {
+            "id": "c-o1",
+            "challenge_ref": "c-q1",
+            "collection_ref": "c-c1",
+            "session_ref": "c-s0",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          },
+          {
+            "id": "c-o2",
+            "challenge_ref": "c-q2",
+            "collection_ref": "c-c2",
+            "session_ref": "c-s0",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          }
+        ],
+        "challenges": [
+          {
+            "id": "c-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1500
+          },
+          {
+            "id": "c-q1",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000002",
+            "issued_tick": 1501,
+            "expires_tick": 2500,
+            "receipt_tick": 1700
+          },
+          {
+            "id": "c-q2",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000003",
+            "issued_tick": 1502,
+            "expires_tick": 2500,
+            "receipt_tick": 1701
+          }
+        ],
+        "collections": [
+          {
+            "id": "c-c0",
+            "challenge_ref": "c-q0",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1200,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          },
+          {
+            "id": "c-c1",
+            "challenge_ref": "c-q1",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 2,
+            "collection_start": 1300,
+            "snapshot_freeze_end": 1400,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          },
+          {
+            "id": "c-c2",
+            "challenge_ref": "c-q2",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 2,
+            "collection_start": 1301,
+            "snapshot_freeze_end": 1401,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          }
+        ],
+        "sessions": [
+          {
+            "id": "c-s0",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "key_handle_association": {
+              "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+              "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            "policy_strength": 2,
+            "predecessor_session_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "temporal_states": [
+          {
+            "id": "c-t0",
+            "source": "verifier",
+            "status": "available",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "greatest_sequence": 1,
+            "latest_freeze_end": 1200
+          }
+        ],
+        "recovery_inputs": [
+          {
+            "id": "c-r0",
+            "component": "collection-authority",
+            "intact": true,
+            "temporal_state_ref": "c-t0",
+            "fresh_challenge_ref": "c-q1"
+          },
+          {
+            "id": "c-r1",
+            "component": "temporal-store",
+            "intact": true,
+            "temporal_state_ref": "c-t0",
+            "fresh_challenge_ref": "c-q1"
+          }
+        ],
+        "events": [
+          {
+            "component": "protected-source",
+            "continuity": "intact"
+          }
+        ],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "c-q0",
+              "c-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c0",
+              "c-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "c-o0",
+              1500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "c-o0"
+            ]
+          },
+          {
+            "label": "renewal",
+            "args": [
+              "c-q1",
+              "c-c1"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c1",
+              "c-o1"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "c-o1",
+              1700
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "c-o1"
+            ]
+          }
+        ]
+      },
+      "oracle": {
+        "observation_oracles": [
+          {
+            "id": "t-o0",
+            "challenge_ref": "t-q0",
+            "collection_ref": "t-c0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          },
+          {
+            "id": "t-o1",
+            "challenge_ref": "t-q1",
+            "collection_ref": "t-c1",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          },
+          {
+            "id": "t-o2",
+            "challenge_ref": "t-q2",
+            "collection_ref": "t-c2",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          }
+        ],
+        "trusted_challenges": [
+          {
+            "id": "t-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1500
+          },
+          {
+            "id": "t-q1",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000002",
+            "issued_tick": 1501,
+            "expires_tick": 2500,
+            "receipt_tick": 1700
+          },
+          {
+            "id": "t-q2",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000003",
+            "issued_tick": 1502,
+            "expires_tick": 2500,
+            "receipt_tick": 1701
+          }
+        ],
+        "trusted_authorities": [
+          {
+            "id": "t-c0",
+            "challenge_ref": "t-q0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1200,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          },
+          {
+            "id": "t-c1",
+            "challenge_ref": "t-q1",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 2,
+            "collection_start": 1300,
+            "snapshot_freeze_end": 1400,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          },
+          {
+            "id": "t-c2",
+            "challenge_ref": "t-q2",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 2,
+            "collection_start": 1301,
+            "snapshot_freeze_end": 1401,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          }
+        ],
+        "trusted_recoveries": [
+          {
+            "id": "t-r0",
+            "component": "collection-authority",
+            "intact": true,
+            "temporal_state": {
+              "status": "available",
+              "authority_contract": "authority-alpha",
+              "protected_source": "source-alpha",
+              "epoch_relation": "epoch-alpha",
+              "greatest_sequence": 1,
+              "latest_freeze_end": 1200
+            },
+            "fresh_challenge_ref": "t-q1"
+          },
+          {
+            "id": "t-r1",
+            "component": "temporal-store",
+            "intact": true,
+            "temporal_state": {
+              "status": "available",
+              "authority_contract": "authority-alpha",
+              "protected_source": "source-alpha",
+              "epoch_relation": "epoch-alpha",
+              "greatest_sequence": 1,
+              "latest_freeze_end": 1200
+            },
+            "fresh_challenge_ref": "t-q1"
+          }
+        ],
+        "trusted_profiles": [
+          {
+            "id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "profile_duration_ceiling": 100,
+            "publisher_duration_ceiling": 100,
+            "effective_duration_ceiling": 100,
+            "policy_strength": 2
+          }
+        ],
+        "trusted_sessions": [
+          {
+            "id": "t-s0",
+            "session_id": "session-alpha",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "predecessor_session_id": null,
+            "predecessor_actual_public_key": null,
+            "predecessor_session_public_key_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "initial_state": [
+          "active",
+          "session-alpha",
+          "publisher-alpha",
+          "subject-alpha",
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "intact",
+          "profile-base-v1",
+          "authority-alpha",
+          "source-alpha",
+          100,
+          100,
+          100,
+          2,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          null,
+          "absent",
+          "absent",
+          "absent",
+          null,
+          null,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          "not-appraised",
+          null,
+          "not-appraised",
+          "absent",
+          false
+        ],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "t-q0",
+              "t-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c0",
+              "t-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "t-o0",
+              1500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "t-o0"
+            ]
+          },
+          {
+            "label": "renewal",
+            "args": [
+              "t-q1",
+              "t-c1"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c1",
+              "t-o1"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "t-o1",
+              1700
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "t-o1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "history-valid-sequence-gap-after-drop",
+      "candidate": {
+        "observations": [
+          {
+            "id": "c-o-drop",
+            "challenge_ref": "c-q1",
+            "collection_ref": "c-c1",
+            "session_ref": "c-s0",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          },
+          {
+            "id": "c-o2",
+            "challenge_ref": "c-q2",
+            "collection_ref": "c-c2",
+            "session_ref": "c-s0",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          }
+        ],
+        "challenges": [
+          {
+            "id": "c-q1",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000002",
+            "issued_tick": 1201,
+            "expires_tick": 2000,
+            "receipt_tick": 1300
+          },
+          {
+            "id": "c-q2",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000003",
+            "issued_tick": 1301,
+            "expires_tick": 2300,
+            "receipt_tick": 1600
+          }
+        ],
+        "collections": [
+          {
+            "id": "c-c1",
+            "challenge_ref": "c-q1",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 2,
+            "collection_start": 1250,
+            "snapshot_freeze_end": 1300,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          },
+          {
+            "id": "c-c2",
+            "challenge_ref": "c-q2",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 3,
+            "collection_start": 1350,
+            "snapshot_freeze_end": 1400,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          }
+        ],
+        "sessions": [
+          {
+            "id": "c-s0",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "key_handle_association": {
+              "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+              "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            "policy_strength": 2,
+            "predecessor_session_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "temporal_states": [
+          {
+            "id": "c-t0",
+            "source": "verifier",
+            "status": "available",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "greatest_sequence": 1,
+            "latest_freeze_end": 1200
+          }
+        ],
+        "recovery_inputs": [],
+        "events": [],
+        "actions": [
+          {
+            "label": "renewal",
+            "args": [
+              "c-q1",
+              "c-c1"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c1",
+              "c-o-drop"
+            ]
+          },
+          {
+            "label": "drop",
+            "args": [
+              "c-c1"
+            ]
+          },
+          {
+            "label": "renewal",
+            "args": [
+              "c-q2",
+              "c-c2"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c2",
+              "c-o2"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "c-o2",
+              1600
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "c-o2"
+            ]
+          }
+        ]
+      },
+      "oracle": {
+        "observation_oracles": [
+          {
+            "id": "t-o-drop",
+            "challenge_ref": "t-q1",
+            "collection_ref": "t-c1",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          },
+          {
+            "id": "t-o2",
+            "challenge_ref": "t-q2",
+            "collection_ref": "t-c2",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          }
+        ],
+        "trusted_challenges": [
+          {
+            "id": "t-q1",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000002",
+            "issued_tick": 1201,
+            "expires_tick": 2000,
+            "receipt_tick": 1300
+          },
+          {
+            "id": "t-q2",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000003",
+            "issued_tick": 1301,
+            "expires_tick": 2300,
+            "receipt_tick": 1600
+          }
+        ],
+        "trusted_authorities": [
+          {
+            "id": "t-c1",
+            "challenge_ref": "t-q1",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 2,
+            "collection_start": 1250,
+            "snapshot_freeze_end": 1300,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          },
+          {
+            "id": "t-c2",
+            "challenge_ref": "t-q2",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 3,
+            "collection_start": 1350,
+            "snapshot_freeze_end": 1400,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          }
+        ],
+        "trusted_recoveries": [],
+        "trusted_profiles": [
+          {
+            "id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "profile_duration_ceiling": 100,
+            "publisher_duration_ceiling": 100,
+            "effective_duration_ceiling": 100,
+            "policy_strength": 2
+          }
+        ],
+        "trusted_sessions": [
+          {
+            "id": "t-s0",
+            "session_id": "session-alpha",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "predecessor_session_id": null,
+            "predecessor_actual_public_key": null,
+            "predecessor_session_public_key_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "initial_state": [
+          "active",
+          "session-alpha",
+          "publisher-alpha",
+          "subject-alpha",
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "intact",
+          "profile-base-v1",
+          "authority-alpha",
+          "source-alpha",
+          100,
+          100,
+          100,
+          2,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          null,
+          "absent",
+          "absent",
+          "absent",
+          null,
+          null,
+          "available",
+          "authority-alpha",
+          "source-alpha",
+          "epoch-alpha",
+          1,
+          1200,
+          null,
+          null,
+          1,
+          "accepted",
+          null,
+          "accepted",
+          "retained",
+          false
+        ],
+        "actions": [
+          {
+            "label": "renewal",
+            "args": [
+              "t-q1",
+              "t-c1"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c1",
+              "t-o-drop"
+            ]
+          },
+          {
+            "label": "drop",
+            "args": [
+              "t-c1"
+            ]
+          },
+          {
+            "label": "renewal",
+            "args": [
+              "t-q2",
+              "t-c2"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c2",
+              "t-o2"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "t-o2",
+              1600
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "t-o2"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "history-valid-cached-fact-revalidation",
+      "candidate": {
+        "observations": [
+          {
+            "id": "c-o0",
+            "challenge_ref": "c-q0",
+            "collection_ref": "c-c0",
+            "session_ref": "c-s0",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          }
+        ],
+        "challenges": [
+          {
+            "id": "c-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1500
+          }
+        ],
+        "collections": [
+          {
+            "id": "c-c0",
+            "challenge_ref": "c-q0",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1200,
+            "current_subject_revalidated": true,
+            "origin_class": "cached",
+            "time_domain": "protected-monotonic"
+          }
+        ],
+        "sessions": [
+          {
+            "id": "c-s0",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "key_handle_association": {
+              "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+              "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            "policy_strength": 2,
+            "predecessor_session_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "temporal_states": [],
+        "recovery_inputs": [],
+        "events": [],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "c-q0",
+              "c-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c0",
+              "c-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "c-o0",
+              1500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "c-o0"
+            ]
+          }
+        ]
+      },
+      "oracle": {
+        "observation_oracles": [
+          {
+            "id": "t-o0",
+            "challenge_ref": "t-q0",
+            "collection_ref": "t-c0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          }
+        ],
+        "trusted_challenges": [
+          {
+            "id": "t-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1500
+          }
+        ],
+        "trusted_authorities": [
+          {
+            "id": "t-c0",
+            "challenge_ref": "t-q0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1200,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          }
+        ],
+        "trusted_recoveries": [],
+        "trusted_profiles": [
+          {
+            "id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "profile_duration_ceiling": 100,
+            "publisher_duration_ceiling": 100,
+            "effective_duration_ceiling": 100,
+            "policy_strength": 2
+          }
+        ],
+        "trusted_sessions": [
+          {
+            "id": "t-s0",
+            "session_id": "session-alpha",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "predecessor_session_id": null,
+            "predecessor_actual_public_key": null,
+            "predecessor_session_public_key_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "initial_state": [
+          "active",
+          "session-alpha",
+          "publisher-alpha",
+          "subject-alpha",
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "intact",
+          "profile-base-v1",
+          "authority-alpha",
+          "source-alpha",
+          100,
+          100,
+          100,
+          2,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          null,
+          "absent",
+          "absent",
+          "absent",
+          null,
+          null,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          "not-appraised",
+          null,
+          "not-appraised",
+          "absent",
+          false
+        ],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "t-q0",
+              "t-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c0",
+              "t-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "t-o0",
+              1500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "t-o0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "history-valid-boot-origin-revalidation",
+      "candidate": {
+        "observations": [
+          {
+            "id": "c-o0",
+            "challenge_ref": "c-q0",
+            "collection_ref": "c-c0",
+            "session_ref": "c-s0",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          }
+        ],
+        "challenges": [
+          {
+            "id": "c-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1500
+          }
+        ],
+        "collections": [
+          {
+            "id": "c-c0",
+            "challenge_ref": "c-q0",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1200,
+            "current_subject_revalidated": true,
+            "origin_class": "boot-origin",
+            "time_domain": "protected-monotonic"
+          }
+        ],
+        "sessions": [
+          {
+            "id": "c-s0",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "key_handle_association": {
+              "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+              "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            "policy_strength": 2,
+            "predecessor_session_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "temporal_states": [],
+        "recovery_inputs": [],
+        "events": [],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "c-q0",
+              "c-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c0",
+              "c-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "c-o0",
+              1500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "c-o0"
+            ]
+          }
+        ]
+      },
+      "oracle": {
+        "observation_oracles": [
+          {
+            "id": "t-o0",
+            "challenge_ref": "t-q0",
+            "collection_ref": "t-c0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          }
+        ],
+        "trusted_challenges": [
+          {
+            "id": "t-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1500
+          }
+        ],
+        "trusted_authorities": [
+          {
+            "id": "t-c0",
+            "challenge_ref": "t-q0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1200,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          }
+        ],
+        "trusted_recoveries": [],
+        "trusted_profiles": [
+          {
+            "id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "profile_duration_ceiling": 100,
+            "publisher_duration_ceiling": 100,
+            "effective_duration_ceiling": 100,
+            "policy_strength": 2
+          }
+        ],
+        "trusted_sessions": [
+          {
+            "id": "t-s0",
+            "session_id": "session-alpha",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "predecessor_session_id": null,
+            "predecessor_actual_public_key": null,
+            "predecessor_session_public_key_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "initial_state": [
+          "active",
+          "session-alpha",
+          "publisher-alpha",
+          "subject-alpha",
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "intact",
+          "profile-base-v1",
+          "authority-alpha",
+          "source-alpha",
+          100,
+          100,
+          100,
+          2,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          null,
+          "absent",
+          "absent",
+          "absent",
+          null,
+          null,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          "not-appraised",
+          null,
+          "not-appraised",
+          "absent",
+          false
+        ],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "t-q0",
+              "t-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c0",
+              "t-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "t-o0",
+              1500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "t-o0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "history-valid-profile-duration-boundary",
+      "candidate": {
+        "observations": [
+          {
+            "id": "c-o0",
+            "challenge_ref": "c-q0",
+            "collection_ref": "c-c0",
+            "session_ref": "c-s0",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          }
+        ],
+        "challenges": [
+          {
+            "id": "c-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1500
+          }
+        ],
+        "collections": [
+          {
+            "id": "c-c0",
+            "challenge_ref": "c-q0",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1200,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          }
+        ],
+        "sessions": [
+          {
+            "id": "c-s0",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "key_handle_association": {
+              "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+              "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            "policy_strength": 2,
+            "predecessor_session_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "temporal_states": [],
+        "recovery_inputs": [],
+        "events": [],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "c-q0",
+              "c-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c0",
+              "c-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "c-o0",
+              1500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "c-o0"
+            ]
+          }
+        ]
+      },
+      "oracle": {
+        "observation_oracles": [
+          {
+            "id": "t-o0",
+            "challenge_ref": "t-q0",
+            "collection_ref": "t-c0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          }
+        ],
+        "trusted_challenges": [
+          {
+            "id": "t-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1500
+          }
+        ],
+        "trusted_authorities": [
+          {
+            "id": "t-c0",
+            "challenge_ref": "t-q0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1200,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          }
+        ],
+        "trusted_recoveries": [],
+        "trusted_profiles": [
+          {
+            "id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "profile_duration_ceiling": 100,
+            "publisher_duration_ceiling": 150,
+            "effective_duration_ceiling": 100,
+            "policy_strength": 2
+          }
+        ],
+        "trusted_sessions": [
+          {
+            "id": "t-s0",
+            "session_id": "session-alpha",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "predecessor_session_id": null,
+            "predecessor_actual_public_key": null,
+            "predecessor_session_public_key_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "initial_state": [
+          "active",
+          "session-alpha",
+          "publisher-alpha",
+          "subject-alpha",
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "intact",
+          "profile-base-v1",
+          "authority-alpha",
+          "source-alpha",
+          100,
+          150,
+          100,
+          2,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          null,
+          "absent",
+          "absent",
+          "absent",
+          null,
+          null,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          "not-appraised",
+          null,
+          "not-appraised",
+          "absent",
+          false
+        ],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "t-q0",
+              "t-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c0",
+              "t-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "t-o0",
+              1500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "t-o0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "history-valid-publisher-duration-boundary",
+      "candidate": {
+        "observations": [
+          {
+            "id": "c-o0",
+            "challenge_ref": "c-q0",
+            "collection_ref": "c-c0",
+            "session_ref": "c-s0",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          }
+        ],
+        "challenges": [
+          {
+            "id": "c-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1500
+          }
+        ],
+        "collections": [
+          {
+            "id": "c-c0",
+            "challenge_ref": "c-q0",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1150,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          }
+        ],
+        "sessions": [
+          {
+            "id": "c-s0",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "key_handle_association": {
+              "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+              "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            "policy_strength": 2,
+            "predecessor_session_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "temporal_states": [],
+        "recovery_inputs": [],
+        "events": [],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "c-q0",
+              "c-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c0",
+              "c-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "c-o0",
+              1500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "c-o0"
+            ]
+          }
+        ]
+      },
+      "oracle": {
+        "observation_oracles": [
+          {
+            "id": "t-o0",
+            "challenge_ref": "t-q0",
+            "collection_ref": "t-c0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          }
+        ],
+        "trusted_challenges": [
+          {
+            "id": "t-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1500
+          }
+        ],
+        "trusted_authorities": [
+          {
+            "id": "t-c0",
+            "challenge_ref": "t-q0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1150,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          }
+        ],
+        "trusted_recoveries": [],
+        "trusted_profiles": [
+          {
+            "id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "profile_duration_ceiling": 100,
+            "publisher_duration_ceiling": 50,
+            "effective_duration_ceiling": 50,
+            "policy_strength": 2
+          }
+        ],
+        "trusted_sessions": [
+          {
+            "id": "t-s0",
+            "session_id": "session-alpha",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "predecessor_session_id": null,
+            "predecessor_actual_public_key": null,
+            "predecessor_session_public_key_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "initial_state": [
+          "active",
+          "session-alpha",
+          "publisher-alpha",
+          "subject-alpha",
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "intact",
+          "profile-base-v1",
+          "authority-alpha",
+          "source-alpha",
+          100,
+          50,
+          50,
+          2,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          null,
+          "absent",
+          "absent",
+          "absent",
+          null,
+          null,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          "not-appraised",
+          null,
+          "not-appraised",
+          "absent",
+          false
+        ],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "t-q0",
+              "t-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c0",
+              "t-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "t-o0",
+              1500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "t-o0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "history-valid-before-challenge-expiry",
+      "candidate": {
+        "observations": [
+          {
+            "id": "c-o0",
+            "challenge_ref": "c-q0",
+            "collection_ref": "c-c0",
+            "session_ref": "c-s0",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          }
+        ],
+        "challenges": [
+          {
+            "id": "c-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1999
+          }
+        ],
+        "collections": [
+          {
+            "id": "c-c0",
+            "challenge_ref": "c-q0",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1200,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          }
+        ],
+        "sessions": [
+          {
+            "id": "c-s0",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "key_handle_association": {
+              "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+              "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            "policy_strength": 2,
+            "predecessor_session_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "temporal_states": [],
+        "recovery_inputs": [],
+        "events": [],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "c-q0",
+              "c-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c0",
+              "c-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "c-o0",
+              1999
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "c-o0"
+            ]
+          }
+        ]
+      },
+      "oracle": {
+        "observation_oracles": [
+          {
+            "id": "t-o0",
+            "challenge_ref": "t-q0",
+            "collection_ref": "t-c0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          }
+        ],
+        "trusted_challenges": [
+          {
+            "id": "t-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1999
+          }
+        ],
+        "trusted_authorities": [
+          {
+            "id": "t-c0",
+            "challenge_ref": "t-q0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1200,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          }
+        ],
+        "trusted_recoveries": [],
+        "trusted_profiles": [
+          {
+            "id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "profile_duration_ceiling": 100,
+            "publisher_duration_ceiling": 100,
+            "effective_duration_ceiling": 100,
+            "policy_strength": 2
+          }
+        ],
+        "trusted_sessions": [
+          {
+            "id": "t-s0",
+            "session_id": "session-alpha",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "predecessor_session_id": null,
+            "predecessor_actual_public_key": null,
+            "predecessor_session_public_key_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "initial_state": [
+          "active",
+          "session-alpha",
+          "publisher-alpha",
+          "subject-alpha",
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "intact",
+          "profile-base-v1",
+          "authority-alpha",
+          "source-alpha",
+          100,
+          100,
+          100,
+          2,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          null,
+          "absent",
+          "absent",
+          "absent",
+          null,
+          null,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          "not-appraised",
+          null,
+          "not-appraised",
+          "absent",
+          false
+        ],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "t-q0",
+              "t-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c0",
+              "t-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "t-o0",
+              1999
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "t-o0"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "history-valid-authority-outage-recovery",
+      "candidate": {
+        "observations": [
+          {
+            "id": "c-o1",
+            "challenge_ref": "c-q1",
+            "collection_ref": "c-c1",
+            "session_ref": "c-s0",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          }
+        ],
+        "challenges": [
+          {
+            "id": "c-q1",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000002",
+            "issued_tick": 1501,
+            "expires_tick": 2500,
+            "receipt_tick": 1700
+          }
+        ],
+        "collections": [
+          {
+            "id": "c-c1",
+            "challenge_ref": "c-q1",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 2,
+            "collection_start": 1300,
+            "snapshot_freeze_end": 1400,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          }
+        ],
+        "sessions": [
+          {
+            "id": "c-s0",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "key_handle_association": {
+              "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+              "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            "policy_strength": 2,
+            "predecessor_session_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "temporal_states": [
+          {
+            "id": "c-t0",
+            "source": "verifier",
+            "status": "unavailable",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "greatest_sequence": 1,
+            "latest_freeze_end": 1200
+          }
+        ],
+        "recovery_inputs": [
+          {
+            "id": "c-r0",
+            "component": "collection-authority",
+            "intact": true,
+            "temporal_state_ref": "c-t0",
+            "fresh_challenge_ref": "c-q1"
+          }
+        ],
+        "events": [],
+        "actions": [
+          {
+            "label": "renewal",
+            "args": [
+              "c-q1",
+              "c-c1"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c1",
+              "c-o1"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "c-o1",
+              1700
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "c-o1"
+            ]
+          }
+        ]
+      },
+      "oracle": {
+        "observation_oracles": [
+          {
+            "id": "t-o1",
+            "challenge_ref": "t-q1",
+            "collection_ref": "t-c1",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          }
+        ],
+        "trusted_challenges": [
+          {
+            "id": "t-q1",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000002",
+            "issued_tick": 1501,
+            "expires_tick": 2500,
+            "receipt_tick": 1700
+          }
+        ],
+        "trusted_authorities": [
+          {
+            "id": "t-c1",
+            "challenge_ref": "t-q1",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 2,
+            "collection_start": 1300,
+            "snapshot_freeze_end": 1400,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          }
+        ],
+        "trusted_recoveries": [
+          {
+            "id": "t-r0",
+            "component": "collection-authority",
+            "intact": true,
+            "temporal_state": {
+              "status": "available",
+              "authority_contract": "authority-alpha",
+              "protected_source": "source-alpha",
+              "epoch_relation": "epoch-alpha",
+              "greatest_sequence": 1,
+              "latest_freeze_end": 1200
+            },
+            "fresh_challenge_ref": "t-q1"
+          }
+        ],
+        "trusted_profiles": [
+          {
+            "id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "profile_duration_ceiling": 100,
+            "publisher_duration_ceiling": 100,
+            "effective_duration_ceiling": 100,
+            "policy_strength": 2
+          }
+        ],
+        "trusted_sessions": [
+          {
+            "id": "t-s0",
+            "session_id": "session-alpha",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "predecessor_session_id": null,
+            "predecessor_actual_public_key": null,
+            "predecessor_session_public_key_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "initial_state": [
+          "active",
+          "session-alpha",
+          "publisher-alpha",
+          "subject-alpha",
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "intact",
+          "profile-base-v1",
+          "authority-alpha",
+          "source-alpha",
+          100,
+          100,
+          100,
+          2,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          null,
+          "absent",
+          "absent",
+          "absent",
+          null,
+          null,
+          "unavailable",
+          "authority-alpha",
+          "source-alpha",
+          "epoch-alpha",
+          1,
+          1200,
+          null,
+          null,
+          1,
+          "accepted",
+          null,
+          "accepted",
+          "retained",
+          false
+        ],
+        "actions": [
+          {
+            "label": "renewal",
+            "args": [
+              "t-q1",
+              "t-c1"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c1",
+              "t-o1"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "t-o1",
+              1700
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "t-o1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "history-valid-store-outage-recovery",
+      "candidate": {
+        "observations": [
+          {
+            "id": "c-o1",
+            "challenge_ref": "c-q1",
+            "collection_ref": "c-c1",
+            "session_ref": "c-s0",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          }
+        ],
+        "challenges": [
+          {
+            "id": "c-q1",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000002",
+            "issued_tick": 1501,
+            "expires_tick": 2500,
+            "receipt_tick": 1700
+          }
+        ],
+        "collections": [
+          {
+            "id": "c-c1",
+            "challenge_ref": "c-q1",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 2,
+            "collection_start": 1300,
+            "snapshot_freeze_end": 1400,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          }
+        ],
+        "sessions": [
+          {
+            "id": "c-s0",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "key_handle_association": {
+              "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+              "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            "policy_strength": 2,
+            "predecessor_session_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "temporal_states": [
+          {
+            "id": "c-t0",
+            "source": "verifier",
+            "status": "unavailable",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "greatest_sequence": 1,
+            "latest_freeze_end": 1200
+          }
+        ],
+        "recovery_inputs": [
+          {
+            "id": "c-r1",
+            "component": "temporal-store",
+            "intact": true,
+            "temporal_state_ref": "c-t0",
+            "fresh_challenge_ref": "c-q1"
+          }
+        ],
+        "events": [],
+        "actions": [
+          {
+            "label": "renewal",
+            "args": [
+              "c-q1",
+              "c-c1"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c1",
+              "c-o1"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "c-o1",
+              1700
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "c-o1"
+            ]
+          }
+        ]
+      },
+      "oracle": {
+        "observation_oracles": [
+          {
+            "id": "t-o1",
+            "challenge_ref": "t-q1",
+            "collection_ref": "t-c1",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          }
+        ],
+        "trusted_challenges": [
+          {
+            "id": "t-q1",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000002",
+            "issued_tick": 1501,
+            "expires_tick": 2500,
+            "receipt_tick": 1700
+          }
+        ],
+        "trusted_authorities": [
+          {
+            "id": "t-c1",
+            "challenge_ref": "t-q1",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 2,
+            "collection_start": 1300,
+            "snapshot_freeze_end": 1400,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          }
+        ],
+        "trusted_recoveries": [
+          {
+            "id": "t-r1",
+            "component": "temporal-store",
+            "intact": true,
+            "temporal_state": {
+              "status": "available",
+              "authority_contract": "authority-alpha",
+              "protected_source": "source-alpha",
+              "epoch_relation": "epoch-alpha",
+              "greatest_sequence": 1,
+              "latest_freeze_end": 1200
+            },
+            "fresh_challenge_ref": "t-q1"
+          }
+        ],
+        "trusted_profiles": [
+          {
+            "id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "profile_duration_ceiling": 100,
+            "publisher_duration_ceiling": 100,
+            "effective_duration_ceiling": 100,
+            "policy_strength": 2
+          }
+        ],
+        "trusted_sessions": [
+          {
+            "id": "t-s0",
+            "session_id": "session-alpha",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "predecessor_session_id": null,
+            "predecessor_actual_public_key": null,
+            "predecessor_session_public_key_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "initial_state": [
+          "active",
+          "session-alpha",
+          "publisher-alpha",
+          "subject-alpha",
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "intact",
+          "profile-base-v1",
+          "authority-alpha",
+          "source-alpha",
+          100,
+          100,
+          100,
+          2,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          null,
+          "absent",
+          "absent",
+          "absent",
+          null,
+          null,
+          "unavailable",
+          "authority-alpha",
+          "source-alpha",
+          "epoch-alpha",
+          1,
+          1200,
+          null,
+          null,
+          1,
+          "accepted",
+          null,
+          "accepted",
+          "retained",
+          false
+        ],
+        "actions": [
+          {
+            "label": "renewal",
+            "args": [
+              "t-q1",
+              "t-c1"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c1",
+              "t-o1"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "t-o1",
+              1700
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "t-o1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "history-valid-profile-transition",
+      "candidate": {
+        "observations": [
+          {
+            "id": "c-o1",
+            "challenge_ref": "c-q1",
+            "collection_ref": "c-c1",
+            "session_ref": "c-s0",
+            "profile_id": "profile-extended-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          }
+        ],
+        "challenges": [
+          {
+            "id": "c-q1",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000002",
+            "issued_tick": 1501,
+            "expires_tick": 2500,
+            "receipt_tick": 1700
+          }
+        ],
+        "collections": [
+          {
+            "id": "c-c1",
+            "challenge_ref": "c-q1",
+            "profile_id": "profile-extended-v1",
+            "authority_contract": "authority-beta",
+            "protected_source": "source-beta",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 2,
+            "collection_start": 1300,
+            "snapshot_freeze_end": 1400,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          }
+        ],
+        "sessions": [
+          {
+            "id": "c-s0",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "key_handle_association": {
+              "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+              "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            "policy_strength": 2,
+            "predecessor_session_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "temporal_states": [
+          {
+            "id": "c-t0",
+            "source": "verifier",
+            "status": "available",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "greatest_sequence": 1,
+            "latest_freeze_end": 1200
+          }
+        ],
+        "recovery_inputs": [],
+        "events": [
+          {
+            "component": "profile-transition",
+            "continuity": "same-protected-epoch"
+          }
+        ],
+        "actions": [
+          {
+            "label": "renewal",
+            "args": [
+              "c-q1",
+              "c-c1"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c1",
+              "c-o1"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "c-o1",
+              1700
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "c-o1"
+            ]
+          }
+        ]
+      },
+      "oracle": {
+        "observation_oracles": [
+          {
+            "id": "t-o1",
+            "challenge_ref": "t-q1",
+            "collection_ref": "t-c1",
+            "session_ref": "t-s0",
+            "profile_id": "profile-extended-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          }
+        ],
+        "trusted_challenges": [
+          {
+            "id": "t-q1",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000002",
+            "issued_tick": 1501,
+            "expires_tick": 2500,
+            "receipt_tick": 1700
+          }
+        ],
+        "trusted_authorities": [
+          {
+            "id": "t-c1",
+            "challenge_ref": "t-q1",
+            "session_ref": "t-s0",
+            "profile_id": "profile-extended-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-beta",
+            "protected_source": "source-beta",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 2,
+            "collection_start": 1300,
+            "snapshot_freeze_end": 1400,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          }
+        ],
+        "trusted_recoveries": [],
+        "trusted_profiles": [
+          {
+            "id": "profile-extended-v1",
+            "authority_contract": "authority-beta",
+            "protected_source": "source-beta",
+            "profile_duration_ceiling": 100,
+            "publisher_duration_ceiling": 100,
+            "effective_duration_ceiling": 100,
+            "policy_strength": 2
+          }
+        ],
+        "trusted_sessions": [
+          {
+            "id": "t-s0",
+            "session_id": "session-alpha",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "predecessor_session_id": null,
+            "predecessor_actual_public_key": null,
+            "predecessor_session_public_key_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "initial_state": [
+          "active",
+          "session-alpha",
+          "publisher-alpha",
+          "subject-alpha",
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "intact",
+          "profile-base-v1",
+          "authority-alpha",
+          "source-alpha",
+          100,
+          100,
+          100,
+          2,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          null,
+          "absent",
+          "absent",
+          "absent",
+          null,
+          null,
+          "available",
+          "authority-alpha",
+          "source-alpha",
+          "epoch-alpha",
+          1,
+          1200,
+          null,
+          null,
+          1,
+          "accepted",
+          null,
+          "accepted",
+          "retained",
+          false
+        ],
+        "actions": [
+          {
+            "label": "renewal",
+            "args": [
+              "t-q1",
+              "t-c1"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c1",
+              "t-o1"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "t-o1",
+              1700
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "t-o1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "history-valid-terminal-end-deletion",
+      "candidate": {
+        "observations": [
+          {
+            "id": "c-o0",
+            "challenge_ref": "c-q0",
+            "collection_ref": "c-c0",
+            "session_ref": "c-s0",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          },
+          {
+            "id": "c-o1",
+            "challenge_ref": "c-q1",
+            "collection_ref": "c-c1",
+            "session_ref": "c-s0",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          }
+        ],
+        "challenges": [
+          {
+            "id": "c-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1500
+          },
+          {
+            "id": "c-q1",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000002",
+            "issued_tick": 1501,
+            "expires_tick": 2500,
+            "receipt_tick": 1700
+          },
+          {
+            "id": "c-q2",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000003",
+            "issued_tick": 1800,
+            "expires_tick": 2800,
+            "receipt_tick": 2000
+          }
+        ],
+        "collections": [
+          {
+            "id": "c-c0",
+            "challenge_ref": "c-q0",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1200,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          },
+          {
+            "id": "c-c1",
+            "challenge_ref": "c-q1",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 2,
+            "collection_start": 1300,
+            "snapshot_freeze_end": 1400,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          },
+          {
+            "id": "c-c2",
+            "challenge_ref": "c-q2",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 3,
+            "collection_start": 1800,
+            "snapshot_freeze_end": 1900,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          }
+        ],
+        "sessions": [
+          {
+            "id": "c-s0",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "key_handle_association": {
+              "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+              "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            "policy_strength": 2,
+            "predecessor_session_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "temporal_states": [
+          {
+            "id": "c-t1",
+            "source": "verifier",
+            "status": "available",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "greatest_sequence": 2,
+            "latest_freeze_end": 1400
+          }
+        ],
+        "recovery_inputs": [],
+        "events": [],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "c-q0",
+              "c-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c0",
+              "c-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "c-o0",
+              1500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "c-o0"
+            ]
+          },
+          {
+            "label": "renewal",
+            "args": [
+              "c-q1",
+              "c-c1"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c1",
+              "c-o1"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "c-o1",
+              1700
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "c-o1"
+            ]
+          },
+          {
+            "label": "terminal-end",
+            "args": [
+              "c-s0"
+            ]
+          },
+          {
+            "label": "deletion",
+            "args": []
+          }
+        ]
+      },
+      "oracle": {
+        "observation_oracles": [
+          {
+            "id": "t-o0",
+            "challenge_ref": "t-q0",
+            "collection_ref": "t-c0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          },
+          {
+            "id": "t-o1",
+            "challenge_ref": "t-q1",
+            "collection_ref": "t-c1",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          }
+        ],
+        "trusted_challenges": [
+          {
+            "id": "t-q0",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000001",
+            "issued_tick": 1000,
+            "expires_tick": 2000,
+            "receipt_tick": 1500
+          },
+          {
+            "id": "t-q1",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000002",
+            "issued_tick": 1501,
+            "expires_tick": 2500,
+            "receipt_tick": 1700
+          }
+        ],
+        "trusted_authorities": [
+          {
+            "id": "t-c0",
+            "challenge_ref": "t-q0",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 1,
+            "collection_start": 1100,
+            "snapshot_freeze_end": 1200,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          },
+          {
+            "id": "t-c1",
+            "challenge_ref": "t-q1",
+            "session_ref": "t-s0",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-alpha",
+            "sequence": 2,
+            "collection_start": 1300,
+            "snapshot_freeze_end": 1400,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          }
+        ],
+        "trusted_recoveries": [],
+        "trusted_profiles": [
+          {
+            "id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "profile_duration_ceiling": 100,
+            "publisher_duration_ceiling": 100,
+            "effective_duration_ceiling": 100,
+            "policy_strength": 2
+          }
+        ],
+        "trusted_sessions": [
+          {
+            "id": "t-s0",
+            "session_id": "session-alpha",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-alpha",
+            "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "predecessor_session_id": null,
+            "predecessor_actual_public_key": null,
+            "predecessor_session_public_key_id": null,
+            "predecessor_epoch": null
+          }
+        ],
+        "initial_state": [
+          "active",
+          "session-alpha",
+          "publisher-alpha",
+          "subject-alpha",
+          "1111111111111111111111111111111111111111111111111111111111111111",
+          "2222222222222222222222222222222222222222222222222222222222222222",
+          "intact",
+          "profile-base-v1",
+          "authority-alpha",
+          "source-alpha",
+          100,
+          100,
+          100,
+          2,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          null,
+          "absent",
+          "absent",
+          "absent",
+          null,
+          null,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          "not-appraised",
+          null,
+          "not-appraised",
+          "absent",
+          false
+        ],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "t-q0",
+              "t-c0"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c0",
+              "t-o0"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "t-o0",
+              1500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "t-o0"
+            ]
+          },
+          {
+            "label": "renewal",
+            "args": [
+              "t-q1",
+              "t-c1"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c1",
+              "t-o1"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "t-o1",
+              1700
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "t-o1"
+            ]
+          },
+          {
+            "label": "terminal-end",
+            "args": [
+              "t-s0"
+            ]
+          },
+          {
+            "label": "deletion",
+            "args": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "history-valid-new-session-recovery",
+      "candidate": {
+        "observations": [
+          {
+            "id": "c-o2",
+            "challenge_ref": "c-q2",
+            "collection_ref": "c-c2",
+            "session_ref": "c-s1",
+            "profile_id": "profile-base-v1",
+            "purpose": "evidence-binding-transcript",
+            "claims_current": true,
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "policy_state": "accepted"
+          }
+        ],
+        "challenges": [
+          {
+            "id": "c-q2",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000003",
+            "issued_tick": 2000,
+            "expires_tick": 3000,
+            "receipt_tick": 2500
+          }
+        ],
+        "collections": [
+          {
+            "id": "c-c2",
+            "challenge_ref": "c-q2",
+            "profile_id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-beta",
+            "sequence": 1,
+            "collection_start": 2100,
+            "snapshot_freeze_end": 2200,
+            "current_subject_revalidated": true,
+            "origin_class": "new",
+            "time_domain": "protected-monotonic"
+          }
+        ],
+        "sessions": [
+          {
+            "id": "c-s1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-beta",
+            "key_handle_association": {
+              "actual_public_key": "5555555555555555555555555555555555555555555555555555555555555555",
+              "session_public_key_id": "6666666666666666666666666666666666666666666666666666666666666666"
+            },
+            "policy_strength": 2,
+            "predecessor_session_id": "session-alpha",
+            "predecessor_epoch": "epoch-alpha"
+          }
+        ],
+        "temporal_states": [],
+        "recovery_inputs": [],
+        "events": [
+          {
+            "component": "new-session-recovery",
+            "continuity": "new-key-handle-epoch"
+          }
+        ],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "c-q2",
+              "c-c2"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "c-c2",
+              "c-o2"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "c-o2",
+              2500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "c-o2"
+            ]
+          }
+        ]
+      },
+      "oracle": {
+        "observation_oracles": [
+          {
+            "id": "t-o2",
+            "challenge_ref": "t-q2",
+            "collection_ref": "t-c2",
+            "session_ref": "t-s1",
+            "profile_id": "profile-base-v1",
+            "current_subject_revalidated": true,
+            "coverage_state": "valid",
+            "authority_statement_state": "authenticated",
+            "claim_state": "accepted",
+            "rejected_claim_meaning": null,
+            "policy_state": "accepted"
+          }
+        ],
+        "trusted_challenges": [
+          {
+            "id": "t-q2",
+            "status": "authenticated",
+            "publisher": "publisher-alpha",
+            "nonce": "0000000000000000000000000000000000000000000000000000000000000003",
+            "issued_tick": 2000,
+            "expires_tick": 3000,
+            "receipt_tick": 2500
+          }
+        ],
+        "trusted_authorities": [
+          {
+            "id": "t-c2",
+            "challenge_ref": "t-q2",
+            "session_ref": "t-s1",
+            "profile_id": "profile-base-v1",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-beta",
+            "actual_public_key": "5555555555555555555555555555555555555555555555555555555555555555",
+            "session_public_key_id": "6666666666666666666666666666666666666666666666666666666666666666",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "epoch_relation": "epoch-beta",
+            "sequence": 1,
+            "collection_start": 2100,
+            "snapshot_freeze_end": 2200,
+            "availability": "available",
+            "authority_continuity": "intact",
+            "source_continuity": "intact",
+            "authority_statement_state": "authenticated"
+          }
+        ],
+        "trusted_recoveries": [],
+        "trusted_profiles": [
+          {
+            "id": "profile-base-v1",
+            "authority_contract": "authority-alpha",
+            "protected_source": "source-alpha",
+            "profile_duration_ceiling": 100,
+            "publisher_duration_ceiling": 100,
+            "effective_duration_ceiling": 100,
+            "policy_strength": 2
+          }
+        ],
+        "trusted_sessions": [
+          {
+            "id": "t-s1",
+            "session_id": "session-beta",
+            "publisher": "publisher-alpha",
+            "live_subject": "subject-beta",
+            "actual_public_key": "5555555555555555555555555555555555555555555555555555555555555555",
+            "session_public_key_id": "6666666666666666666666666666666666666666666666666666666666666666",
+            "predecessor_session_id": "session-alpha",
+            "predecessor_actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+            "predecessor_session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222",
+            "predecessor_epoch": "epoch-alpha"
+          }
+        ],
+        "initial_state": [
+          "active",
+          "session-beta",
+          "publisher-alpha",
+          "subject-beta",
+          "5555555555555555555555555555555555555555555555555555555555555555",
+          "6666666666666666666666666666666666666666666666666666666666666666",
+          "intact",
+          "profile-base-v1",
+          "authority-alpha",
+          "source-alpha",
+          100,
+          100,
+          100,
+          2,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          null,
+          "absent",
+          "absent",
+          "absent",
+          null,
+          null,
+          "absent",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          "not-appraised",
+          null,
+          "not-appraised",
+          "absent",
+          false
+        ],
+        "actions": [
+          {
+            "label": "collection-open",
+            "args": [
+              "t-q2",
+              "t-c2"
+            ]
+          },
+          {
+            "label": "snapshot-freeze",
+            "args": [
+              "t-c2",
+              "t-o2"
+            ]
+          },
+          {
+            "label": "submit",
+            "args": [
+              "t-o2",
+              2500
+            ]
+          },
+          {
+            "label": "validate",
+            "args": [
+              "t-o2"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "negative_transforms": [
+    {
+      "id": "open-before-challenge-receipt",
+      "baseline": "history-valid-initial-collection",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/challenges/0/status",
+      "old": "authenticated",
+      "value": "absent"
+    },
+    {
+      "id": "proof-before-snapshot-freeze",
+      "baseline": "history-valid-initial-collection",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/actions/1",
+      "old": {
+        "label": "snapshot-freeze",
+        "args": [
+          "c-c0",
+          "c-o0"
+        ]
+      },
+      "value": {
+        "label": "submit",
+        "args": [
+          "c-o0",
+          1500
+        ]
+      }
+    },
+    {
+      "id": "change-after-snapshot-freeze",
+      "baseline": "history-valid-initial-collection",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/observations/0/claims_current",
+      "old": true,
+      "value": false
+    },
+    {
+      "id": "substitute-covered-challenge",
+      "baseline": "history-valid-initial-collection",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/observations/0/challenge_ref",
+      "old": "c-q0",
+      "value": "c-q-alt"
+    },
+    {
+      "id": "reuse-collection-sequence",
+      "baseline": "history-valid-sequence-gap-after-drop",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/collections/1/sequence",
+      "old": 3,
+      "value": 1
+    },
+    {
+      "id": "decrease-collection-sequence",
+      "baseline": "history-valid-sequence-gap-after-drop",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/collections/1/sequence",
+      "old": 3,
+      "value": 0
+    },
+    {
+      "id": "change-protected-epoch",
+      "baseline": "history-valid-profile-transition",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/collections/0/epoch_relation",
+      "old": "epoch-alpha",
+      "value": "epoch-beta"
+    },
+    {
+      "id": "change-protected-source",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/collections/1/protected_source",
+      "old": "source-alpha",
+      "value": "source-beta"
+    },
+    {
+      "id": "restart-collection-authority",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "insert",
+      "path": "/candidate/actions",
+      "index": 4,
+      "value": {
+        "label": "restart",
+        "args": [
+          "collection-authority"
+        ]
+      }
+    },
+    {
+      "id": "restart-protected-source",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "insert",
+      "path": "/candidate/actions",
+      "index": 4,
+      "value": {
+        "label": "restart",
+        "args": [
+          "protected-source"
+        ]
+      }
+    },
+    {
+      "id": "restart-protected-session",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "insert",
+      "path": "/candidate/actions",
+      "index": 4,
+      "value": {
+        "label": "restart",
+        "args": [
+          "protected-session"
+        ]
+      }
+    },
+    {
+      "id": "discontinue-protected-source",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/events/0",
+      "old": {
+        "component": "protected-source",
+        "continuity": "intact"
+      },
+      "value": {
+        "component": "protected-source",
+        "continuity": "discontinuous"
+      }
+    },
+    {
+      "id": "rollback-protected-source",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "insert",
+      "path": "/candidate/actions",
+      "index": 4,
+      "value": {
+        "label": "rollback",
+        "args": [
+          "protected-source"
+        ]
+      }
+    },
+    {
+      "id": "open-concurrent-collection",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "insert",
+      "path": "/candidate/actions",
+      "index": 5,
+      "value": {
+        "label": "collection-open",
+        "args": [
+          "c-q2",
+          "c-c2"
+        ]
+      }
+    },
+    {
+      "id": "overlap-collection-interval",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/collections/1/collection_start",
+      "old": 1300,
+      "value": 1199
+    },
+    {
+      "id": "race-temporal-compare-and-advance",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/actions/7",
+      "old": {
+        "label": "validate",
+        "args": [
+          "c-o1"
+        ]
+      },
+      "value": {
+        "label": "concurrent-submit",
+        "args": [
+          "c-o1",
+          "c-o2"
+        ]
+      }
+    },
+    {
+      "id": "order-start-after-freeze-end",
+      "baseline": "history-valid-initial-collection",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/collections/0/collection_start",
+      "old": 1100,
+      "value": 1201
+    },
+    {
+      "id": "exceed-profile-duration-ceiling",
+      "baseline": "history-valid-profile-duration-boundary",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/collections/0/snapshot_freeze_end",
+      "old": 1200,
+      "value": 1201
+    },
+    {
+      "id": "exceed-publisher-duration-ceiling",
+      "baseline": "history-valid-publisher-duration-boundary",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/collections/0/snapshot_freeze_end",
+      "old": 1150,
+      "value": 1151
+    },
+    {
+      "id": "receive-at-challenge-expiry",
+      "baseline": "history-valid-before-challenge-expiry",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/actions/2/args/1",
+      "old": 1999,
+      "value": 2000
+    },
+    {
+      "id": "receive-after-challenge-expiry",
+      "baseline": "history-valid-before-challenge-expiry",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/actions/2/args/1",
+      "old": 1999,
+      "value": 2001
+    },
+    {
+      "id": "omit-cached-current-subject-revalidation",
+      "baseline": "history-valid-cached-fact-revalidation",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/collections/0/current_subject_revalidated",
+      "old": true,
+      "value": false
+    },
+    {
+      "id": "omit-boot-origin-current-subject-revalidation",
+      "baseline": "history-valid-boot-origin-revalidation",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/collections/0/current_subject_revalidated",
+      "old": true,
+      "value": false
+    },
+    {
+      "id": "substitute-client-utc",
+      "baseline": "history-valid-initial-collection",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/collections/0/time_domain",
+      "old": "protected-monotonic",
+      "value": "client-utc"
+    },
+    {
+      "id": "substitute-unknown-critical-time-domain",
+      "baseline": "history-valid-initial-collection",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/collections/0/time_domain",
+      "old": "protected-monotonic",
+      "value": "unknown-critical-time-domain"
+    },
+    {
+      "id": "outage-collection-authority",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "insert",
+      "path": "/candidate/actions",
+      "index": 4,
+      "value": {
+        "label": "outage",
+        "args": [
+          "collection-authority",
+          "c-r0"
+        ]
+      }
+    },
+    {
+      "id": "outage-temporal-store",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "insert",
+      "path": "/candidate/actions",
+      "index": 4,
+      "value": {
+        "label": "outage",
+        "args": [
+          "temporal-store",
+          "c-r1"
+        ]
+      }
+    },
+    {
+      "id": "repair-high-water-from-client",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/temporal_states/0/source",
+      "old": "verifier",
+      "value": "client"
+    },
+    {
+      "id": "remove-temporal-high-water",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/temporal_states/0/status",
+      "old": "available",
+      "value": "deleted"
+    },
+    {
+      "id": "corrupt-temporal-high-water",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/temporal_states/0/status",
+      "old": "available",
+      "value": "corrupt"
+    },
+    {
+      "id": "contradict-temporal-high-water",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/temporal_states/0/status",
+      "old": "available",
+      "value": "contradictory"
+    },
+    {
+      "id": "rollback-temporal-high-water",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/temporal_states/0/status",
+      "old": "available",
+      "value": "rolled-back"
+    },
+    {
+      "id": "reject-claim-after-temporal-advance",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "insert",
+      "path": "/candidate/actions",
+      "index": 8,
+      "value": {
+        "label": "claim-rejection",
+        "args": [
+          "c-o1",
+          "platform-identity"
+        ]
+      }
+    },
+    {
+      "id": "reject-policy-after-temporal-advance",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "insert",
+      "path": "/candidate/actions",
+      "index": 8,
+      "value": {
+        "label": "policy-rejection",
+        "args": []
+      }
+    },
+    {
+      "id": "invalidate-abstract-coverage",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/observations/1/coverage_state",
+      "old": "valid",
+      "value": "invalid"
+    },
+    {
+      "id": "unauthenticate-authority-statement",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/observations/1/authority_statement_state",
+      "old": "authenticated",
+      "value": "unauthenticated"
+    },
+    {
+      "id": "reset-sequence-on-profile-transition",
+      "baseline": "history-valid-profile-transition",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/collections/0/sequence",
+      "old": 2,
+      "value": 1
+    },
+    {
+      "id": "omit-terminal-temporal-deletion",
+      "baseline": "history-valid-terminal-end-deletion",
+      "target": "candidate",
+      "operation": "remove",
+      "path": "/candidate/actions/9",
+      "old": {
+        "label": "deletion",
+        "args": []
+      }
+    },
+    {
+      "id": "reuse-ended-session-epoch",
+      "baseline": "history-valid-terminal-end-deletion",
+      "target": "candidate",
+      "operation": "insert",
+      "path": "/candidate/actions",
+      "index": 10,
+      "value": {
+        "label": "renewal",
+        "args": [
+          "c-q2",
+          "c-c2"
+        ]
+      }
+    },
+    {
+      "id": "substitute-ended-epoch-in-new-session",
+      "baseline": "history-valid-new-session-recovery",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/collections/0/epoch_relation",
+      "old": "epoch-beta",
+      "value": "epoch-alpha"
+    },
+    {
+      "id": "reuse-key-after-terminal",
+      "baseline": "history-valid-new-session-recovery",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/sessions/0/key_handle_association",
+      "old": {
+        "actual_public_key": "5555555555555555555555555555555555555555555555555555555555555555",
+        "session_public_key_id": "6666666666666666666666666666666666666666666666666666666666666666"
+      },
+      "value": {
+        "actual_public_key": "1111111111111111111111111111111111111111111111111111111111111111",
+        "session_public_key_id": "2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    },
+    {
+      "id": "weaken-policy-with-same-key",
+      "baseline": "history-valid-same-session-renewal",
+      "target": "candidate",
+      "operation": "replace",
+      "path": "/candidate/sessions/0/policy_strength",
+      "old": 2,
+      "value": 1
+    }
+  ],
+  "transform_interpreter": {
+    "input": [
+      "one baseline candidate",
+      "one negative transform"
+    ],
+    "forbidden_input": [
+      "baseline oracle",
+      "trusted input",
+      "oracle action",
+      "expected state",
+      "expected disposition"
+    ],
+    "copy_rule": "deep-copy only the selected baseline candidate before applying the transform",
+    "path_rule": "path is an RFC-6901-style absolute pointer and must start with /candidate/; ~0 decodes to ~ and ~1 decodes to /; array components are canonical non-negative decimal indexes",
+    "replace": "require path to exist and equal old by exact JSON equality, require value to differ from old, then perform exactly one replacement",
+    "remove": "require path to exist and equal old by exact JSON equality, then remove exactly that object member or array element",
+    "insert": "require path to name an existing array and index to be between zero and its length inclusive, then insert exactly one deep copy of value at index",
+    "postconditions": [
+      "oracle bytes are unchanged",
+      "exactly one registered operation occurred",
+      "the resulting candidate differs from the baseline candidate",
+      "no candidate reference is resolved from oracle data"
+    ]
+  },
+  "negative_fixture_ids": [
+    [
+      "open-before-challenge-receipt",
+      "history-collection-open-before-challenge"
+    ],
+    [
+      "proof-before-snapshot-freeze",
+      "history-proof-before-snapshot-freeze"
+    ],
+    [
+      "change-after-snapshot-freeze",
+      "history-post-freeze-snapshot-mutation"
+    ],
+    [
+      "substitute-covered-challenge",
+      "history-cross-challenge-substitution"
+    ],
+    [
+      "reuse-collection-sequence",
+      "history-sequence-reused"
+    ],
+    [
+      "decrease-collection-sequence",
+      "history-sequence-decreased"
+    ],
+    [
+      "change-protected-epoch",
+      "history-epoch-changed"
+    ],
+    [
+      "change-protected-source",
+      "history-protected-source-changed"
+    ],
+    [
+      "restart-collection-authority",
+      "history-collection-authority-restarted"
+    ],
+    [
+      "restart-protected-source",
+      "history-protected-source-restarted"
+    ],
+    [
+      "restart-protected-session",
+      "history-protected-session-restarted"
+    ],
+    [
+      "discontinue-protected-source",
+      "history-protected-source-discontinuity"
+    ],
+    [
+      "rollback-protected-source",
+      "history-protected-source-rollback"
+    ],
+    [
+      "open-concurrent-collection",
+      "history-concurrent-collection-open"
+    ],
+    [
+      "overlap-collection-interval",
+      "history-overlapping-collection-interval"
+    ],
+    [
+      "race-temporal-compare-and-advance",
+      "history-concurrent-compare-and-advance"
+    ],
+    [
+      "order-start-after-freeze-end",
+      "history-start-after-freeze-end"
+    ],
+    [
+      "exceed-profile-duration-ceiling",
+      "history-duration-over-profile-ceiling"
+    ],
+    [
+      "exceed-publisher-duration-ceiling",
+      "history-duration-over-publisher-ceiling"
+    ],
+    [
+      "receive-at-challenge-expiry",
+      "history-received-at-challenge-expiry"
+    ],
+    [
+      "receive-after-challenge-expiry",
+      "history-received-after-challenge-expiry"
+    ],
+    [
+      "omit-cached-current-subject-revalidation",
+      "history-stale-cached-fact"
+    ],
+    [
+      "omit-boot-origin-current-subject-revalidation",
+      "history-stale-boot-origin-fact"
+    ],
+    [
+      "substitute-client-utc",
+      "history-client-utc-substitution"
+    ],
+    [
+      "substitute-unknown-critical-time-domain",
+      "history-unknown-time-domain-substitution"
+    ],
+    [
+      "outage-collection-authority",
+      "history-authority-outage-intact-state"
+    ],
+    [
+      "outage-temporal-store",
+      "history-store-outage-intact-state"
+    ],
+    [
+      "repair-high-water-from-client",
+      "history-client-high-water-repair"
+    ],
+    [
+      "remove-temporal-high-water",
+      "history-high-water-missing"
+    ],
+    [
+      "corrupt-temporal-high-water",
+      "history-high-water-corrupt"
+    ],
+    [
+      "contradict-temporal-high-water",
+      "history-high-water-contradictory"
+    ],
+    [
+      "rollback-temporal-high-water",
+      "history-high-water-rolled-back"
+    ],
+    [
+      "reject-claim-after-temporal-advance",
+      "history-claim-rejected-after-advance"
+    ],
+    [
+      "reject-policy-after-temporal-advance",
+      "history-policy-rejected-after-advance"
+    ],
+    [
+      "invalidate-abstract-coverage",
+      "history-invalid-coverage-no-advance"
+    ],
+    [
+      "unauthenticate-authority-statement",
+      "history-unauthenticated-authority-no-advance"
+    ],
+    [
+      "reset-sequence-on-profile-transition",
+      "history-profile-transition-sequence-reset"
+    ],
+    [
+      "omit-terminal-temporal-deletion",
+      "history-terminal-deletion-omitted"
+    ],
+    [
+      "reuse-ended-session-epoch",
+      "history-ended-session-epoch-reused"
+    ],
+    [
+      "substitute-ended-epoch-in-new-session",
+      "history-ended-epoch-in-new-session"
+    ],
+    [
+      "reuse-key-after-terminal",
+      "history-key-reused-after-terminal"
+    ],
+    [
+      "weaken-policy-with-same-key",
+      "history-key-reused-with-weakened-policy"
+    ]
+  ],
+  "focused_expected_tuples": [
+    [
+      "open-before-challenge-receipt",
+      "Conform",
+      "Conform",
+      "EvidenceInvalid"
+    ],
+    [
+      "proof-before-snapshot-freeze",
+      "Conform",
+      "Conform",
+      "EvidenceInvalid"
+    ],
+    [
+      "change-after-snapshot-freeze",
+      "Conform",
+      "Conform",
+      "EvidenceInvalid"
+    ],
+    [
+      "substitute-covered-challenge",
+      "ContextBindingMismatch",
+      "Conform",
+      "Conform"
+    ],
+    [
+      "reuse-collection-sequence",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "decrease-collection-sequence",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "change-protected-epoch",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "change-protected-source",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "restart-collection-authority",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "restart-protected-source",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "restart-protected-session",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "discontinue-protected-source",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "rollback-protected-source",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "open-concurrent-collection",
+      "Conform",
+      "Conform",
+      "EvidenceInvalid"
+    ],
+    [
+      "overlap-collection-interval",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "race-temporal-compare-and-advance",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "order-start-after-freeze-end",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "exceed-profile-duration-ceiling",
+      "Conform",
+      "Conform",
+      "EvidenceInvalid"
+    ],
+    [
+      "exceed-publisher-duration-ceiling",
+      "Conform",
+      "Conform",
+      "EvidenceInvalid"
+    ],
+    [
+      "receive-at-challenge-expiry",
+      "Conform",
+      "Conform",
+      "Expired"
+    ],
+    [
+      "receive-after-challenge-expiry",
+      "Conform",
+      "Conform",
+      "Expired"
+    ],
+    [
+      "omit-cached-current-subject-revalidation",
+      "Conform",
+      "Conform",
+      "EvidenceInvalid"
+    ],
+    [
+      "omit-boot-origin-current-subject-revalidation",
+      "Conform",
+      "Conform",
+      "EvidenceInvalid"
+    ],
+    [
+      "outage-collection-authority",
+      "Conform",
+      "Conform",
+      "AttestationUnavailable"
+    ],
+    [
+      "outage-temporal-store",
+      "Conform",
+      "Conform",
+      "AttestationUnavailable"
+    ],
+    [
+      "repair-high-water-from-client",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "remove-temporal-high-water",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "corrupt-temporal-high-water",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "contradict-temporal-high-water",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "rollback-temporal-high-water",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "reject-claim-after-temporal-advance",
+      "Conform",
+      "Conform",
+      "EvidenceInvalid"
+    ],
+    [
+      "reject-policy-after-temporal-advance",
+      "Conform",
+      "Conform",
+      "PolicyDenied"
+    ],
+    [
+      "invalidate-abstract-coverage",
+      "Conform",
+      "EvidenceInvalid",
+      "Conform"
+    ],
+    [
+      "unauthenticate-authority-statement",
+      "Conform",
+      "EvidenceInvalid",
+      "Conform"
+    ],
+    [
+      "reset-sequence-on-profile-transition",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "omit-terminal-temporal-deletion",
+      "Conform",
+      "Conform",
+      "EvidenceInvalid"
+    ],
+    [
+      "reuse-ended-session-epoch",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "substitute-ended-epoch-in-new-session",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "reuse-key-after-terminal",
+      "Conform",
+      "Conform",
+      "ProtectedSessionLost"
+    ],
+    [
+      "weaken-policy-with-same-key",
+      "Conform",
+      "Conform",
+      "PolicyDenied"
+    ]
+  ],
+  "reachability": {
+    "collection-open": [
+      "history-valid-initial-collection"
+    ],
+    "snapshot-freeze": [
+      "history-valid-initial-collection"
+    ],
+    "drop": [
+      "history-valid-sequence-gap-after-drop"
+    ],
+    "submit": [
+      "history-valid-initial-collection"
+    ],
+    "validate": [
+      "history-valid-initial-collection"
+    ],
+    "claim-rejection": [
+      "reject-claim-after-temporal-advance"
+    ],
+    "policy-rejection": [
+      "reject-policy-after-temporal-advance"
+    ],
+    "renewal": [
+      "history-valid-same-session-renewal"
+    ],
+    "concurrent-submit": [
+      "race-temporal-compare-and-advance"
+    ],
+    "outage": [
+      "outage-collection-authority",
+      "outage-temporal-store"
+    ],
+    "rollback": [
+      "rollback-protected-source"
+    ],
+    "restart": [
+      "restart-collection-authority",
+      "restart-protected-source",
+      "restart-protected-session"
+    ],
+    "terminal-end": [
+      "history-valid-terminal-end-deletion"
+    ],
+    "deletion": [
+      "history-valid-terminal-end-deletion"
+    ]
+  }
+}
