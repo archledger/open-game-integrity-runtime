@@ -602,3 +602,67 @@ This uncommitted test-only candidate is prepared for Task 10 final local
 verification and freeze. The freeze handoff will identify the exact candidate
 and completed checks. Human line review, DCO certification, and separately
 authorized Task 11 commit and publication remain pending.
+
+## M1-014 mock replay verification
+
+The [implementation plan](superpowers/plans/2026-09-04-m1-014-isolated-mock-replay-cache.md)
+inventories 57 runtime cases: 56 private library tests and one external literal
+trace compared directly with the unchanged `ReferenceReplayStore`. Separate
+F01–F03 external compiler probes require working controls and the intended
+feature, trait-bound and return-type failures. The existing 16,384-operation
+M1-008 suite remains independent evidence; it is not counted as new candidate
+coverage.
+
+The inventory covers exact time/window order and rejection side effects;
+fixed record, publisher/account, rate and global-event caps; retained consumed
+records; expiry reuse and deletion through older clones; real competing claims,
+registrations, quota and loss races; terminal loss and poison; and actual
+captured child-test output. Expectations are literal or supplied by the
+independent reference, never computed by candidate helpers. All synthetic-value
+assertions use fixed predicates, so a regression does not print the value it
+was meant to protect.
+
+The plan requires 24 separately saved physical mutation variants with intended
+first-cause detection and exact restoration. Runtime assertion failures,
+captured-output failures and unexpected compile success are recorded separately.
+Compilation/setup failures and timeouts do not earn mutation credit. The split-
+lock mutation may use a mutation-only barrier; correct-source concurrency must
+still use real competing threads.
+
+Final evidence must reconcile every selector, default/all-feature/release Rust
+result, compile control, mutation log, formatting, Clippy, rustdoc, metadata,
+ADR and existing Python/conformance check. Current CI covers Rust with all
+features; it does not run the local Python conformance gate. No workflow
+expansion is part of M1-014.
+
+### M1-014 local candidate verification, 2026-09-04
+
+| Check | Observed result |
+| --- | --- |
+| New mock tests | 56 library cases and one external literal/reference case pass. |
+| Default workspace | 225 runtime/integration tests and 111 doctests pass. |
+| All-feature workspace | 282 runtime/integration tests and 114 doctests pass. |
+| All-feature release | 282 runtime/integration tests and 114 doctests pass. |
+| External compiler probes | Three controls compile; feature absence, durable-trait use and capability substitution fail with the intended diagnostics. |
+| Physical mutation campaign | 24 selected distinct patches detected, each with normal and exact-restored passing runs. |
+| Additional capacity controls | Two intact-policy extra-backing-slot controls pass. |
+| Other gates | Formatting, strict all-target/all-feature Clippy, all-feature rustdoc, metadata, 13 ADRs, bootstrap, aggregate and prior Python/conformance checks pass locally. |
+
+The mutation results comprise 22 behavioral panic detections, one captured-output
+detection and one unexpected-compile-success detection; they are not 24 runtime
+assertions. The first M23 attempt formatted an already-redacted publisher value
+and did not introduce the intended disclosure. That invalid semantic setup is
+retained separately; the corrected raw-value mutation is the selected M23.
+A repeated M09 run records the cross-publisher admission callsite behind its
+fixed generic fixture panic.
+
+The aggregate runs in a disposable copy of the candidate with a normal Git
+index. Exporting a candidate `GIT_INDEX_FILE` into fixture self-tests interferes
+with their intentional corrupt-index cases; it is not a valid aggregate setup.
+Direct candidate metadata/ADR checks can use a temporary index in a narrowly
+scoped command. The contributor's real index remains unchanged.
+
+These results apply to the local research candidate and its recorded source
+hashes. They establish neither production durability nor secure erasure,
+performance, exhaustive scheduling, or future CI success. Human review and
+acceptance of Proposed ADR-0013 remain required.

@@ -9,6 +9,9 @@ repository.workspace = true
 authors.workspace = true
 publish = false
 
+[features]
+research-mock-replay = []
+
 [dependencies]
 ogir-model = { path = "../ogir-model", version = "=0.0.0" }
 ogir-protocol = { path = "../ogir-protocol", version = "=0.0.0" }

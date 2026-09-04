@@ -755,3 +755,22 @@ authorized Task 11 commit and publication remain pending.
   reflects independently derived accounting. This separate Task 10 record
   preserves the completed Task 8 fields byte-for-byte; future additions must
   retain that append-only history distinction.
+
+## 2026-09-04 — Expiry deletion cannot prove permanent nonce uniqueness
+
+- **Context:** M1-014 isolated mock replay design review.
+- **Mistaken assumption:** A bounded cache that deletes an expired key can
+  promise to reject that publisher/nonce for the rest of the process lifetime.
+- **Observed failure:** After deletion, a newly valid registration has no stored
+  tombstone to distinguish it from a first issuance. The exact old registration
+  is still rejected by its expired window, which is a different claim.
+- **Security or quality impact:** Conflating these properties would overstate
+  replay protection or encourage a hidden unbounded nonce-history set.
+- **Permanent regression test:** M1-014 case G08 is required to distinguish
+  expired old input from a newly valid same-key registration after purge; its
+  execution evidence belongs to the final implementation report.
+- **New prevention rule:** State the retention horizon with the replay claim;
+  trusted issuance remains responsible for fresh nonces. Do not infer permanent
+  uniqueness or crash recovery from a volatile bounded model.
+- **Documentation or agent-policy updates:** The M1-014 design, issue, proposed
+  ADR, architecture and threat/test descriptions separate these obligations.

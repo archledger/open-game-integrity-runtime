@@ -765,7 +765,12 @@ Starts in M0. Owns GitHub controls, dependency policy, releases, provenance, upd
 12. Define binding-transcript inputs without choosing crypto.
     M1-012F resolves its evidence-time semantic prerequisite before fixtures.
 13. Define abstract JSON conformance fixtures.
-14. Implement in-memory replay cache and tests.
+14. Implement an opt-in isolated mock replay cache and tests under the
+    [M1-014 design](superpowers/specs/2026-09-04-m1-014-isolated-mock-replay-cache-design.md):
+    immutable finite policy, shared atomic mock operations, bounded rate history,
+    terminal state loss, and independent tests. It must not implement the durable
+    `ReplayStore` contract or issue verifier authority. Durable storage and
+    restart recovery remain separately scoped work.
 15. Specify renewal and revocation semantics.
 
 ## Mock proof
