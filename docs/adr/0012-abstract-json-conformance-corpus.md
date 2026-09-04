@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-09-01
 - Owners: Initial maintainer
-- Related issues: Not yet created; this accepted design must be linked to the canonical M1-013 issue before implementation
+- Related issues: [Approved local M1-013 issue](../../planning/issues/013-abstract-json-conformance-fixtures.md); no live issue created
 - Supersedes: None
 - Superseded by: None
 
@@ -121,9 +121,9 @@ On 2026-09-02, the decision owner accepted this exact ADR as part of approved
 temporary-index tree `f3326ab93724b583b72601b4c50627ce624c1120`, binary
 patch SHA-256
 `8c8c4d912a20a107a8fdead0bd15ba18471a4ab4ca37dce7f968caa425ff8d99`.
-Acceptance authorizes implementation planning only; issue creation, plan
-execution, implementation, commit/sign-off, and publication remain separately
-gated.
+That acceptance authorized implementation planning only; issue creation, plan
+execution, implementation, commit/sign-off, and publication were separately
+gated. Later local approvals are recorded in the implementation evidence below.
 
 Task 13 defines one test-only abstract JSON conformance corpus under
 `lab/conformance/`. It has exactly two fixture kinds:
@@ -408,3 +408,36 @@ acceptable rollback.
   [M1-013 design](../superpowers/specs/2026-09-01-m1-013-abstract-json-conformance-fixtures-design.md),
   security invariants, architecture, threat model, test strategy, and AI
   development policy are project authorities.
+
+## M1-013 local implementation evidence
+
+The accepted planning-only decision and its recorded approval above remain
+historical provenance. Later human approvals authorized the
+[canonical local issue](../../planning/issues/013-abstract-json-conformance-fixtures.md)
+and local implementation through Task 9. Tasks 2–8 are accepted for continued
+local development; this evidence update does not change the accepted format
+contract. The
+[admitted JSON planning registry](../superpowers/plans/2026-09-02-m1-013-format-v1-registry.json)
+and hash-bound shards supply its precise definitions; the admitted
+[corpus manifest](../../lab/conformance/corpus.json) supplies execution inventory
+and coverage. The existing ADR index entry still describes this decision.
+
+The shared bounded loader, canonical inventory/bijection checks, independent
+snapshot/history oracles, focused invocations, operation accounting, and safe
+CLI/attack compatibility are implemented. The
+[test strategy](../TEST_STRATEGY.md#m1-013-local-implementation-evidence) links
+source and tests and records the Task 8 verification results. Independent
+accounting predictions were checked against consumer vectors; reference input
+reads now follow the same hostile-file boundary. No second normative table is
+introduced by those observed counts.
+
+This is test-only evidence. It selects no production representation, parser,
+cryptography, TPM mapping, persistence, permit, or admission implementation.
+This uncommitted test-only candidate is prepared for Task 10 final local
+verification and freeze. The freeze handoff will identify the exact candidate
+and completed checks. Human line review, DCO certification, and separately
+authorized Task 11 commit and publication remain pending.
+
+The original pre-acceptance rollback paragraph is historical;
+current uncommitted changes must be reversed only by owned delta after checking
+later work, while preserving the accepted contract and existing gates.

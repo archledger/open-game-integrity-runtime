@@ -655,3 +655,103 @@ Do not use this document to expose embargoed vulnerability details before coordi
   collateral failures, syntax failures, and zero-test runs as invalid evidence.
 - **Documentation or agent-policy updates:** The test strategy records the
   corrected 148-row support and requires a 154-row cause audit before closure.
+
+## M1-013 local implementation evidence
+
+- **Date:** 2026-09-03
+- **Context:** M1-013 Task 8 independent accounting and resource review found two
+  test-only assurance gaps. The
+  [admitted JSON planning registry](superpowers/plans/2026-09-02-m1-013-format-v1-registry.json)
+  was unchanged; these were implementation and proof defects.
+- **Mistaken assumption:** A reference model could safely read repository files
+  outside the consumer's hostile-file admission boundary, and agreement between
+  consumer and reference counters demonstrated complete assertion accounting
+  and invocation isolation.
+- **Observed failure:** The accounting reference performed unbounded reads
+  without admitting the manifest before fixture access. Consumer/reference
+  agreement omitted explicit assertion predicates, while checked focused calls
+  could spend the caller's operation scope.
+- **Security or quality impact:** The independent check exposed the test gate
+  to hostile repository input and could agree with incomplete accounting.
+  Caller-scope leakage broke the fresh-invocation resource contract. These were
+  repository-tool assurance defects, not production authorization findings.
+- **Permanent regression test:** Boundary cases in
+  [`test-conformance-accounting-reference.py`](../scripts/test-conformance-accounting-reference.py)
+  cover manifest-before-fixture admission and bounded, non-symlink, stable
+  regular-file reads. Cases in
+  [`test-conformance-accounting.py`](../scripts/test-conformance-accounting.py)
+  cover explicit assertion charging before work and caller-budget preservation
+  around checked focused invocations. The implementation and independent
+  formulas were corrected before final vector comparison.
+- **New prevention rule:** Audit every reader in the test gate, including
+  reference models; count actual predicates independently instead of treating
+  counter agreement as completeness; and assert caller-budget preservation
+  around each public scoped entry point. Mutation evidence must name its
+  intended assertion failure and separate physical source changes from
+  in-process substitutions.
+- **Documentation or agent-policy updates:** This lesson and the
+  [accepted evidence summary](TEST_STRATEGY.md#m1-013-local-implementation-evidence)
+  record the corrected scope and counts. The
+  [documentation regression](../scripts/test-conformance-documentation.py)
+  checks this record's date and required fields; removing any field fails.
+
+These fixes prove repository-tool behavior, not production parser or
+persistence safety.
+
+This uncommitted test-only candidate is prepared for Task 10 final local
+verification and freeze. The freeze handoff will identify the exact candidate
+and completed checks. Human line review, DCO certification, and separately
+authorized Task 11 commit and publication remain pending.
+
+## M1-013 Task 10 review lessons
+
+- **Date:** 2026-09-03
+- **Context:** Independent Task 10 review found inventory, fixture-reproduction,
+  classification, and test assertion disclosure defects in the uncommitted
+  test-only corpus tooling. The
+  [admitted JSON planning registry](superpowers/plans/2026-09-02-m1-013-format-v1-registry.json)
+  and production contracts remained unchanged.
+- **Mistaken assumption:** Eventual inventory rejection bounded enumeration;
+  expected fixture outcomes could supply classification rules; token equality
+  identified a typed semantic role; and unittest assertion formatting safely
+  handled repository-controlled bytes and filenames.
+- **Observed failure:** Directory scans retained every entry before checking
+  inventory. Normal early-fixture execution accepted unrelated malformed bytes
+  and reordered pre-shape claims; oversized input was rejected before exact
+  reproduction could be proved. Shape outcomes changed when only expectations
+  or transforms changed. Session provenance-only changes and unrelated token
+  aliases were misclassified. Failed assertions printed hostile input. A fixed
+  assertion exception then classified uncaught consumer assertions as errors
+  until the intended invocation boundaries translated them explicitly.
+- **Security or quality impact:** These defects weakened bounded work,
+  independent negative-case evidence, disposition fidelity, and test-output
+  confidentiality. Both incorrect semantic dispositions rejected the input;
+  no production authorization or cryptographic claim follows from these fixes.
+- **Permanent regression test:** The
+  [`Task10ReviewTests` regressions](../scripts/test-abstract-conformance.py)
+  exercise `test_inventory_stops_on_first_unexpected_name`, normal layer-2 and
+  layer-3 reproduction, `test_oversized_layer2_fixture_cannot_claim_reproduction`,
+  snapshot/history expectation and transform independence, protected-session
+  provenance and unrelated claim-token aliases, and
+  `test_hostile_fixture_assertion_output_is_redacted`. The generated-consumer
+  assertion test preserves failure classification while leaving RuntimeError
+  as an error. `ReviewFixReferenceTests` in the
+  [independent reference suite](../scripts/test-conformance-accounting-reference.py)
+  derives the added content predicate and typed value comparison units before
+  consumer measurement. The
+  [documentation suite](../scripts/test-conformance-documentation.py)
+  requires both dated eight-field lesson records and rejects omitted fields.
+- **New prevention rule:** Reject unexpected or duplicate inventory entries
+  during iteration; never count pre-comparison resource rejection as exact
+  fixture reproduction. Derive outcomes from admitted semantic roles rather
+  than fixture expectations, and classify the actual field disagreement.
+  Redact assertion values without weakening predicates or converting unrelated
+  exceptions into expected failures. Preserve completed lesson records and
+  append a separate dated record for later findings.
+- **Documentation or agent-policy updates:** The mutable evidence sections
+  describe preparation for final local verification and freeze without claiming
+  unexecuted gates complete. The
+  [evidence table](TEST_STRATEGY.md#m1-013-local-implementation-evidence)
+  reflects independently derived accounting. This separate Task 10 record
+  preserves the completed Task 8 fields byte-for-byte; future additions must
+  retain that append-only history distinction.

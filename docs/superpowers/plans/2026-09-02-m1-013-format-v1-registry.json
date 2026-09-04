@@ -16,12 +16,12 @@
     {
       "name": "histories",
       "path": "docs/superpowers/plans/m1-013-format-v1/histories.json",
-      "sha256": "38933bfc558a048f4287876fd0e055c5f00df3cbc7a0efe95b2111002718df3a"
+      "sha256": "ebec2373fb28d99507a8101f0c0d960abc1101c91b00eea05b11d0c144688823"
     },
     {
       "name": "validators",
       "path": "docs/superpowers/plans/m1-013-format-v1/validators.json",
-      "sha256": "9e869858b5b04aad8dc129eeaaa09cc6d812ac53138be4522bb822d308080787"
+      "sha256": "1aea0e7e8767d85317514db21ae140447c2448c836e38dc3f029b19de7a9b3d1"
     }
   ]
 }

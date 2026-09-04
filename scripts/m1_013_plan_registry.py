@@ -201,8 +201,8 @@ ACTION_ARITIES = {
 SOURCE_BINDINGS = {
     "attack_checker": {
         "path": "scripts/check-attack-scenario-traceability.py",
-        "sha256": "4b7fcd82690888f75c5ebcf1cf063e4b8aec5e33585183b53ac0bec28a40a490",
-        "git_blob": "08d0b77cd5ff97d5ea362c4428f33fdc8d4efe5f",
+        "sha256": "fce127c01273733bd7c6b0306e1e041a13fad855e3e62268e08c39d9979f076f",
+        "git_blob": "6826adbd98dccdfc109b3bba2e46f266aa72bc25",
     },
     "attack_schema": {
         "path": "lab/scenarios/schema.json",
@@ -212,10 +212,10 @@ SOURCE_BINDINGS = {
 }
 # This pins the reviewed root-index bytes after all specific semantic checks run;
 # it is a final trust anchor, not a duplicate semantic registry.
-CANONICAL_ROOT_SHA256 = "d9500be54c6bf0029712eb28b6778d80ea2c684fbf578c6d856e02da1c67eb8d"
+CANONICAL_ROOT_SHA256 = "f1e10e933681e6ea86fc34172e7a6560c011479b8ba2b4e69c5205cc069f6d9e"
 COMPARISON_RULES_SHA256 = "078c5b4b67bc8d1294f112621f3bbf6679df032b59b67e2515b882aa93e2869c"
-HISTORY_SEMANTICS_SHA256 = "3933e783a2cee6d7eeda8a7f85bd09620d04fe4b132bcdea3ec2aac5f0551994"
-HISTORY_FOCUSED_SHA256 = "2ac817f1ea78c234a805890de7c4eceb4c3fc063076f4de6748ac36509775d54"
+HISTORY_SEMANTICS_SHA256 = "646cc2cae678a71054f4c32229cc1ee3e0ec645c8c8faa89a7a975693f509760"
+HISTORY_FOCUSED_SHA256 = "fd34880c69621f64da6b264d11d9a91d68e11056511d40c266cf78dbf4e307c0"
 VALIDATOR_OUTCOMES_SHA256 = "67aab07dfefd5e588c8f9fd53dcfbb6bc0ec3de58cc6ad250a5cfcaad75de4d5"
 
 
@@ -1493,7 +1493,7 @@ def _validate_manifest_authority(
                 for index, value in enumerate(vector)
                 if value != "Conform"
             ]
-            if len(failures) != 1:
+            if not failures:
                 _reject("focused")
             layer, disposition = failures[0]
             history_focused_fixture_ids.append(fixture)

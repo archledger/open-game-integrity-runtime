@@ -709,17 +709,17 @@
         ],
         [
           "state.collection",
-          "duration-within-effective-ceiling",
-          "state.profile",
-          "EvidenceInvalid",
-          "clear-evidence"
-        ],
-        [
-          "state.collection",
           "matches-high-water",
           "state.high_water",
           "ProtectedSessionLost",
           "terminal-loss"
+        ],
+        [
+          "state.collection",
+          "duration-within-effective-ceiling",
+          "state.profile",
+          "EvidenceInvalid",
+          "clear-evidence"
         ]
       ],
       "success_disposition": "Conform",
@@ -933,8 +933,38 @@
         "clear-evidence",
         [
           "set",
-          "state.profile",
-          "trusted_profile"
+          "state.profile.profile_id",
+          "trusted_profile.id"
+        ],
+        [
+          "set",
+          "state.profile.authority_contract",
+          "trusted_profile.authority_contract"
+        ],
+        [
+          "set",
+          "state.profile.protected_source",
+          "trusted_profile.protected_source"
+        ],
+        [
+          "set",
+          "state.profile.profile_duration_ceiling",
+          "trusted_profile.profile_duration_ceiling"
+        ],
+        [
+          "set",
+          "state.profile.publisher_duration_ceiling",
+          "trusted_profile.publisher_duration_ceiling"
+        ],
+        [
+          "set",
+          "state.profile.effective_duration_ceiling",
+          "trusted_profile.effective_duration_ceiling"
+        ],
+        [
+          "set",
+          "state.profile.policy_strength",
+          "trusted_profile.policy_strength"
         ],
         [
           "set",
@@ -6257,7 +6287,7 @@
     ],
     [
       "reuse-key-after-terminal",
-      "Conform",
+      "ContextBindingMismatch",
       "Conform",
       "ProtectedSessionLost"
     ],

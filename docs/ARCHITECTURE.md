@@ -792,3 +792,37 @@ Only the publisher decides gameplay behavior. OGIR reason codes must not claim t
 ### Production topology
 
 Requires independent audits, reproducible builds, signed provenance, compromise-resilient updates, formal incident response, public conformance tests, policy transparency, and an operational security reserve.
+
+## M1-013 local implementation evidence
+
+Tasks 2–8 now implement test-only repository conformance tooling. The
+[admitted JSON planning registry](superpowers/plans/2026-09-02-m1-013-format-v1-registry.json)
+and its hash-bound shards define the format contract; the admitted
+[`lab/conformance/corpus.json`](../lab/conformance/corpus.json) is the execution
+inventory and coverage authority. Executable builders implement registered
+transforms without providing a second expected-result or coverage table.
+
+[`scripts/bounded_json.py`](../scripts/bounded_json.py) admits bounded, stable,
+regular non-symlink files through descriptor-relative traversal. Both the
+abstract-conformance and attack-scenario consumers use this neutral seam.
+[`scripts/abstract_conformance.py`](../scripts/abstract_conformance.py) admits
+the canonical manifest and executable bijection before using expectations, then
+stops at the earliest failing layer: file admission, shape, independent
+reconstruction, abstract coverage, and appraisal or lifecycle evaluation follow
+that corpus boundary. The focused harness invokes the three semantic oracles
+separately with fresh baseline prerequisites, so later appraisal cannot hide
+missing coverage. Candidate registries resolve history references; keyed trusted
+oracle inputs reconstruct observations and remain separate from candidate state.
+
+Operation charging precedes modeled predicates, comparisons, and actions in a
+fresh invocation scope. The aggregate also applies a finite outer timeout.
+[Test strategy](TEST_STRATEGY.md#m1-013-local-implementation-evidence) records the
+observed corpus, focused checks, independent accounting, and compatibility
+evidence. JSON is fixture notation only; these results add no runtime authority,
+production transcript representation, cryptography, TPM mapping, persistence,
+permit, or admission mechanism.
+
+This uncommitted test-only candidate is prepared for Task 10 final local
+verification and freeze. The freeze handoff will identify the exact candidate
+and completed checks. Human line review, DCO certification, and separately
+authorized Task 11 commit and publication remain pending.

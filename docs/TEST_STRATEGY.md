@@ -362,8 +362,8 @@ or exact selected-policy identity.
 | Semantic identity | Raw digest bytes or a marker cannot replace a semantic manifest or measurement identity. |
 | Representation and mechanism | Literal byte, canonical representation, algorithm, domain-label, and proof-coverage expectations cannot be tested until M2 selects them. |
 
-The future property strategy keeps three assertions independent so one stage
-cannot mask another:
+The semantic property strategy keeps three assertions independent so one stage
+cannot mask another; M1-013 now exercises these at the abstract fixture layer:
 
 1. Independently reconstruct the verifier transcript and assert exact semantic
    equality with the valid attester transcript before coverage or appraisal.
@@ -377,10 +377,12 @@ cannot mask another:
 A separate generated-claim-set strategy enforces the exact eight Base plus two
 profile-specific vocabulary: isolated value binding for every required meaning,
 required membership, no undeclared members, and exactly-once meanings.
-Membership and shape assertions remain separate from value mutations. These are
-future executable strategies; no runtime test or validator is implemented by
-M1-012. M1-012F defines evidence-time semantic behavior; runtime representation
-and mechanism tests remain M2/M3 work.
+Membership and shape assertions remain separate from value mutations. M1-012
+itself implemented no runtime test or validator. M1-013 supplies abstract
+reconstruction, coverage, and appraisal tests; the profile cryptographic
+proof-coverage checks above still require M2 mechanism selection. M1-012F
+defines evidence-time semantic behavior; runtime representation and mechanism
+tests remain M2/M3 work.
 
 ### Evidence-time authority matrix
 
@@ -534,3 +536,69 @@ Adds:
 ## Mandatory failure behavior
 
 A test failure cannot be resolved by weakening the invariant, skipping the test, broadening an allowlist, or suppressing a warning without a reviewed explanation and threat-model update.
+
+## M1-013 local implementation evidence
+
+Tasks 2–8 provide executable test-only evidence for the semantic matrices above.
+The [admitted JSON planning registry](superpowers/plans/2026-09-02-m1-013-format-v1-registry.json)
+and its hash-bound shards own format definitions; the admitted
+[corpus manifest](../lab/conformance/corpus.json) owns execution inventory and
+coverage. This table records observed candidate evidence, not new format
+requirements or expected operation counts in the planning registry.
+
+| Evidence | Observed count |
+| --- | --- |
+| snapshots | 69 |
+| histories | 55 |
+| normal_vectors | 124 |
+| focused_rows | 98 |
+| focused_invocations | 294 |
+| validator_vectors | 202 |
+| normal_operations | 407444 |
+
+[`test-conformance-documentation.py`](../scripts/test-conformance-documentation.py)
+reads working candidate documents, including the local issue, and checks this
+table against admitted inventory and `predict_corpus` in the
+[independent accounting reference](../scripts/conformance_accounting_reference.py).
+The normal operation total includes manifest admission plus each fixture's
+fresh earliest-stop scope. It is implementation evidence, not a production
+limit or a count of Python instructions.
+
+[`test-abstract-conformance.py`](../scripts/test-abstract-conformance.py) and
+[`test-history-conformance.py`](../scripts/test-history-conformance.py) exercise
+six-layer ordering, exact single-change reproduction, claim-order independence,
+duplicate preservation, independent oracles, and history continuity. Every
+focused row uses three independent invocations with fresh prerequisites.
+[`test-conformance-accounting.py`](../scripts/test-conformance-accounting.py)
+checks charge-before-work, fresh scope, explicit assertion charging, and the
+private million-operation boundary. The
+[reference tests](../scripts/test-conformance-accounting-reference.py) compare
+independently predicted vectors for normal, raw focused, checked focused, and
+validator invocations; they also reject unsafe reference file reads. Predictions
+were recorded before comparison in Task 8. Counters do not supply their own
+expected values.
+
+At Task 8 acceptance, warnings-as-errors suites passed: abstract 434, history
+192, bounded loader 68, attack parity 54, accounting 34, and independent
+reference 22 tests. The complete aggregate passed 225 Rust runtime/integration
+tests and 111 doctests, with formatting, Clippy, rustdoc, and dependency checks.
+These are checkpoint results, not a claim that Task 10 final verification ran.
+The accepted Task 8 evidence also contains nine isolated physical diagnostic
+mutation/restoration pairs and eleven in-process reference sensitivity mutants;
+the latter are not physical source mutations. A nonzero setup/import exit is
+never behavioral mutation evidence.
+
+[`scripts/check.sh`](../scripts/check.sh) runs conformance normal/self-tests and
+both accounting suites under a hard 30-second timeout. The timeout was exercised
+against a TERM-ignoring parent and child; both were absent after termination.
+Existing attack command lines retain their previous timeout behavior, and
+[`test-attack-scenario-parity.py`](../scripts/test-attack-scenario-parity.py)
+compares frozen pre-migration outputs, locations, and exits. New conformance
+output uses only fixed safe labels and excludes fixture values and paths.
+
+JSON remains fixture notation only. Production encoding, parser differential
+checks, cryptographic proof, TPM mapping, and persistence remain M2/M3 work.
+This uncommitted test-only candidate is prepared for Task 10 final local
+verification and freeze. The freeze handoff will identify the exact candidate
+and completed checks. Human line review, DCO certification, and separately
+authorized Task 11 commit and publication remain pending.

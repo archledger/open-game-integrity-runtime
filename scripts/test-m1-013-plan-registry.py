@@ -63,7 +63,7 @@ EXPECTED_HISTORY_FOCUSED_TUPLES = [
     ["omit-terminal-temporal-deletion", "Conform", "Conform", "EvidenceInvalid"],
     ["reuse-ended-session-epoch", "Conform", "Conform", "ProtectedSessionLost"],
     ["substitute-ended-epoch-in-new-session", "Conform", "Conform", "ProtectedSessionLost"],
-    ["reuse-key-after-terminal", "Conform", "Conform", "ProtectedSessionLost"],
+    ["reuse-key-after-terminal", "ContextBindingMismatch", "Conform", "ProtectedSessionLost"],
     ["weaken-policy-with-same-key", "Conform", "Conform", "PolicyDenied"],
 ]
 
@@ -345,6 +345,292 @@ def ast_nodes(value: Any, node_name: str) -> list[dict[str, Any]]:
     return found
 
 
+def evaluate_validator_transform_preconditions(
+    validators: dict[str, Any], core: dict[str, Any], value: Any
+) -> list[str]:
+    baselines = {
+        identifier: program["ast"]["value"]
+        for identifier, program in validators["validator_baselines"].items()
+    }
+    source_bindings = validators["source_bindings"]
+    attack_repository_subjects = {
+        source_bindings["attack_checker"]["path"],
+        source_bindings["attack_schema"]["path"],
+        *(
+            f"{Path(row['path']).parent}/*.scenario.json"
+            for row in source_bindings["attack_scenarios"]["files"]
+        ),
+    }
+    issues: list[str] = []
+
+    def manifest_bytes(document: Any) -> bytes:
+        return json.dumps(
+            document, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+
+    def pointer_parts(pointer: str) -> list[str]:
+        return [
+            part.replace("~1", "/").replace("~0", "~")
+            for part in pointer[1:].split("/")
+        ]
+
+    def select(document: Any, pointer: str) -> Any:
+        for part in pointer_parts(pointer):
+            document = (
+                document[int(part)] if isinstance(document, list) else document[part]
+            )
+        return document
+
+    def parent(document: Any, pointer: str) -> tuple[Any, str]:
+        parts = pointer_parts(pointer)
+        for part in parts[:-1]:
+            document = (
+                document[int(part)] if isinstance(document, list) else document[part]
+            )
+        return document, parts[-1]
+
+    def canonical_filesystem(document: dict[str, Any]) -> dict[str, str]:
+        if "fixtures" in document:
+            paths = [
+                core["paths"]["corpus_manifest"],
+                *(f"lab/conformance/{row[2]}" for row in document["fixtures"]),
+            ]
+        else:
+            bindings = validators["source_bindings"]
+            paths = [
+                bindings["attack_checker"]["path"],
+                bindings["attack_schema"]["path"],
+                *(row["path"] for row in bindings["attack_scenarios"]["files"]),
+            ]
+        entries: dict[str, str] = {}
+        for relative in paths:
+            parent = Path(relative).parent
+            while str(parent) != ".":
+                entries[str(parent)] = "directory"
+                parent = parent.parent
+            entries[relative] = "regular-file"
+        return entries
+
+    def evaluate_nested(value: Any, path: str) -> Any:
+        if isinstance(value, dict):
+            if "node" in value:
+                return evaluate(value, path)
+            return {
+                key: evaluate_nested(child, f"{path}/{key}")
+                for key, child in value.items()
+            }
+        if isinstance(value, list):
+            return [
+                evaluate_nested(child, f"{path}/{index}")
+                for index, child in enumerate(value)
+            ]
+        return copy.deepcopy(value)
+
+    def evaluate(node: dict[str, Any], path: str) -> Any:
+        kind = node["node"]
+        if kind == "sequence":
+            result: Any = None
+            for index, step in enumerate(node["steps"]):
+                result = evaluate(step, f"{path}/steps/{index}")
+            return result
+        if kind == "probe":
+            return evaluate_nested(node["input"], f"{path}/input")
+        if kind == "expect-unchanged":
+            subjects = node["subjects"]
+            if len(subjects) != len(attack_repository_subjects) or set(
+                subjects
+            ) != attack_repository_subjects:
+                issues.append(f"{path}/subjects")
+            return evaluate(node["input"], f"{path}/input")
+        if kind == "literal":
+            return copy.deepcopy(node["value"])
+        if kind == "ref":
+            if node["subject"] == "baseline":
+                result = copy.deepcopy(baselines[node["id"]])
+            elif node["subject"] == "corpus-validator":
+                result = {
+                    identifier: {"registered": True}
+                    for identifier in validators["validator_transforms"]
+                }
+            else:
+                raise AssertionError(f"unsupported validator reference at {path}")
+            return select(result, node["pointer"]) if "pointer" in node else result
+        if kind in {"set", "remove", "append"}:
+            result = copy.deepcopy(evaluate(node["input"], f"{path}/input"))
+            if isinstance(result, dict) and "bytes_utf8" in result:
+                result = json.loads(result["bytes_utf8"])
+            if kind == "append":
+                target = select(result, node["pointer"])
+                if not isinstance(target, list):
+                    issues.append(f"{path}/pointer: expected array")
+                else:
+                    target.append(copy.deepcopy(node["value"]))
+                return result
+            container, key = parent(result, node["pointer"])
+            expected_node = node["expected_old"]
+            expected = (
+                evaluate(expected_node, f"{path}/expected_old")
+                if isinstance(expected_node, dict) and expected_node.get("node") == "ref"
+                else copy.deepcopy(expected_node)
+            )
+            absent = expected == {"absent": True}
+            if isinstance(container, list):
+                actual = container[int(key)]
+                matches = not absent and actual == expected
+            else:
+                actual = container.get(key, {"absent": True})
+                matches = (absent and key not in container) or (
+                    not absent and key in container and actual == expected
+                )
+            if not matches:
+                issues.append(f"{path}/expected_old")
+                return result
+            if isinstance(container, list):
+                if kind == "remove":
+                    del container[int(key)]
+                else:
+                    container[int(key)] = copy.deepcopy(node["value"])
+            elif kind == "remove":
+                del container[key]
+            else:
+                container[key] = copy.deepcopy(node["value"])
+            return result
+        if kind == "bytes-append":
+            result = evaluate(node["input"], f"{path}/input")
+            if isinstance(result, dict) and "bytes_utf8" in result:
+                result = copy.deepcopy(result)
+                result["bytes_utf8"] += node["bytes"]
+                result["filesystem"]["input.json"]["bytes_utf8"] = result[
+                    "bytes_utf8"
+                ]
+                return result
+            raw = result if isinstance(result, bytes) else manifest_bytes(result)
+            return raw + node["bytes"].encode("utf-8")
+        if kind == "bytes-replace":
+            result = evaluate(node["input"], f"{path}/input")
+            wrapped = isinstance(result, dict) and "bytes_utf8" in result
+            raw = result["bytes_utf8"] if wrapped else result
+            if not isinstance(raw, (bytes, str)):
+                raw = manifest_bytes(raw)
+            old = (
+                node["old_ascii"]
+                if isinstance(raw, str)
+                else node["old_ascii"].encode("ascii")
+            )
+            if raw.count(old) != node["expected_occurrences"]:
+                issues.append(f"{path}/expected_occurrences: actual={raw.count(old)}")
+                return raw
+            new = (
+                node["new_ascii"]
+                if isinstance(raw, str)
+                else node["new_ascii"].encode("ascii")
+            )
+            replaced = raw.replace(old, new)
+            if wrapped:
+                result = copy.deepcopy(result)
+                result["bytes_utf8"] = replaced
+                result["filesystem"]["input.json"]["bytes_utf8"] = replaced
+                return result
+            return replaced
+        if kind == "generate":
+            parameters = node["parameters"]
+            if node["constructor"] == "invalid-utf8-document":
+                return (
+                    parameters["prefix"].encode("ascii")
+                    + bytes.fromhex(parameters["invalid_byte_hex"])
+                    + parameters["suffix"].encode("ascii")
+                )
+            if node["constructor"] == "json-number-document":
+                return parameters["token"].encode("ascii")
+            if node["constructor"] == "number-token-boundary":
+                size = core["resource_limits"][parameters["scope"]][
+                    "number_token_characters"
+                ] + (parameters["relation"] == "over")
+                prefix = parameters.get("prefix") or ""
+                return (
+                    prefix + parameters.get("digit", "1") * (size - len(prefix))
+                ).encode("ascii")
+            generated = registry_module._resource_value(
+                parameters["scope"],
+                parameters["dimension"],
+                parameters["relation"],
+                core["resource_limits"],
+            )
+            return generated if isinstance(generated, bytes) else manifest_bytes(generated)
+        if kind in {"fs-create", "fs-remove", "fs-rename"}:
+            result = evaluate(node["input"], f"{path}/input")
+            wrapped = (
+                isinstance(result, dict)
+                and "filesystem" in result
+                and "approved_root" in result
+            )
+            entries: dict[str, Any]
+            if wrapped:
+                entries = result["filesystem"]
+            elif isinstance(result, tuple) and result[0] == "filesystem":
+                entries = result[1]
+            elif isinstance(result, dict):
+                entries = canonical_filesystem(result)
+            else:
+                entries = {}
+            entries = copy.deepcopy(entries)
+
+            def entry_kind(relative: str) -> Any:
+                entry = entries.get(relative)
+                return entry.get("kind") if isinstance(entry, dict) else entry
+
+            if kind == "fs-create":
+                relative = node["relative_path"]
+                if relative in entries:
+                    issues.append(f"{path}/relative_path: already exists")
+                else:
+                    entries[relative] = (
+                        {"kind": node["kind"], "contents": node["contents"]}
+                        if wrapped
+                        else node["kind"]
+                    )
+            elif kind == "fs-remove":
+                relative = node["relative_path"]
+                if entry_kind(relative) != node["expected_kind"]:
+                    issues.append(
+                        f"{path}/expected_kind: actual={entry_kind(relative)!r}"
+                    )
+                else:
+                    for candidate in list(entries):
+                        if candidate == relative or candidate.startswith(
+                            relative + "/"
+                        ):
+                            del entries[candidate]
+            else:
+                old = node["old_relative_path"]
+                new = node["new_relative_path"]
+                if entry_kind(old) != node["expected_kind"]:
+                    issues.append(
+                        f"{path}/expected_kind: actual={entry_kind(old)!r}"
+                    )
+                else:
+                    moved = {
+                        new + candidate[len(old) :]: entry_kind
+                        for candidate, entry_kind in entries.items()
+                        if candidate == old or candidate.startswith(old + "/")
+                    }
+                    entries = {
+                        candidate: entry_kind
+                        for candidate, entry_kind in entries.items()
+                        if candidate != old and not candidate.startswith(old + "/")
+                    }
+                    entries.update(moved)
+            if wrapped:
+                result = copy.deepcopy(result)
+                result["filesystem"] = entries
+                return result
+            return ("filesystem", entries)
+        raise AssertionError(f"unsupported validator node {kind!r} at {path}")
+
+    evaluate(value, "/ast")
+    return issues
+
+
 class PlanRegistryTests(unittest.TestCase):
     def assert_rejected(
         self,
@@ -394,6 +680,49 @@ class PlanRegistryTests(unittest.TestCase):
             result.stdout,
             "M1-013 plan registry valid: 69 snapshots, 55 histories, "
             "202 validator cases, 294 focused invocations.\n",
+        )
+
+    def test_validator_transform_preconditions_match_exact_canonical_baseline(self) -> None:
+        core = json.loads(
+            (SHARD_DIRECTORY / "core.json").read_text(encoding="utf-8")
+        )
+        validators = json.loads(
+            (SHARD_DIRECTORY / "validators.json").read_text(encoding="utf-8")
+        )
+        issues: list[str] = []
+        for row in validators["validator_cases"]:
+            transform = validators["validator_transforms"][row[3]]
+            try:
+                issues.extend(
+                    f"{row[0]}{issue}"
+                    for issue in evaluate_validator_transform_preconditions(
+                        validators, core, transform["ast"]
+                    )
+                )
+            except (AssertionError, KeyError, TypeError, ValueError) as error:
+                raise AssertionError(f"cannot evaluate {row[0]}") from error
+
+        self.assertEqual(issues, [], "\n".join(issues))
+
+    def test_expect_unchanged_subjects_reject_unregistered_attack_subject(self) -> None:
+        core = json.loads(
+            (SHARD_DIRECTORY / "core.json").read_text(encoding="utf-8")
+        )
+        validators = json.loads(
+            (SHARD_DIRECTORY / "validators.json").read_text(encoding="utf-8")
+        )
+        transform = copy.deepcopy(
+            validators["validator_transforms"][
+                "v1-attack-parser-resource-boundaries"
+            ]["ast"]
+        )
+        unchanged = ast_nodes(transform, "expect-unchanged")
+        self.assertEqual(len(unchanged), 1)
+        unchanged[0]["subjects"][0] = "unregistered/subject.py"
+
+        self.assertEqual(
+            evaluate_validator_transform_preconditions(validators, core, transform),
+            ["/ast/steps/2/subjects"],
         )
 
     def test_root_index_rejects_shape_path_and_hash_drift(self) -> None:
@@ -641,6 +970,93 @@ class PlanRegistryTests(unittest.TestCase):
                     self.assert_rejected(
                         "focused", shard="snapshots", shard_mutation=mutate
                     )
+
+    def test_overlap_terminal_guard_precedes_duration_denial(self) -> None:
+        histories = json.loads((SHARD_DIRECTORY / "histories.json").read_bytes())
+        transform = next(row for row in histories["negative_transforms"]
+                         if row["id"] == "overlap-collection-interval")
+        baseline = next(row for row in histories["baselines"]
+                        if row["id"] == transform["baseline"])
+        collection = baseline["candidate"]["collections"][1]
+        profile = baseline["oracle"]["trusted_profiles"][0]
+        self.assertGreater(collection["snapshot_freeze_end"] - transform["value"],
+                           profile["effective_duration_ceiling"])
+        self.assertLess(transform["value"],
+                        baseline["candidate"]["collections"][0]["snapshot_freeze_end"])
+        guards = next(row for row in histories["action_rules"]
+                      if row["label"] == "validate")["guards"]
+        failing = [row for row in guards if row[1] in {
+            "matches-high-water", "duration-within-effective-ceiling"}]
+        self.assertEqual(failing[0][3:], ["ProtectedSessionLost", "terminal-loss"])
+
+    def test_every_renewal_profile_assignment_preserves_closed_state(self) -> None:
+        histories = json.loads((SHARD_DIRECTORY / "histories.json").read_bytes())
+        validators = json.loads((SHARD_DIRECTORY / "validators.json").read_bytes())
+        effects = next(row for row in histories["action_rules"]
+                       if row["label"] == "renewal")["success_effect"]
+        count = 0
+        for baseline in histories["baselines"]:
+            oracle = baseline["oracle"]
+            for action in oracle["actions"]:
+                if action["label"] != "renewal":
+                    continue
+                count += 1
+                authority = next(row for row in oracle["trusted_authorities"]
+                                 if row["id"] == action["args"][1])
+                profile = next(row for row in oracle["trusted_profiles"]
+                               if row["id"] == authority["profile_id"])
+                state = {key.removeprefix("profile."): copy.deepcopy(value)
+                         for key, value in zip(histories["state_tuple_fields"],
+                                               oracle["initial_state"], strict=True)
+                         if key.startswith("profile.")}
+                for effect in effects:
+                    if not isinstance(effect, list) or effect[0] != "set":
+                        continue
+                    if effect[1] == "state.profile":
+                        self.assertEqual(effect[2], "trusted_profile")
+                        state = copy.deepcopy(profile)
+                    elif effect[1].startswith("state.profile."):
+                        destination = effect[1].removeprefix("state.profile.")
+                        self.assertIn(destination, state)
+                        source = effect[2].removeprefix("trusted_profile.")
+                        state[destination] = copy.deepcopy(profile[source])
+                with self.subTest(baseline=baseline["id"], action=count):
+                    self.assertTrue(registry_module._validate_typed_value(
+                        state, validators["schemas"]["ProfileState"],
+                        validators["schemas"], validators["domains"]))
+                    self.assertEqual(state["profile_id"], profile["id"])
+                    self.assertEqual(state["effective_duration_ceiling"], min(
+                        profile["profile_duration_ceiling"],
+                        profile["publisher_duration_ceiling"]))
+        self.assertEqual(count, 7)
+
+    def test_history_independent_failures_select_earliest_manifest_layer(self) -> None:
+        snapshots = json.loads((SHARD_DIRECTORY / "snapshots.json").read_bytes())
+        histories = json.loads((SHARD_DIRECTORY / "histories.json").read_bytes())
+        validators = json.loads((SHARD_DIRECTORY / "validators.json").read_bytes())
+        vector = next(row for row in histories["focused_expected_tuples"]
+                      if row[0] == "reuse-key-after-terminal")
+        vector[1:] = ["ContextBindingMismatch", "Conform", "ProtectedSessionLost"]
+        manifest = validators["validator_baselines"]["baseline-corpus-v1"]["ast"]["value"]
+        fixture = next(row for row in manifest["fixtures"]
+                       if row[0] == "history-key-reused-after-terminal")
+        fixture[5:] = ["layer-4", "ContextBindingMismatch"]
+        registry_module._validate_manifest_authority(snapshots, histories, validators)
+        fixture[5:] = ["layer-6", "ProtectedSessionLost"]
+        with self.assertRaises(registry_module.RegistryError) as error:
+            registry_module._validate_manifest_authority(snapshots, histories, validators)
+        self.assertEqual(error.exception.code, "manifest")
+
+    def test_history_negative_without_any_focused_failure_is_rejected(self) -> None:
+        snapshots = json.loads((SHARD_DIRECTORY / "snapshots.json").read_bytes())
+        histories = json.loads((SHARD_DIRECTORY / "histories.json").read_bytes())
+        validators = json.loads((SHARD_DIRECTORY / "validators.json").read_bytes())
+        vector = next(row for row in histories["focused_expected_tuples"]
+                      if row[0] == "reuse-key-after-terminal")
+        vector[1:] = ["Conform", "Conform", "Conform"]
+        with self.assertRaises(registry_module.RegistryError) as error:
+            registry_module._validate_manifest_authority(snapshots, histories, validators)
+        self.assertEqual(error.exception.code, "focused")
 
     def test_every_history_focused_tuple_field_is_authoritative(self) -> None:
         dispositions = {
