@@ -826,3 +826,30 @@ This uncommitted test-only candidate is prepared for Task 10 final local
 verification and freeze. The freeze handoff will identify the exact candidate
 and completed checks. Human line review, DCO certification, and separately
 authorized Task 11 commit and publication remain pending.
+
+## M1-014 isolated research replay model
+
+The opt-in `research-mock-replay` feature in `ogir-verifier` scopes a volatile
+research model, as specified in the [M1-014 design](superpowers/specs/2026-09-04-m1-014-isolated-mock-replay-cache-design.md)
+and proposed [ADR-0013](adr/0013-isolated-mock-replay-cache.md). It has no
+`ReplayStore` implementation, implicit store conversion, verifier-capability
+producer or daemon activation. A raw mock claim cannot establish publisher
+freshness or authorize a session. ADR-0005's durable issuer/store contract and
+all existing verifier gates remain unchanged.
+
+One shared mutex owns the modeled time floor and fixed record/event slots;
+clones share the same limits and state. Registration checks exact publisher/nonce
+identity, binding, window and finite policy; claim irreversibly consumes a
+retained matching record. Time observation precedes later rejection. Counts
+include consumed records and expired entries until an operation explicitly
+collects them. `observe_time`, `claim` and `stats` never collect.
+
+Retention is driven by caller-supplied modeled time and explicit purge or valid
+registration cleanup. The identifier-payload bound `768*R + 128*E` describes
+logical retained text, not exact heap allocation or RSS. No clock, deletion SLA,
+secure-erasure guarantee, constant-time lookup or fairness claim is supplied.
+Terminal simulated loss drops the shared data and makes all old handles
+unavailable; a new instance is an independent experiment, never crash recovery.
+After expiry deletion the exact old registration remains expired; a newly valid
+same-key registration is possible, so research issuers remain responsible for
+fresh nonces. The mock keeps no permanent nonce-history set.

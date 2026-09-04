@@ -4613,6 +4613,8 @@ fn validate_parent_verification_source(source: &str) -> Result<(), String> {
         r#"
             #![forbid(unsafe_code)]
             mod freshness;
+            #[cfg(feature = "research-mock-replay")]
+            pub mod mock_replay;
             mod verification;
             pub use freshness::{
                 ChallengeBinding, FreshnessChecked, FreshnessGuard, ReplayKey,
@@ -6449,6 +6451,24 @@ fn authority_inventory_pins_parent_verification_source() {
             "pub use freshness::ReplayKey;\npub use freshness::{",
             1,
         ),
+        source.replacen("#[cfg(feature = \"research-mock-replay\")]", "", 1),
+        source.replacen(
+            "#[cfg(feature = \"research-mock-replay\")]",
+            "#[cfg(test)]",
+            1,
+        ),
+        source.replacen(
+            "#[cfg(feature = \"research-mock-replay\")]",
+            "#[cfg(all())]",
+            1,
+        ),
+        source.replacen("research-mock-replay", "other-research-feature", 1),
+        source.replacen(
+            "pub mod mock_replay;",
+            "#[path = \"alternate.rs\"] pub mod mock_replay;",
+            1,
+        ),
+        format!("{source}\npub use mock_replay::MockReplayCache;"),
         format!("{source}\nconst UNKNOWN_PARENT_ITEM: () = ();"),
     ] {
         assert_ne!(mutation, source);
@@ -6476,21 +6496,27 @@ fn authority_inventory_rejects_sibling_standard_macro_exports() {
 
 #[test]
 fn sibling_macro_surface_pins_exports_and_reserved_definitions_independently() {
-    let source = include_str!("../freshness.rs");
-    if let Err(error) = validate_sibling_macro_surface(source) {
-        panic!("current sibling macro surface was rejected: {error}");
-    }
-    for mutation in [
-        format!("{source}\n#[macro_export]\nmacro_rules! unrelated {{ () => {{ true }}; }}"),
-        format!("{source}\nmacro_rules! matches {{ ($($tokens:tt)*) => {{ false }}; }}"),
-        format!("{source}\nmacro_rules! unreachable {{ ($($tokens:tt)*) => {{ loop {{}} }}; }}"),
-        format!("{source}\npub macro matches() {{ false }}"),
-        format!("{source}\npub macro unreachable() {{ loop {{}} }}"),
+    for source in [
+        include_str!("../freshness.rs"),
+        include_str!("../mock_replay.rs"),
     ] {
-        assert!(
-            validate_sibling_macro_surface(&mutation).is_err(),
-            "unapproved sibling macro surface was accepted"
-        );
+        if let Err(error) = validate_sibling_macro_surface(source) {
+            panic!("current sibling macro surface was rejected: {error}");
+        }
+        for mutation in [
+            format!("{source}\n#[macro_export]\nmacro_rules! unrelated {{ () => {{ true }}; }}"),
+            format!("{source}\nmacro_rules! matches {{ ($($tokens:tt)*) => {{ false }}; }}"),
+            format!(
+                "{source}\nmacro_rules! unreachable {{ ($($tokens:tt)*) => {{ loop {{}} }}; }}"
+            ),
+            format!("{source}\npub macro matches() {{ false }}"),
+            format!("{source}\npub macro unreachable() {{ loop {{}} }}"),
+        ] {
+            assert!(
+                validate_sibling_macro_surface(&mutation).is_err(),
+                "unapproved sibling macro surface was accepted"
+            );
+        }
     }
 }
 

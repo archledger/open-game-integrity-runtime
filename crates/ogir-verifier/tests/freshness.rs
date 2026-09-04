@@ -2,6 +2,10 @@
 
 mod support;
 
+#[cfg(feature = "research-mock-replay")]
+#[path = "support/mock_replay_reference.rs"]
+mod mock_replay_reference;
+
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::num::{NonZeroU64, NonZeroUsize};

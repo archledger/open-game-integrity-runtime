@@ -447,3 +447,29 @@ This uncommitted test-only candidate is prepared for Task 10 final local
 verification and freeze. The freeze handoff will identify the exact candidate
 and completed checks. Human line review, DCO certification, and separately
 authorized Task 11 commit and publication remain pending.
+
+## M1-014 mock replay boundary
+
+The [isolated mock design](superpowers/specs/2026-09-04-m1-014-isolated-mock-replay-cache-design.md)
+models replay, substitution, rollback, quota races and loss within one research
+run. The boundary is a trusted synthetic research caller invoking a volatile
+library model; it is not publisher authentication, parser admission, or the
+authoritative clock/durable-store boundary. Neither daemon opts in, and raw
+success cannot satisfy a verifier gate.
+
+Fixed policy and bounded record/global-event slots prevent a sequence of new
+publishers and short-lived challenges from accumulating unlimited rate history.
+All operations share one lock; both issued and consumed records count until
+expiry. Missing registration returns unavailable without resetting unrelated
+healthy state. Poison or impossible future-event state causes terminal loss,
+with no recovery toggle. A downstream author could still write a dishonest
+`ReplayStore` wrapper; the repository supplies none and does not claim to make
+arbitrary downstream trust assertions safe.
+
+Remaining risks include caller-selected impractical limits, lock contention,
+forward modeled-time jumps, lazy retention when callers stop purging, ordinary
+allocation failure, and loss on process exit. These are research limitations,
+not production availability or recovery guarantees. Forgetting an expired key
+cannot establish nonce uniqueness across all time. Diagnostics stay fixed and
+redacted; aggregate functional counters are not telemetry. Production A0/A1
+replay and A5 compromise still require the unchanged authoritative mechanisms.

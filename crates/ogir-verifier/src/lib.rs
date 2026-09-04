@@ -4,6 +4,8 @@
 //! Deterministic verifier interfaces. Cryptographic verification is not implemented yet.
 
 mod freshness;
+#[cfg(feature = "research-mock-replay")]
+pub mod mock_replay;
 mod verification;
 
 pub use freshness::{
