@@ -1,6 +1,6 @@
 # ADR-0013: Isolate a bounded volatile mock replay cache
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-09-04
 - Owners: Initial maintainer
 - Related issues: [Approved local M1-014 issue](../../planning/issues/014-isolated-mock-replay-cache.md); [approved M1-014 design](../superpowers/specs/2026-09-04-m1-014-isolated-mock-replay-cache-design.md)

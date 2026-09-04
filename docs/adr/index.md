@@ -29,4 +29,4 @@ stay traceable.
 | [ADR-0010](0010-semantic-evidence-binding-transcript.md) | Accepted | Evidence mechanisms cover one closed semantic transcript reconstructed independently by the verifier while EvidenceBundle remains external. | None | None |
 | [ADR-0011](0011-challenge-anchored-evidence-time.md) | Accepted | Evidence time is one challenge-anchored protected collection interval with scoped epoch and monotonic same-session continuity. | None | None |
 | [ADR-0012](0012-abstract-json-conformance-corpus.md) | Accepted | One abstract JSON corpus uses snapshot/history fixtures, one authoritative manifest, one shared bounded loader, and six ordered fail-closed validation layers while production representation remains deferred. | None | None |
-| [ADR-0013](0013-isolated-mock-replay-cache.md) | Proposed | An opt-in bounded volatile mock replay cache remains isolated from durable freshness authority and production recovery. | None | None |
+| [ADR-0013](0013-isolated-mock-replay-cache.md) | Accepted | An opt-in bounded volatile mock replay cache remains isolated from durable freshness authority and production recovery. | None | None |
