@@ -28,3 +28,4 @@ stay traceable.
 | [ADR-0009](0009-capability-gated-appraisal-results.md) | Accepted | Unsigned Appraisal Results preserve exact context, claim-free phase-eligible failures, and one-use allow construction. | None | None |
 | [ADR-0010](0010-semantic-evidence-binding-transcript.md) | Accepted | Evidence mechanisms cover one closed semantic transcript reconstructed independently by the verifier while EvidenceBundle remains external. | None | None |
 | [ADR-0011](0011-challenge-anchored-evidence-time.md) | Accepted | Evidence time is one challenge-anchored protected collection interval with scoped epoch and monotonic same-session continuity. | None | None |
+| [ADR-0012](0012-abstract-json-conformance-corpus.md) | Accepted | One abstract JSON corpus uses snapshot/history fixtures, one authoritative manifest, one shared bounded loader, and six ordered fail-closed validation layers while production representation remains deferred. | None | None |

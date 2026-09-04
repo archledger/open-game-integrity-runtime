@@ -14,6 +14,8 @@ import tempfile
 from pathlib import Path
 from typing import NoReturn
 
+import bounded_json
+
 TRACE_FIELDS = ("owner", "required_assurance_profile")
 EXPECTED_SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema"
 ATTACKER_PATTERN = r"^A[0-8]$"
@@ -32,6 +34,17 @@ MAX_STRING_CHARACTERS = 4_096
 MAX_NUMBER_CHARACTERS = 64
 MAX_TOTAL_NODES = 4_096
 MAX_SCENARIO_FILES = 128
+ATTACK_JSON_LIMITS = bounded_json.JsonLimits(
+    bytes=MAX_DOCUMENT_BYTES,
+    depth=MAX_NESTING_DEPTH,
+    object_fields=MAX_OBJECT_FIELDS,
+    array_items=MAX_ARRAY_ITEMS,
+    string_characters=MAX_STRING_CHARACTERS,
+    object_key_characters=MAX_STRING_CHARACTERS,
+    number_token_characters=MAX_NUMBER_CHARACTERS,
+    total_nodes=MAX_TOTAL_NODES,
+    root_depth=0,
+)
 SUPPORTED_SCHEMA_KEYS = {
     "$id",
     "$schema",
@@ -156,17 +169,54 @@ def parse_json_document(text: str, source: str) -> object:
 def read_json_document(path: Path, source: str) -> object:
     label = diagnostic_source(source)
     try:
-        with path.open("rb") as stream:
-            encoded = stream.read(MAX_DOCUMENT_BYTES + 1)
-    except OSError as error:
-        raise ScenarioValidationError(f"cannot read {label}") from error
-    if len(encoded) > MAX_DOCUMENT_BYTES:
-        fail(f"{label}: document exceeds {MAX_DOCUMENT_BYTES} bytes")
-    try:
-        text = encoded.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise ScenarioValidationError(f"{label}: invalid UTF-8") from error
-    return parse_json_document(text, label)
+        return bounded_json.load_bounded_json(
+            path.parent, path.name, ATTACK_JSON_LIMITS, label
+        )
+    except bounded_json.BoundedJsonError as error:
+        messages = {
+            "io": f"cannot read {label}",
+            "bytes": f"{label}: document exceeds {MAX_DOCUMENT_BYTES} bytes",
+            "utf8": f"{label}: invalid UTF-8",
+            "duplicate": f"{label}: duplicate JSON key",
+            "non-json-constant": f"{label}: non-JSON numeric constant",
+            "integer-token": (
+                f"{label}: integer exceeds {MAX_NUMBER_CHARACTERS} characters"
+            ),
+            "number-token": (
+                f"{label}: number exceeds {MAX_NUMBER_CHARACTERS} characters"
+            ),
+            "finite-range": f"{label}: number is outside the finite parser range",
+            "total-nodes": f"{label}: document exceeds {MAX_TOTAL_NODES} total nodes",
+            "depth": f"{label}: document exceeds nesting depth {MAX_NESTING_DEPTH}",
+            "object-fields": f"{label}: object exceeds {MAX_OBJECT_FIELDS} fields",
+            "array-items": f"{label}: array exceeds {MAX_ARRAY_ITEMS} items",
+            "object-key": (
+                f"{label}: object key exceeds {MAX_STRING_CHARACTERS} characters"
+            ),
+            "string": f"{label}: string exceeds {MAX_STRING_CHARACTERS} characters",
+            "invalid-number": f"{label}: invalid JSON number",
+        }
+        if error.category == "malformed":
+            message = f"{label}:{error.line}:{error.column}: malformed JSON"
+        elif error.category == "recursion":
+            recursion_messages = {
+                "array": (
+                    f"{label}: maximum recursion depth exceeded while decoding a "
+                    "JSON array from a unicode string"
+                ),
+                "object": (
+                    f"{label}: maximum recursion depth exceeded while decoding a "
+                    "JSON object from a unicode string"
+                ),
+                "generic": f"{label}: maximum recursion depth exceeded",
+                "unknown": f"{label}: maximum recursion depth exceeded",
+            }
+            message = recursion_messages.get(
+                error.context, f"{label}: maximum recursion depth exceeded"
+            )
+        else:
+            message = messages.get(error.category, f"cannot read {label}")
+        raise ScenarioValidationError(message) from error
 
 
 def fail(message: str) -> NoReturn:

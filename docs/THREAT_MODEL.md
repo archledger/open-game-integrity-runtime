@@ -415,3 +415,35 @@ M1-012F evidence-time threat mapping:
 | Diagnostic/correlation disclosure | `OGIR-PRIVACY-EVIDENCE-TRANSCRIPT-DIAGNOSTICS-001` | `initial-maintainer` | `all-protected-modes` |
 
 The threat model is updated in the same pull request as any changed trust boundary, privilege, protocol field, evidence claim, policy control, or signing/update path.
+
+## M1-013 local implementation evidence
+
+Tasks 2–8 implement the test-only corpus boundary described in
+[ADR-0012](adr/0012-abstract-json-conformance-corpus.md), using the
+[admitted JSON planning registry](superpowers/plans/2026-09-02-m1-013-format-v1-registry.json).
+A1/A6 repository-controlled paths and bytes cross a shared bounded loader;
+manifest inventory and executable-table bijection are checked before fixture
+expectations are consumed. The normal pipeline stops at the earliest failure.
+Independent reconstruction, exact abstract coverage, and appraisal/lifecycle
+checks address A5 oracle-design mistakes without trusting candidate pass labels.
+Focused calls rebuild prerequisites independently. History tests cover temporal
+high-water, concurrent advancement, terminality, and retention semantics.
+
+A8 diagnostic disclosure is addressed by fixed consumer/checkpoint/error-class
+labels, suppressed unexpected-exception details, hostile-argument tests, and
+value-independent diagnostic cases. The attack consumer retains its reviewed
+compatibility formatter, including bounded numeric locations. The accounting
+reference also admits bounded stable files before inspecting them. See the
+[test evidence](TEST_STRATEGY.md#m1-013-local-implementation-evidence) and
+[regression lessons](LESSONS_LEARNED.md#m1-013-local-implementation-evidence).
+
+Residual risks remain: a compromised maintainer or CI runner can change both
+fixtures and checks; a jointly wrong oracle and fixture can agree; synthetic
+histories are finite; and correctly bound dishonest claims remain trusted-
+producer risk. Abstract coverage proves no cryptographic mechanism, and modeled
+high-water/deletion proves no durable storage or secure erasure. No production
+representation, parser, persistence, privilege, or authorization is added.
+This uncommitted test-only candidate is prepared for Task 10 final local
+verification and freeze. The freeze handoff will identify the exact candidate
+and completed checks. Human line review, DCO certification, and separately
+authorized Task 11 commit and publication remain pending.

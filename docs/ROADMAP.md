@@ -832,3 +832,29 @@ Do not start with:
 - a public bug bounty before triage and response capability exists.
 
 The first credible achievement is a narrow end-to-end protocol that survives replay, patching, cross-session substitution, and malformed input.
+
+## M1-013 local implementation evidence
+
+Tasks 2–8 are accepted for continued local development: the shared bounded
+loader, abstract snapshot/history corpus, ordered independent validation
+oracles, attack-consumer parity, operation accounting, and aggregate integration
+are implemented and remain uncommitted. The
+[admitted JSON planning registry](superpowers/plans/2026-09-02-m1-013-format-v1-registry.json)
+is the format authority; the
+[test strategy](TEST_STRATEGY.md#m1-013-local-implementation-evidence) records
+observed evidence without duplicating normative case inventories.
+
+Task 9 documents this test-only implementation.
+
+This uncommitted test-only candidate is prepared for Task 10 final local
+verification and freeze. The freeze handoff will identify the exact candidate
+and completed checks. Human line review, DCO certification, and separately
+authorized Task 11 commit and publication remain pending.
+No live issue, remote branch, or pull request was created for this work.
+
+JSON remains repository fixture notation. M2 still owns production transcript
+representation, canonical encoding, parser and differential/fuzz validation,
+cryptographic mechanism and protected-result work. M3 owns TPM-specific mapping.
+Production persistence, permit, proof-of-possession, renewal authorization,
+and protected-session admission remain separately governed work. The local
+conformance result grants no publisher authorization or production readiness.

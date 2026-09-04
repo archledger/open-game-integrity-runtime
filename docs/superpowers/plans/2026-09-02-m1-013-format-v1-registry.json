@@ -1,0 +1,27 @@
+{
+  "format_version": 1,
+  "registry_kind": "m1-013-sharded-planning-registry-index",
+  "closed": true,
+  "shards": [
+    {
+      "name": "core",
+      "path": "docs/superpowers/plans/m1-013-format-v1/core.json",
+      "sha256": "2c2a076470a62970ee68f1eac2314deda12696fcbfa84ca96d85330bddf13482"
+    },
+    {
+      "name": "snapshots",
+      "path": "docs/superpowers/plans/m1-013-format-v1/snapshots.json",
+      "sha256": "a3929fefdf396ad2f32a0936ada71ec5e184520c6c001c0f99b7cab0eb47d76e"
+    },
+    {
+      "name": "histories",
+      "path": "docs/superpowers/plans/m1-013-format-v1/histories.json",
+      "sha256": "ebec2373fb28d99507a8101f0c0d960abc1101c91b00eea05b11d0c144688823"
+    },
+    {
+      "name": "validators",
+      "path": "docs/superpowers/plans/m1-013-format-v1/validators.json",
+      "sha256": "1aea0e7e8767d85317514db21ae140447c2448c836e38dc3f029b19de7a9b3d1"
+    }
+  ]
+}
