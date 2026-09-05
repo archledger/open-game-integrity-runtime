@@ -1,6 +1,6 @@
 # ADR-0014: Specify renewal and revocation semantics
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-09-04
 - Owners: Initial maintainer
 - Related issues: [Local M1-015 issue](../../planning/issues/015-renewal-revocation-semantics.md); [approved semantic design](../superpowers/specs/2026-09-04-m1-015-renewal-revocation-semantics-design.md)
