@@ -1,0 +1,38 @@
+{
+  "id": "OGIR-RENEWAL-GENERATION-RACE-001",
+  "title": "Renewal generation race",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": [
+    "protected_session_authorization",
+    "publisher_scoped_authority_state"
+  ],
+  "preconditions": [
+    "all enforcing replicas refer to one configured logical session-authorization owner",
+    "a committed successor is installed at that owner before the hostile predecessor replay",
+    "separate reset branches exercise precommit concurrency response loss and terminal invalidation"
+  ],
+  "steps": [
+    "Race two fresh renewal attempts against one predecessor; lose a committed response; try cancellation and a second grant. Install the exact successor, then replay the predecessor at another replica or deliver success after termination.",
+    "the primary rejection is the old predecessor presented after owner installation; owner unavailability in a separate branch is unavailable rather than stale-cache authorization",
+    "committed response loss permits only exact-artifact redelivery before deadlines; precommit cancellation may retry with a fresh challenge but cannot roll back consumption or temporal state"
+  ],
+  "expected": {
+    "decision": "deny",
+    "reason": "stale-or-terminal-session",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "M1-015 R06: Session termination racing renewal commit/installation prevents activation and cannot recreate deleted active state",
+    "M1-015 R07: Two attempts using the same predecessor yield at most one committed successor; retries cannot roll back temporal high-water",
+    "M1-015 R08: Delayed predecessor delivery after successor installation cannot restore older rights; duplicate current-artifact delivery cannot extend time",
+    "M1-015 R13: After owner installation/termination, another RP replica cannot authorize from stale local state; inability to consult coherent owner state is unavailable",
+    "M1-015 R14: Committed successor response loss permits only exact-artifact redelivery before deadlines; cancellation cannot mint another successor from its predecessor",
+    "Existing security invariants: 3–5,9–10,15,41–43"
+  ],
+  "residual_risk": [
+    "The scenario specifies required ordering; it does not supply a distributed transaction or liveness proof.",
+    "Specified attack requirement only; runtime implementation and proof remain deferred."
+  ]
+}

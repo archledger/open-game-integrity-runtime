@@ -1,0 +1,38 @@
+{
+  "id": "OGIR-RENEWAL-PENDING-EXPIRY-001",
+  "title": "Renewal pending expiry",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": [
+    "protected_session_authorization",
+    "publisher_scoped_authority_state"
+  ],
+  "preconditions": [
+    "a current permit and required views were independently validated for one live context",
+    "one fresh renewal attempt is pending and no successor is installed before permit expiry"
+  ],
+  "steps": [
+    "begin a fresh renewal while the current permit remains independently valid",
+    "delay successor installation until the current permit reaches its exact exclusive expiry",
+    "present the late successor after terminal invalidation; attempt to use client or result timestamps to restore freshness"
+  ],
+  "expected": {
+    "decision": "deny",
+    "reason": "expired",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "M1-015 R01: Successful same-context renewal uses a new registered challenge, new current claims, same key/epoch, increasing sequence and every verifier/permit/activation gate",
+    "M1-015 R02: Reusing a nonce/evidence/old renewal cannot authorize; later rejection never releases its consumed nonce",
+    "M1-015 R03: Starting/retrying renewal never changes the old permit's expiry or revocation-view deadline",
+    "M1-015 R04: With intact continuity and still-valid trusted views, a transient attempt failure grants nothing but may leave independently valid existing authorization usable",
+    "M1-015 R05: Exact permit/view expiry stops authorization; a reply arriving after terminal invalidation cannot revive the session",
+    "M1-015 R12: Expired challenge, profile-duration violation or late evidence cannot become fresh through permit/result/client timestamps",
+    "Existing security invariants: 3,5,7–10,41–42"
+  ],
+  "residual_risk": [
+    "Trusted time and timely reevaluation remain deployment prerequisites.",
+    "Specified attack requirement only; runtime implementation and proof remain deferred."
+  ]
+}

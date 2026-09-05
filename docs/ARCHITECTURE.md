@@ -604,7 +604,71 @@ verifier identity and signature
 
 ### 7.5 Renewal
 
-A renewal binds a fresh nonce to the existing session key and active policy. It must not silently relax requirements.
+[ADR-0014](adr/0014-renewal-revocation-semantics.md) is the Proposed integration
+record for the human-approved
+[M1-015 semantics](superpowers/specs/2026-09-04-m1-015-renewal-revocation-semantics-design.md).
+The following are required future authorization relationships, not existing
+permit types, public factories, wire fields or production services.
+
+A **session-authorization owner**, designated by trusted publisher/relying-party
+configuration, orders the current admitted generation, terminal disposition and
+one pending renewal for an exact publisher/protected-session context. Every
+relying-party replica uses coherent owner state. An unexpired replica-local
+permit cache cannot override successor installation or termination; failure to
+establish coherence is unavailable. Independent active owners and ownership
+migration are outside the first profile.
+
+A pending attempt, a committed-but-not-installed successor and the current
+installed generation are distinct. Generation is not the evidence collection
+sequence. The owner is an abstract authority obligation, not a selected
+replication or database mechanism.
+
+Renewal requires a new durably registered challenge, new current evidence,
+independently selected context and every existing verifier gate. It preserves
+publisher/protected-session/live subject, actual key/handle, scoped epoch and
+temporal high-water. Sequences strictly increase but may have gaps; collection
+intervals do not overlap. Nonce consumption and validated temporal observations
+survive later rejection. An unsigned report, lookup handle, research-cache
+success or prior `RevocationChecked` gate is not continuing permit authority.
+
+Before committing a successor, the issuer rechecks the exact live predecessor,
+validity, current policy/transition and applicable revocation, ordered against
+accepted updates and terminal state. At most one successor commits from that
+predecessor. The relying party performs final validation and owner installation as one
+fenced operation against current predecessor/terminal state, predecessor
+effective deadline and every issuer-authority, policy, revocation and required-
+dependency update accepted before installation. Inside that fence it rechecks
+issuer authority, exact context, possession, complete current dependencies,
+successor validity and predecessor eligibility; validation performed earlier is
+insufficient. No subsequent
+replica decision may authorize the predecessor. Earlier committed decisions
+are not rewritten; ongoing activity has a finite reevaluation contract.
+
+A cancelled uncommitted attempt may retry with a fresh challenge while intact
+eligibility remains. Loss of a committed response permits only bounded,
+authenticated redelivery of the exact artifact, without re-signing or new
+deadlines, before predecessor eligibility and successor validity expire. It
+cannot justify cancelling the commitment and issuing another successor. A
+currently installed duplicate only gets idempotent acknowledgement after
+current validation.
+
+Starting renewal grants nothing and extends nothing. The old current permit
+can remain usable only while all its independent authorization requirements
+hold. Local renewal still traverses
+`Active -> RenewalPending -> PermitReceived -> Active` with a newly validated
+permit; the old permit cannot reactivate the local graph. Expiry without a
+usable successor, terminal continuity loss and known applicable revocation
+prevent late installation. A terminal session recovers through new initial
+establishment with a new session/key/handle/challenge and appraisal.
+
+A changed policy/profile may preserve the session only with an explicit
+publisher-approved non-weakening transition relation, independently selected
+context and a proven same epoch/high-water. Higher version numbers alone do
+not prove stronger assurance. An unproven transition requires new initial
+establishment. Known revocation or violated minimum versions cannot be bypassed
+by migration; a weaker/restricted mode is a separate explicit new context.
+The existing valid temporal-profile-transition fixture remains temporal evidence,
+not proof of complete renewal authorization.
 
 ### 7.6 Revocation
 
@@ -617,6 +681,52 @@ Revocations may target:
 - attestation identities;
 - verifier keys;
 - game or runtime manifests.
+
+Every applicable class requires a publisher-authorized source/delegation,
+namespace, match rule and safe finite retention contract. The verifier derives
+a complete bounded dependency set from authenticated material and trusted
+configuration. The relying party establishes current applicability through a
+trusted publisher path; this does not require exposing raw attestation identity
+or dependencies to the game. Missing mandatory coverage is unavailable or
+unsupported, never an empty revocation set.
+
+A **usable revocation view** authenticates publisher/source authority and scope,
+complete coverage, trust generation and ordered revision, freshness origin and
+exclusive deadline. Source authority itself must remain valid. Receipt time
+cannot refresh old information. Deltas must first prove complete reconstruction
+against the correct base. Invalid, unauthorized or older candidates preserve
+independently usable current state without extending it. Identical redelivery
+is idempotent; authenticated conflicting same-revision state fails closed.
+Revisions cannot wrap, and later views include committed effects without silent
+unrevocation or minimum-version rollback within a trust generation.
+
+A newer authentic complete view can refresh a still-live session while the
+permit's expiry remains immutable. It cannot bridge an already expired gap or
+revive terminal state, even if an expiry callback has not yet run. Permit,
+required result and every view validity condition are conjunctive. Compare time
+only through validated authority contracts; equality at any exclusive expiry
+rejects. Trusted time uncertainty must fit wholly inside the required windows.
+No client UTC or evidence interval substitutes for authorization time.
+
+Initial and renewal appraisal check current dependencies. Future issuance fences
+accepted revocation/policy updates before commit. Relying parties check issuer
+key authority and required dependencies at admission and subsequent protected
+decisions, including for already-active permits. Known applicable revocation
+rejects at the next decision without waiting for expiry. A revoked signing key
+cannot certify itself or its replacement root; use independent approved trust
+and revocation authority.
+
+Unobserved remote revocation has a finite bound only under honest source
+freshness/complete publication, immutable downstream age, trustworthy comparison
+error and finite reevaluation premises. No globally instantaneous revocation is
+claimed. Every operational profile must supply finite validity, view age,
+reevaluation, work and retained-state bounds before deployment. Required owner,
+time or view unavailability never permits stale fallback.
+
+[Protocol requirements](PROTOCOL.md#m1-015-renewal-and-revocation-contract) define
+the decision sequence; [privacy requirements](PRIVACY_MODEL.md#m1-015-authorization-state-retention)
+separate live authorization from negative history. Failure remains coarse and
+non-disciplinary. Server denial never waits for local cleanup acknowledgement.
 
 ## 8. Wire format strategy
 

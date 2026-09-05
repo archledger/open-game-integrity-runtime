@@ -1,0 +1,32 @@
+{
+  "id": "OGIR-REVOCATION-OUTAGE-TIME-001",
+  "title": "Revocation outage time",
+  "attacker": "A0",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": [
+    "protected_session_authorization",
+    "publisher_scoped_authority_state"
+  ],
+  "preconditions": [
+    "a current permit has not expired but a required view reaches its exclusive freshness deadline",
+    "no newer usable view preserved continuous eligibility; the network attacker may delay messages but cannot forge trusted time"
+  ],
+  "steps": [
+    "Delay required revocation updates until a view expires; substitute client UTC or an incomparable evidence interval for trusted decision time; continue protected activity past the effective bound."
+  ],
+  "expected": {
+    "decision": "unavailable",
+    "reason": "revocation-freshness-unavailable",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "M1-015 V09: Strictest effective deadline and finite reevaluation contract bound stale acceptance; no claim of zero cross-service propagation delay",
+    "M1-015 F01: Revoked, expired, continuity-lost, unsupported and temporarily unavailable cases remain distinct and non-disciplinary",
+    "Existing security invariants: 3,6,9–10,39–42"
+  ],
+  "residual_risk": [
+    "The proposed propagation bound assumes an honest authority and validated error/reevaluation bounds; unavailable is not proof of cheating.",
+    "Specified attack requirement only; runtime implementation and proof remain deferred."
+  ]
+}

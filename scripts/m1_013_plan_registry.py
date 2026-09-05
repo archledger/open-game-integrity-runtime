@@ -212,7 +212,7 @@ SOURCE_BINDINGS = {
 }
 # This pins the reviewed root-index bytes after all specific semantic checks run;
 # it is a final trust anchor, not a duplicate semantic registry.
-CANONICAL_ROOT_SHA256 = "f1e10e933681e6ea86fc34172e7a6560c011479b8ba2b4e69c5205cc069f6d9e"
+CANONICAL_ROOT_SHA256 = "fd57f74bcb04f5940f868a8e5e21a1b69ede22e7a11c10b8e7038ec351b449e9"
 COMPARISON_RULES_SHA256 = "078c5b4b67bc8d1294f112621f3bbf6679df032b59b67e2515b882aa93e2869c"
 HISTORY_SEMANTICS_SHA256 = "646cc2cae678a71054f4c32229cc1ee3e0ec645c8c8faa89a7a975693f509760"
 HISTORY_FOCUSED_SHA256 = "fd34880c69621f64da6b264d11d9a91d68e11056511d40c266cf78dbf4e307c0"
@@ -1784,12 +1784,12 @@ def _validate_source_bindings(
         or not isinstance(scenarios, dict)
         or set(scenarios) != {"glob", "count", "files"}
         or scenarios["glob"] != "lab/scenarios/*.scenario.json"
-        or scenarios["count"] != 30
+        or scenarios["count"] != 40
         or scenarios["files"] != attack_baseline.get("scenario_files")
     ):
         _reject("source-binding")
     files = scenarios["files"]
-    if not isinstance(files, list) or len(files) != 30:
+    if not isinstance(files, list) or len(files) != 40:
         _reject("source-binding")
     declared_paths: list[str] = []
     for row in files:
@@ -1803,7 +1803,7 @@ def _validate_source_bindings(
         ):
             _reject("source-binding")
         declared_paths.append(row["path"])
-    if len(set(declared_paths)) != 30:
+    if len(set(declared_paths)) != 40:
         _reject("source-binding")
     for authority in (checker, schema):
         if (

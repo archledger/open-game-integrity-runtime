@@ -1,0 +1,37 @@
+{
+  "id": "OGIR-RENEWAL-AUTHORITY-CONFUSION-001",
+  "title": "Renewal authority confusion",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": [
+    "protected_session_authorization",
+    "publisher_scoped_authority_state"
+  ],
+  "preconditions": [
+    "the caller can present an unsigned report a lookup handle or a volatile research result",
+    "a separate terminal-session branch has pending cleanup and receives a matching trusted acknowledgement"
+  ],
+  "steps": [
+    "Treat an unsigned appraisal, key handle, research-cache success or cleanup acknowledgement as permit/admission authority; claim schema validation proves runtime renewal.",
+    "reject the unauthorized activation request; a matching cleanup acknowledgement may mark cleanup complete but cannot reactivate terminal state",
+    "require documentation evidence to distinguish schema traceability from runtime authorization proof"
+  ],
+  "expected": {
+    "decision": "deny",
+    "reason": "missing-authorization-authority",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "M1-015 F02: Cleanup failures preserve Required; a later matching completion changes only cleanup status, never lifecycle terminality",
+    "M1-015 F03: Raw reports, mock-cache success and key handles never substitute for possession, validated permits or issuer authority",
+    "M1-015 C01: Existing Rust graphs, failure eligibility, dependency/lockfile, M1-013 corpus/schema and M1-014 research boundary remain unchanged",
+    "M1-015 C02: Final documentation/ADR/scenario links, owner/profile registry and semantic traceability are checked on the reviewed candidate",
+    "M1-015 C03: Deployment prerequisites are explicit gates, and no unimplemented mechanism is described as proven or production-ready",
+    "Existing security invariants: 1–5,15,39–43,48"
+  ],
+  "residual_risk": [
+    "Existing graphs and mock boundaries remain unchanged; M2 representation, factories, cryptography and services remain unimplemented.",
+    "Specified attack requirement only; runtime implementation and proof remain deferred."
+  ]
+}

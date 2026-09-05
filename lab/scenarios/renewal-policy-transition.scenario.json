@@ -1,0 +1,35 @@
+{
+  "id": "OGIR-RENEWAL-POLICY-TRANSITION-001",
+  "title": "Renewal policy transition",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": [
+    "protected_session_authorization",
+    "publisher_scoped_authority_state"
+  ],
+  "preconditions": [
+    "an existing protected session has an independently selected policy and retained temporal high-water",
+    "the requested profile or policy transition lacks proven non-weakening authorization"
+  ],
+  "steps": [
+    "Request same-session renewal under a numerically higher policy with weaker or unproven assurance. Attempt client repair after continuity/high-water loss.",
+    "reject the unproven transition without treating numeric version as assurance; in a separate continuity-loss branch require new initial establishment",
+    "a gap in an otherwise valid increasing sequence is not itself continuity loss"
+  ],
+  "expected": {
+    "decision": "deny",
+    "reason": "policy-or-continuity-requirement-failed",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "M1-015 R09: Allowed policy/profile transition proves non-weakening and same epoch/high-water; retain existing valid temporal-profile-transition semantics",
+    "M1-015 R10: Higher policy version alone, weaker assurance or absent transition authorization cannot authorize same-session migration",
+    "M1-015 R11: Restart, lost high-water, epoch/sequence rollback and interval overlap terminate; sequence gaps alone do not",
+    "Existing security invariants: 5–6,10,41–42"
+  ],
+  "residual_risk": [
+    "Publisher approval and continuity proofs require later trusted mechanisms.",
+    "Specified attack requirement only; runtime implementation and proof remain deferred."
+  ]
+}

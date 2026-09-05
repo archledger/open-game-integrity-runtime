@@ -1,0 +1,37 @@
+{
+  "id": "OGIR-REVOCATION-ISSUANCE-RACE-001",
+  "title": "Revocation issuance race",
+  "attacker": "A0",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": [
+    "protected_session_authorization",
+    "publisher_scoped_authority_state"
+  ],
+  "preconditions": [
+    "the revocation has authentic applicable scope for the candidate",
+    "the issuer accepts the update before successor commitment in one branch; the relying party knows it before admission in another",
+    "a policy revocation dependency or issuer-authority update may be accepted between preliminary successor validation and relying-party installation"
+  ],
+  "steps": [
+    "accept an applicable revocation before successor commitment in the issuer branch and attempt commitment using only an earlier check",
+    "in a relying-party branch accept an applicable revocation or issuer policy or required-dependency update after preliminary validation but before installation",
+    "attempt installation without fencing final validation and owner installation against every accepted update",
+    "present an unexpired predecessor or successor after the applicable revocation is known at that protected decision"
+  ],
+  "expected": {
+    "decision": "deny",
+    "reason": "revoked",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "M1-015 V02: Known applicable revocation blocks an unexpired permit; an unrelated publisher/namespace target does not",
+    "M1-015 V06: Revocation between ordinary appraisal and issuance must be rechecked/fenced at issuance; after issuance it is checked at the relying party",
+    "Existing security invariants: 3\u20136,10,40\u201342",
+    "M1-015 installation fence: every applicable issuer-authority policy revocation and required-dependency update accepted before installation participates in final validation"
+  ],
+  "residual_risk": [
+    "Not-yet-observed remote revocation remains bounded by trusted view age, time error and reevaluation; no zero-delay guarantee.",
+    "Specified attack requirement only; runtime implementation and proof remain deferred."
+  ]
+}

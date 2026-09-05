@@ -1,0 +1,31 @@
+{
+  "id": "OGIR-REVOCATION-VERIFIER-KEY-001",
+  "title": "Revoked verifier key",
+  "attacker": "A5",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": [
+    "protected_session_authorization",
+    "publisher_scoped_authority_state"
+  ],
+  "preconditions": [
+    "independent publisher-authorized revocation state marks the verifier key revoked",
+    "the attacker controls the revoked online signing key but not the independent trust authority"
+  ],
+  "steps": [
+    "Use a revoked verifier key to sign a permit and certify its own unrevoked status or replacement root."
+  ],
+  "expected": {
+    "decision": "deny",
+    "reason": "revoked-verifier-key",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "M1-015 V07: Verifier-key revocation is independently enforced by the relying party; the revoked key cannot certify its own recovery",
+    "Existing security invariants: 2,4,6,46"
+  ],
+  "residual_risk": [
+    "Compromise of the independent revocation/root authority remains a separate TCB risk.",
+    "Specified attack requirement only; runtime implementation and proof remain deferred."
+  ]
+}

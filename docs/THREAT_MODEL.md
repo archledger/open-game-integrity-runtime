@@ -473,3 +473,53 @@ not production availability or recovery guarantees. Forgetting an expired key
 cannot establish nonce uniqueness across all time. Diagnostics stay fixed and
 redacted; aggregate functional counters are not telemetry. Production A0/A1
 replay and A5 compromise still require the unchanged authoritative mechanisms.
+
+
+## M1-015 renewal and revocation threats
+
+The [approved design](superpowers/specs/2026-09-04-m1-015-renewal-revocation-semantics-design.md)
+and Proposed [ADR-0014](adr/0014-renewal-revocation-semantics.md) specify future
+controls across revocation source to issuer/relying party, issuer/replicas to
+session-authorization owner, trusted time to decision, and retained state to
+diagnostics. The source supplies authenticated complete scope/order/freshness;
+every consumer retains its own current decision responsibility. One owner
+orders current generation and terminal state across all enforcing replicas.
+
+A0 may replay/delay authentic material, A1 may race hostile renewal or stale
+permit requests, A5 may misuse a compromised verifier key, and A8 may seek
+unauthorized disclosure or retention. The schema records one primary attacker
+per family; it is not a claim of complete resistance to that attacker class.
+An authentic contradiction requires faulty/compromised authority behavior, not
+an assumed network ability to forge signatures. A dishonest required authority,
+incomplete trusted dependency derivation, full-session relay or post-appraisal
+state change remains residual risk.
+
+Known applicable revocation rejects at the next protected decision. Unobserved
+remote changes remain bounded only under honest source freshness/publication,
+immutable downstream age, trusted clock error and finite reevaluation premises.
+Owner incoherence, required view loss and incomparable clocks fail unavailable;
+none authorizes stale-local fallback or a cheating accusation. Relying-party
+final validation and installation form one fence against every applicable
+issuer-authority, policy, revocation and required-dependency update accepted
+before installation; preliminary validation cannot cross that boundary. A valid view
+refresh cannot erase terminal expiry, and a lost committed renewal response
+cannot produce another successor from the same predecessor.
+
+The following are machine-readable specifications, not executed runtime attack
+proofs. All owners are `initial-maintainer`; every required assurance profile
+is `all-protected-modes`. Each scenario includes residual risk and the exact
+assigned criterion text. [Validation mappings](TEST_STRATEGY.md#m1-015-renewal-and-revocation-validation)
+contain positive controls and compatibility-evidence obligations.
+
+| Family / attacker | Scenario | Existing invariants | Owner | Required assurance profile |
+| --- | --- | --- | --- | --- |
+| S01 / A1 | [OGIR-RENEWAL-PENDING-EXPIRY-001](../lab/scenarios/renewal-pending-expiry.scenario.json) | 3,5,7–10,41–42 | `initial-maintainer` | `all-protected-modes` |
+| S02 / A1 | [OGIR-RENEWAL-GENERATION-RACE-001](../lab/scenarios/renewal-generation-race.scenario.json) | 3–5,9–10,15,41–43 | `initial-maintainer` | `all-protected-modes` |
+| S03 / A1 | [OGIR-RENEWAL-POLICY-TRANSITION-001](../lab/scenarios/renewal-policy-transition.scenario.json) | 5–6,10,41–42 | `initial-maintainer` | `all-protected-modes` |
+| S04 / A0 | [OGIR-REVOCATION-VIEW-ROLLBACK-001](../lab/scenarios/revocation-view-rollback.scenario.json) | 6,9–10,25–26,40 | `initial-maintainer` | `all-protected-modes` |
+| S05 / A0 | [OGIR-REVOCATION-ISSUANCE-RACE-001](../lab/scenarios/revocation-issuance-race.scenario.json) | 3–6,10,40–42 | `initial-maintainer` | `all-protected-modes` |
+| S06 / A5 | [OGIR-REVOCATION-VERIFIER-KEY-001](../lab/scenarios/revoked-verifier-key.scenario.json) | 2,4,6,46 | `initial-maintainer` | `all-protected-modes` |
+| S07 / A1 | [OGIR-REVOCATION-TARGET-COVERAGE-001](../lab/scenarios/revocation-target-coverage.scenario.json) | 6,23,25–26,40 | `initial-maintainer` | `all-protected-modes` |
+| S08 / A0 | [OGIR-REVOCATION-OUTAGE-TIME-001](../lab/scenarios/revocation-outage-time.scenario.json) | 3,6,9–10,39–42 | `initial-maintainer` | `all-protected-modes` |
+| S09 / A8 | [OGIR-PRIVACY-REVOCATION-STATE-001](../lab/scenarios/revocation-retention-privacy.scenario.json) | 18–19,23,34–38,43 | `initial-maintainer` | `all-protected-modes` |
+| S10 / A1 | [OGIR-RENEWAL-AUTHORITY-CONFUSION-001](../lab/scenarios/renewal-authority-confusion.scenario.json) | 1–5,15,39–43,48 | `initial-maintainer` | `all-protected-modes` |
