@@ -666,3 +666,101 @@ These results apply to the local research candidate and its recorded source
 hashes. They establish neither production durability nor secure erasure,
 performance, exhaustive scheduling, or future CI success. Human review and
 acceptance of Proposed ADR-0013 remain required.
+
+
+## M1-015 renewal and revocation validation
+
+The [human-approved design](superpowers/specs/2026-09-04-m1-015-renewal-revocation-semantics-design.md)
+and Proposed [ADR-0014](adr/0014-renewal-revocation-semantics.md) contain 34
+required criteria. Ten new attack specifications map them to existing invariants,
+registered owner `initial-maintainer` and profile `all-protected-modes`.
+
+**Behavioral evidence status for every row: specified; runtime proof deferred.**
+JSON schema/registry checks prove structure, uniqueness and registration only.
+Existing Rust and M1-013 regression checks establish compatibility of unchanged
+code/corpus; they do not prove a live revocation feed, permit issuer, coherent
+owner, trusted clock or production recovery. Criterion C01 is established by
+unchanged-source comparison, C02 by candidate checks and semantic review, and
+C03 by explicit mechanism gates. Their association with S10 does not turn the
+scenario validator into an executable authorization test.
+
+### Positive and negative controls
+
+Each negative is an independent synthetic branch with its own preconditions.
+A rejected invalid/older candidate does not revoke an independently usable
+current view. Authenticated conflicting state is unavailable. No scenario
+reason string adds a new Rust reason variant or bypasses phase eligibility.
+
+| Family | Scenario | Positive control | Negative sequence |
+| --- | --- | --- | --- |
+| S01 | [OGIR-RENEWAL-PENDING-EXPIRY-001](../lab/scenarios/renewal-pending-expiry.scenario.json) | Before expiry, a fresh complete renewal may succeed; an intact transient attempt failure grants nothing but may preserve independently valid old authorization. | Start renewal with a still-valid current permit, then delay the successor until the exact effective expiry. Attempt to install it after terminal invalidation. |
+| S02 | [OGIR-RENEWAL-GENERATION-RACE-001](../lab/scenarios/renewal-generation-race.scenario.json) | Only one successor commits; bounded redelivery is byte-identical, and installation is coherent across replicas. An unavailable owner grants nothing. | Race two fresh renewal attempts against one predecessor; lose a committed response; try cancellation and a second grant. Install the exact successor, then replay the predecessor at another replica or deliver success after termination. |
+| S03 | [OGIR-RENEWAL-POLICY-TRANSITION-001](../lab/scenarios/renewal-policy-transition.scenario.json) | An explicit non-weakening transition preserves epoch and high-water; increasing noncontiguous sequences remain admissible. | Request same-session renewal under a numerically higher policy with weaker or unproven assurance. Attempt client repair after continuity/high-water loss. |
+| S04 | [OGIR-REVOCATION-VIEW-ROLLBACK-001](../lab/scenarios/revocation-view-rollback.scenario.json) | Identical same-revision redelivery is idempotent without expiry extension; a newer authentic complete view refreshes a still-live session. Invalid candidates preserve independently usable current state. | Replay an older authentic view with a new receipt time; present conflicting equal-revision content; offer client-controlled recovery of rolled-back state or a terminal session. |
+| S05 | [OGIR-REVOCATION-ISSUANCE-RACE-001](../lab/scenarios/revocation-issuance-race.scenario.json) | An unrelated publisher or namespace target does not revoke this candidate; a current unrevoked candidate passes only when final commitment/installation fences include every accepted applicable update. | Accept an applicable update after preliminary issuer or relying-party validation but before commitment/installation; attempt authorization without including that update in the fenced final decision. |
+| S06 | [OGIR-REVOCATION-VERIFIER-KEY-001](../lab/scenarios/revoked-verifier-key.scenario.json) | An independently authorized unrevoked issuer can pass its key check when all other requirements hold. | Use a revoked verifier key to sign a permit and certify its own unrevoked status or replacement root. |
+| S07 | [OGIR-REVOCATION-TARGET-COVERAGE-001](../lab/scenarios/revocation-target-coverage.scenario.json) | All seven target classes have declared namespace, authority, match and retention contracts; nonapplicable targets have no effect. | Omit one required target class or source from dependency coverage while every included view appears current; supply an unauthenticated view as an empty success. |
+| S08 | [OGIR-REVOCATION-OUTAGE-TIME-001](../lab/scenarios/revocation-outage-time.scenario.json) | Before every exclusive bound, all conjunctive requirements may hold; bounded clock uncertainty must fit wholly inside the validity window. | Delay required revocation updates until a view expires; substitute client UTC or an incomparable evidence interval for trusted decision time; continue protected activity past the effective bound. |
+| S09 | [OGIR-PRIVACY-REVOCATION-STATE-001](../lab/scenarios/revocation-retention-privacy.scenario.json) | Finite active-session state is deleted after in-flight resolution; negative history retires only after dependent expiry plus trusted non-reuse guarantees, without global identifiers. | Retain active authorization state after terminal cleanup, disclose complete dependencies or timing in diagnostics, or discard negative state while an old target can still authorize. |
+| S10 | [OGIR-RENEWAL-AUTHORITY-CONFUSION-001](../lab/scenarios/renewal-authority-confusion.scenario.json) | Only the existing fresh validated-permit path can activate; matching cleanup acknowledgement changes cleanup status only. Documentation checks prove traceability, not runtime security. | Treat an unsigned appraisal, key handle, research-cache success or cleanup acknowledgement as permit/admission authority; claim schema validation proves runtime renewal. |
+
+### Criterion traceability
+
+Each criterion appears once in this primary table. Criteria in a shared family
+still require their own distinguishing examples below; the family is not one
+aggregate runtime test. Invariant numbers refer to `SECURITY_INVARIANTS.md`.
+
+| Criterion | Scenario family | Existing invariants | Required distinguishing example |
+| --- | --- | --- | --- |
+| R01 | S01 | 3,5,7–10,41–42 | Successful same-context renewal uses a new registered challenge, new current claims, same key/epoch, increasing sequence and every verifier/permit/activation gate |
+| R02 | S01 | 3,5,7–10,41–42 | Reusing a nonce/evidence/old renewal cannot authorize; later rejection never releases its consumed nonce |
+| R03 | S01 | 3,5,7–10,41–42 | Starting/retrying renewal never changes the old permit's expiry or revocation-view deadline |
+| R04 | S01 | 3,5,7–10,41–42 | With intact continuity and still-valid trusted views, a transient attempt failure grants nothing but may leave independently valid existing authorization usable |
+| R05 | S01 | 3,5,7–10,41–42 | Exact permit/view expiry stops authorization; a reply arriving after terminal invalidation cannot revive the session |
+| R12 | S01 | 3,5,7–10,41–42 | Expired challenge, profile-duration violation or late evidence cannot become fresh through permit/result/client timestamps |
+| R06 | S02 | 3–5,9–10,15,41–43 | Session termination racing renewal commit/installation prevents activation and cannot recreate deleted active state |
+| R07 | S02 | 3–5,9–10,15,41–43 | Two attempts using the same predecessor yield at most one committed successor; retries cannot roll back temporal high-water |
+| R08 | S02 | 3–5,9–10,15,41–43 | Delayed predecessor delivery after successor installation cannot restore older rights; duplicate current-artifact delivery cannot extend time |
+| R13 | S02 | 3–5,9–10,15,41–43 | After owner installation/termination, another RP replica cannot authorize from stale local state; inability to consult coherent owner state is unavailable |
+| R14 | S02 | 3–5,9–10,15,41–43 | Committed successor response loss permits only exact-artifact redelivery before deadlines; cancellation cannot mint another successor from its predecessor |
+| R09 | S03 | 5–6,10,41–42 | Allowed policy/profile transition proves non-weakening and same epoch/high-water; retain existing valid temporal-profile-transition semantics |
+| R10 | S03 | 5–6,10,41–42 | Higher policy version alone, weaker assurance or absent transition authorization cannot authorize same-session migration |
+| R11 | S03 | 5–6,10,41–42 | Restart, lost high-water, epoch/sequence rollback and interval overlap terminate; sequence gaps alone do not |
+| V03 | S04 | 6,9–10,25–26,40 | Source revision rollback is rejected; equal-revision identical redelivery is idempotent; conflicting content fails closed |
+| V04 | S04 | 6,9–10,25–26,40 | Old authentic view replay or receipt after network delay cannot renew its freshness deadline |
+| V10 | S04 | 6,9–10,25–26,40 | Source/trust recovery cannot resurrect terminal sessions or roll back revocation state from a client-provided artifact |
+| V11 | S04 | 6,9–10,25–26,40 | A newer authentic complete view can refresh a still-live session within its unchanged permit expiry; invalid candidate views preserve usable current state and cannot revive an expired/terminal gap |
+| V02 | S05 | 3–6,10,40–42 | Known applicable revocation blocks an unexpired permit; an unrelated publisher/namespace target does not |
+| V06 | S05 | 3–6,10,40–42 | Revocation between ordinary appraisal and issuance must be rechecked/fenced at issuance; after issuance it is checked at the relying party |
+| V07 | S06 | 2,4,6,46 | Verifier-key revocation is independently enforced by the relying party; the revoked key cannot certify its own recovery |
+| V01 | S07 | 6,23,25–26,40 | Every architectural target class has one declared authority/scope/match/retention rule; omission of a required class fails closed |
+| V05 | S07 | 6,23,25–26,40 | Unknown, expired, unauthenticated or incomplete view is unavailable/unsupported, never an empty success or fabricated revocation |
+| V08 | S07 | 6,23,25–26,40 | Staleness of any required view defeats authorization even if every other view is current |
+| V09 | S08 | 3,6,9–10,39–42 | Strictest effective deadline and finite reevaluation contract bound stale acceptance; no claim of zero cross-service propagation delay |
+| F01 | S08 | 3,6,9–10,39–42 | Revoked, expired, continuity-lost, unsupported and temporarily unavailable cases remain distinct and non-disciplinary |
+| P01 | S09 | 18–19,23,34–38,43 | Every new retained semantic value has scope, finite retention purpose, deletion condition and diagnostic exclusion |
+| P02 | S09 | 18–19,23,34–38,43 | Safe revocation GC cannot re-enable retired targets; generation/non-reuse constraints do not become a global device identifier |
+| P03 | S09 | 18–19,23,34–38,43 | Full-state and synthetic diagnostic examples contain no unapproved context, identity, proof or timing values |
+| F02 | S10 | 1–5,15,39–43,48 | Cleanup failures preserve Required; a later matching completion changes only cleanup status, never lifecycle terminality |
+| F03 | S10 | 1–5,15,39–43,48 | Raw reports, mock-cache success and key handles never substitute for possession, validated permits or issuer authority |
+| C01 | S10 | 1–5,15,39–43,48 | Existing Rust graphs, failure eligibility, dependency/lockfile, M1-013 corpus/schema and M1-014 research boundary remain unchanged |
+| C02 | S10 | 1–5,15,39–43,48 | Final documentation/ADR/scenario links, owner/profile registry and semantic traceability are checked on the reviewed candidate |
+| C03 | S10 | 1–5,15,39–43,48 | Deployment prerequisites are explicit gates, and no unimplemented mechanism is described as proven or production-ready |
+
+### Integration checks and future proof
+
+Run the unchanged scenario validator and its self-tests, scenario compatibility
+suite, candidate documentation suite and aggregate repository gate. Use a
+disposable candidate index for metadata/ADR checks, because untracked new ADRs
+are absent from the ordinary index. Verify parsed criterion mappings, resolved
+links, exact owner/profile values, non-disciplinary outcomes and the 25-path
+scope independently. Record actual commands, exits and reviewed hashes in the
+local contribution report before human review.
+
+Future implementation properties cover monotonic owner generation and temporal
+high-water, at most one committed successor per predecessor, precommit retry
+versus committed redelivery, no terminal resurrection, strict conjunctive
+deadlines, view-order/freshness preservation, complete namespace coverage and
+value-independent diagnostics. Representation fuzzing requires an actual
+approved encoding and parser. Runtime interleaving, property and mutation
+campaigns belong to M2 mechanisms; none is claimed to have run here.

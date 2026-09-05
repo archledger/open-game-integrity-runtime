@@ -1,0 +1,34 @@
+{
+  "id": "OGIR-PRIVACY-REVOCATION-STATE-001",
+  "title": "Revocation retention privacy",
+  "attacker": "A8",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": [
+    "publisher_scoped_identity_privacy",
+    "bounded_authorization_retention"
+  ],
+  "preconditions": [
+    "synthetic state categories describe live authorization and separately governed negative history",
+    "one branch retains or discloses more than its approved purpose; another retires negative state while an old artifact remains eligible"
+  ],
+  "steps": [
+    "Retain active authorization state after terminal cleanup, disclose complete dependencies or timing in diagnostics, or discard negative state while an old target can still authorize.",
+    "reject the proposed privacy or retention operation; this is a semantic policy failure and does not allege misconduct by the player"
+  ],
+  "expected": {
+    "decision": "deny",
+    "reason": "privacy-or-retention-contract-violation",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "M1-015 P01: Every new retained semantic value has scope, finite retention purpose, deletion condition and diagnostic exclusion",
+    "M1-015 P02: Safe revocation GC cannot re-enable retired targets; generation/non-reuse constraints do not become a global device identifier",
+    "M1-015 P03: Full-state and synthetic diagnostic examples contain no unapproved context, identity, proof or timing values",
+    "Existing security invariants: 18–19,23,34–38,43"
+  ],
+  "residual_risk": [
+    "Safe bounded deletion and confidentiality are required later; this scenario does not prove secure erasure.",
+    "Specified attack requirement only; runtime implementation and proof remain deferred."
+  ]
+}

@@ -136,3 +136,89 @@ session proof of possession; and renewal authorization. Challenge
 authentication remains a separate verifier operation. Admission remains
 downstream and outside the evidence-binding transcript. No representation, byte
 order, algorithm, literal label, proof format, or runtime API is selected here.
+
+
+## M1-015 renewal and revocation contract
+
+The human-approved
+[semantic design](superpowers/specs/2026-09-04-m1-015-renewal-revocation-semantics-design.md)
+and Proposed [ADR-0014](adr/0014-renewal-revocation-semantics.md) define future
+permit/renewal/revocation obligations. They do not add a codec, endpoint, runtime
+API or operational service. The five purpose domains above remain unchanged.
+
+1. Establish live-session eligibility through the configured
+   [session-authorization owner](ARCHITECTURE.md#75-renewal). Require coherent
+   owner state across every enforcing replica, exact independent context and
+   either unchanged policy or an approved non-weakening transition preserving
+   epoch/high-water. No cached replica state substitutes for owner coherence.
+2. Reserve one bounded attempt for the exact current predecessor. Use a fresh
+   durably registered challenge and new current evidence under existing
+   temporal rules; run all verifier gates. Consumed challenges and valid
+   temporal observations are never released by rejection or retry.
+3. At issuer commitment, fence predecessor, terminal status, effective validity,
+   current policy/transition and applicable revocation against accepted updates.
+   Commit at most one successor for a predecessor, bound to the exact attempt,
+   context, actual key/handle and approved policy/profile.
+4. At relying-party installation, fence final validation and owner installation
+   against the current predecessor/terminal state, effective predecessor
+   deadline and every issuer-authority, policy, revocation and required-
+   dependency update accepted before installation. Within the fence,
+   independently revalidate issuer, context, possession, successor validity and
+   complete current dependencies, then atomically install the newer generation.
+   Earlier validation is insufficient. Later replica decisions cannot authorize
+   the predecessor.
+5. A trusted local adapter supplies a new validated renewal permit through the
+   existing `RenewalPending -> PermitReceived -> Active` edges. A report,
+   handle, research mock result or cleanup acknowledgement cannot create it.
+
+Grant commitment and installation are different events. A cancelled uncommitted
+attempt may start a fresh-challenge attempt while eligibility survives. A
+committed response loss instead permits bounded redelivery of the exact
+committed artifact, without re-signing or changing deadlines. Redelivery must
+finish within predecessor eligibility and successor validity; otherwise new
+initial establishment is required. A duplicate currently installed artifact can
+only receive idempotent acknowledgement after current validation.
+
+The current permit has a finite nonempty half-open interval. Required result
+validity and all required authenticated view validity are conjunctive. An
+exclusive deadline equal to the decision time is too late. A minimum of those
+deadlines is valid only in a common trusted time domain; otherwise evaluate
+through each approved mapping. For a bounded trusted decision-time interval,
+its lower bound must satisfy every not-before/freshness origin and its upper
+bound must precede every expiry. Uncertainty is not acceptance leeway. Client
+UTC, process uptime and evidence collection time cannot replace those contracts.
+
+A view authenticates the full required scope/coverage, source and continuing
+authority, generation/revision and freshness origin/deadline. A partial update
+requires complete reconstruction before use. Replaying an authentic old view
+or changing its receipt time never extends age. Invalid/older candidates cannot
+advance or revoke and leave a usable current view intact. Identical revisions
+are idempotent without a changed deadline; authenticated contradictory authority
+state is unavailable for the affected scope. Revision exhaustion cannot wrap.
+A later complete authentic view may refresh still-live authorization within the
+unchanged permit expiry. It cannot erase a prior expired terminal gap.
+
+Known applicable revocation blocks protected decisions, even with an unexpired
+permit. Initial/renewal appraisal, issuance and relying-party admission or
+continued use each retain their own current checks. Accepted updates are fenced
+locally; unobserved remote updates remain subject to the declared finite
+propagation assumptions. Revocation of an issuer key is checked through
+independent publisher-approved authority, never vouched for by that revoked key.
+All applicable target classes and sources must be covered; one stale required
+view defeats the conjunction even if others remain current.
+
+A pending attempt grants no new authorization and extends no prior deadline.
+Intact transient failure may preserve only independently valid current use.
+Expiry without a usable installed successor, continuity loss or known applicable
+revocation prevents late resurrection. New initial establishment is required
+following terminal loss. A stronger-sounding profile/version cannot bypass an
+unproven transition; a restricted alternative uses a separate explicit context.
+Semantic failure reasons remain non-disciplinary and do not authorize calls to
+phase-ineligible existing failure methods.
+
+Each operational profile must define finite permit/view ceilings, reevaluation,
+attempt/work/state bounds, trusted clock error/mappings and safe target retention.
+M2 still owes protected result/permit representation and validity, authentication
+and proof coverage, bounded parsing, issuer factories, possession, coherent owner
+access, durable order/recovery and deletion. No mock or scenario schema check
+proves these mechanisms. M3 TPM mapping is unchanged.

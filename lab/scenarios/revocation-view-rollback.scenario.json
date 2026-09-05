@@ -1,0 +1,37 @@
+{
+  "id": "OGIR-REVOCATION-VIEW-ROLLBACK-001",
+  "title": "Revocation view rollback",
+  "attacker": "A0",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": [
+    "protected_session_authorization",
+    "publisher_scoped_authority_state"
+  ],
+  "preconditions": [
+    "the consumer has an authenticated current source generation and revision",
+    "two differing candidate contents at the same revision have authentic authority provenance in the contradiction branch; the network attacker does not forge authentication",
+    "older or invalid candidate branches begin with an independently usable current view"
+  ],
+  "steps": [
+    "Replay an older authentic view with a new receipt time; present conflicting equal-revision content; offer client-controlled recovery of rolled-back state or a terminal session.",
+    "authenticated same-revision contradiction is the unavailable outcome; reject invalid or older candidates without disturbing an independently usable current view",
+    "a new authentic complete view may refresh only still-live authorization and cannot bridge an expired terminal gap"
+  ],
+  "expected": {
+    "decision": "unavailable",
+    "reason": "revocation-state-unusable",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "M1-015 V03: Source revision rollback is rejected; equal-revision identical redelivery is idempotent; conflicting content fails closed",
+    "M1-015 V04: Old authentic view replay or receipt after network delay cannot renew its freshness deadline",
+    "M1-015 V10: Source/trust recovery cannot resurrect terminal sessions or roll back revocation state from a client-provided artifact",
+    "M1-015 V11: A newer authentic complete view can refresh a still-live session within its unchanged permit expiry; invalid candidate views preserve usable current state and cannot revive an expired/terminal gap",
+    "Existing security invariants: 6,9–10,25–26,40"
+  ],
+  "residual_risk": [
+    "Authenticity, ordered persistence and trusted recovery are prerequisites; freshness cannot repair an expired terminal gap.",
+    "Specified attack requirement only; runtime implementation and proof remain deferred."
+  ]
+}

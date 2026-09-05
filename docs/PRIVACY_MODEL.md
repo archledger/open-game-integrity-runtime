@@ -101,3 +101,49 @@ Registered scenario owner `initial-maintainer` is the accountable privacy-review
 gate before expanding any result context or claim field, diagnostic surface,
 serializer or wire adapter, persistence, storage or backup path, or logging or
 telemetry path.
+
+
+## M1-015 authorization-state retention
+
+The [approved design](superpowers/specs/2026-09-04-m1-015-renewal-revocation-semantics-design.md)
+and Proposed [ADR-0014](adr/0014-renewal-revocation-semantics.md) specify the
+following future retention obligations. No storage, backup, replication,
+secure-erasure or production deletion mechanism is implemented by this change.
+`initial-maintainer` reviews every retained/disclosed metadata expansion;
+`all-protected-modes` requires these controls for every protected mode.
+
+| State and accountable authority | Scope and purpose | Finite lifetime / deletion condition | Diagnostic exclusion |
+| --- | --- | --- | --- |
+| Live binding, current generation and terminal/attempt state; configured session-authorization owner | One publisher/protected session; coherent admission and at most one pending attempt | Minimum bounded active-session state; resolve/cancel atomic in-flight operations before terminal deletion; absence never reconstructs an old session from a permit | Raw binding, account, key/handle, generation and complete context |
+| Exact committed successor awaiting installation; trusted issuer/owner | Same session and predecessor; bounded authenticated redelivery only | Only while active and eligible, before predecessor effective deadline and successor validity; discard when installation/terminal disposition no longer needs redelivery; never a permanent permit archive | Permit bytes, proof and per-session timing |
+| Evidence temporal high-water; publisher verifier / trusted collection authority | One publisher/protected session; preserve epoch/sequence/interval continuity | Existing active-session-only rule; delete at terminal end after atomic in-flight resolution; no client repair or reusable archive | Authority detail, epoch, sequence, intervals, high-water, protected-source state |
+| Challenge registration, consumption, time floor and issuance-rate accounting; publisher freshness authority | Existing ADR-0005 scopes and replay/rollback purpose | Preserve existing replay-record expiry and issuance-event window rules; trusted time floor follows its authority lifetime, not a new session-retention rule | Complete challenge/replay binding, time/floor and publisher/context values |
+| Current revocation views and source order/high-water; authorized source and trusted consumers | Publisher/delegated source generation; current complete applicability and anti-rollback | Finite configured authorities/views/payloads; view expires exclusively without receipt-time reset; retain required order/negative state until trusted retirement rules make old eligible artifacts impossible | Source epoch/revision, sensitive target/dependency identities and correlation metadata |
+| Negative revocation history and minimum-version constraints; authorized source | Declared target class/namespace; prevent a retired target regaining rights | Each enabled class needs finite eligibility/retention policy; retirement requires dependent-artifact expiry plus trusted non-reuse/retired-generation rules; never indefinite attestation identity retention | Sensitive targets, full dependency sets and unapproved identifying history |
+
+Finite limits cover authority namespaces, views, target/dependency counts,
+pending work, retained artifacts and payload sizes. Capacity exhaustion fails
+closed without evicting still-required negative state. No class/profile can be
+enabled if safe bounded retention cannot be established. A time-to-live alone
+does not prove that a removed target cannot become eligible again. Revocation
+source high-water and evidence temporal high-water are different scopes and
+purposes; neither is a global device or player identifier.
+
+A trusted publisher applicability path can establish a permit's current
+revocation status without exposing raw attestation identities or dependencies
+to the game. New sessions and publishers retain the existing fresh key/handle
+boundary. Known revocation and unavailable knowledge remain different coarse
+outcomes, never automatic disciplinary evidence.
+
+Ordinary Debug/Display/errors/logs/traces/metrics/crash reports/support bundles
+and test assertions disclose no complete context, account, raw session/key/
+handle, dependency identity, source epoch/revision, permit, proof or per-session
+timing. Synthetic examples use semantic categories only. Public trust-
+distribution material requires its own approved disclosure contract; this is
+not permission to expose sensitive targets in game responses or diagnostics.
+
+Server authorization denial never waits for client cleanup acknowledgement.
+Required cleanup is retryable and remains Required until matching trusted
+completion; completion cannot revive terminal state. An implementation must
+prove its finite deletion and cleanup behavior, not infer it from these tables
+or from schema-valid scenarios.

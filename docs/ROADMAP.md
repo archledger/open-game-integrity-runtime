@@ -771,7 +771,7 @@ Starts in M0. Owns GitHub controls, dependency policy, releases, provenance, upd
     terminal state loss, and independent tests. It must not implement the durable
     `ReplayStore` contract or issue verifier authority. Durable storage and
     restart recovery remain separately scoped work.
-15. Specify renewal and revocation semantics.
+15. Specify renewal and revocation semantics: human-approved [M1-015 design](superpowers/specs/2026-09-04-m1-015-renewal-revocation-semantics-design.md), Proposed [ADR-0014](adr/0014-renewal-revocation-semantics.md), and [scenario requirements](TEST_STRATEGY.md#m1-015-renewal-and-revocation-validation).
 
 ## Mock proof
 
@@ -863,3 +863,23 @@ cryptographic mechanism and protected-result work. M3 owns TPM-specific mapping.
 Production persistence, permit, proof-of-possession, renewal authorization,
 and protected-session admission remain separately governed work. The local
 conformance result grants no publisher authorization or production readiness.
+
+
+## M1-015 semantic specification boundary
+
+Task 15 integrates the approved renewal/revocation design, a Proposed ADR and
+34 criteria mapped to ten machine-readable attack specifications. Finite permit
+and authenticated view validity, one coherent authorization owner, single
+successor commitment, terminal recovery, explicit non-weakening transitions and
+bounded retention are specified requirements. They are not operational permit
+or revocation services, and this does not declare M1 or M2 complete.
+
+M2 must separately prove result/permit representation, protection and validity;
+proof of possession; trusted source/time authentication and comparison;
+complete dependency coverage; coherent issuer/replica ordering; finite limits;
+durable recovery and safe bounded deletion. Representation-specific fuzzing and
+runtime schedule/property/mutation evidence belong to those implementations.
+M3 retains TPM mapping. The M1-013 corpus and M1-014 research boundaries remain
+unchanged. See the [local issue](../planning/issues/015-renewal-revocation-semantics.md)
+for integration status and [test strategy](TEST_STRATEGY.md#m1-015-renewal-and-revocation-validation)
+for the distinction between executed compatibility checks and planned behavior.

@@ -1,0 +1,35 @@
+{
+  "id": "OGIR-REVOCATION-TARGET-COVERAGE-001",
+  "title": "Revocation target coverage",
+  "attacker": "A1",
+  "owner": "initial-maintainer",
+  "required_assurance_profile": "all-protected-modes",
+  "assets": [
+    "protected_session_authorization",
+    "publisher_scoped_authority_state"
+  ],
+  "preconditions": [
+    "trusted policy and authenticated artifacts require coverage of the full applicable dependency set",
+    "the candidate omits a required target class or lacks a usable required source view"
+  ],
+  "steps": [
+    "Omit one required target class or source from dependency coverage while every included view appears current; supply an unauthenticated view as an empty success.",
+    "repeat independently for protocol versions agent-or-bridge builds platform profiles policies attestation identities verifier keys and game-or-runtime manifests",
+    "a stale required view cannot be replaced by a current view of an unrelated class or scope"
+  ],
+  "expected": {
+    "decision": "unavailable",
+    "reason": "incomplete-revocation-coverage",
+    "automatic_ban": false
+  },
+  "invariants": [
+    "M1-015 V01: Every architectural target class has one declared authority/scope/match/retention rule; omission of a required class fails closed",
+    "M1-015 V05: Unknown, expired, unauthenticated or incomplete view is unavailable/unsupported, never an empty success or fabricated revocation",
+    "M1-015 V08: Staleness of any required view defeats authorization even if every other view is current",
+    "Existing security invariants: 6,23,25–26,40"
+  ],
+  "residual_risk": [
+    "Trusted complete dependency derivation and safe bounded retention are prerequisite mechanisms.",
+    "Specified attack requirement only; runtime implementation and proof remain deferred."
+  ]
+}

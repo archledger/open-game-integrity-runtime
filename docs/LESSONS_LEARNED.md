@@ -774,3 +774,50 @@ authorized Task 11 commit and publication remain pending.
   uniqueness or crash recovery from a volatile bounded model.
 - **Documentation or agent-policy updates:** The M1-014 design, issue, proposed
   ADR, architecture and threat/test descriptions separate these obligations.
+
+
+## 2026-09-04 — Renewal ordering must include every enforcing replica
+
+- **Context:** M1-015 semantic design review before runtime implementation.
+- **Mistaken assumption:** Describing current-generation checks at an individual
+  relying party was enough to state the renewal replacement boundary.
+- **Observed failure:** Independent design review found that the wording left
+  another replica able to interpret an old permit as current after successor
+  installation elsewhere. This was a specification ambiguity, not an observed
+  runtime exploit. The revised design also distinguishes pending attempts from
+  committed successors whose response was lost.
+- **Security or quality impact:** Inconsistent implementations could admit stale
+  generations or issue duplicate successors after cancelling a committed response.
+- **Permanent regression test:** Specified R13/R14 controls and
+  [generation-race scenario](../lab/scenarios/renewal-generation-race.scenario.json).
+  Runtime regression/interleaving proof remains required from the later owner
+  and issuer implementations; no such runtime test is claimed here.
+- **New prevention rule:** Identify one coherent ordering authority across every
+  enforcing replica; distinguish precommit cancellation from exact-artifact
+  redelivery and never erase a commitment to mint a second successor.
+- **Documentation or agent-policy updates:** ADR-0014, architecture, protocol,
+  threat model, test strategy and the approved M1-015 design name owner coherence,
+  terminal fencing and committed-response loss explicitly. No new agent policy
+  or public runtime API was necessary.
+
+## 2026-09-04 — State which consumer knows about a revocation
+
+- **Context:** M1-015 semantic design review of issuance/admission races.
+- **Mistaken assumption:** Saying that any revocation before installation blocks
+  that installation adequately described a distributed system's observation.
+- **Observed failure:** Review found wording inconsistent with the design's
+  explicit finite propagation interval: a remote committed change might not yet
+  be visible through a consumer's independently usable current view.
+- **Security or quality impact:** The specification could imply a global
+  immediacy guarantee unsupported by its authority/time model.
+- **Permanent regression test:** Specified V02/V06/V09 controls,
+  [issuance-race scenario](../lab/scenarios/revocation-issuance-race.scenario.json)
+  and [outage/time scenario](../lab/scenarios/revocation-outage-time.scenario.json).
+  Operational propagation/deadline tests remain future implementation evidence.
+- **New prevention rule:** Distinguish known applicable local revocation from
+  not-yet-observed remote commitment. State source freshness/publication,
+  immutable downstream age, trusted time-error and reevaluation assumptions for
+  any claimed bound. Known revocation still stops the next protected decision.
+- **Documentation or agent-policy updates:** ADR-0014, protocol, architecture,
+  threat model and test strategy preserve the known-local rule and qualified
+  propagation bound without claiming a production transport or numeric TTL.
