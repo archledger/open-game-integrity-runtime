@@ -12,6 +12,7 @@
 //! [ADR-0015](../../docs/adr/0015-mock-binding-transcript-encoding.md).
 
 pub mod admission;
+pub mod attest;
 pub mod frame;
 pub mod objects;
 pub mod policy;

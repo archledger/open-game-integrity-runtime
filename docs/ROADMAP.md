@@ -924,3 +924,16 @@ separate post-M2 ADR decision. See the
 [local issue](../planning/issues/019-conformance-demo-and-attacks.md) and
 [plan](superpowers/plans/2026-09-06-m2-019-conformance-demo-and-attacks.md)
 for the executed inventory.
+
+## M3-020 attestation seam boundary
+
+Task M3-020 lands the backend-agnostic seam per the approved M3 entry
+scoping (recommendations R1-R4 accepted 2026-09-06, including the
+discrete-TPM fixture deferral record): the `AttestationBackend` trait,
+the three disjoint assurance classes, and the strict-equality class gate
+(ADR-0017), with the M2 mock attester as the labeled test backend and
+zero new dependencies. The first external production dependency
+decision (tss-esapi via upstream crates.io 7.7.0) belongs to M3-021 and
+its own ADR plus `cargo-deny` policy event. See the
+[local issue](../planning/issues/020-attestation-backend-seam.md) and
+[ADR-0017](adr/0017-attestation-backend-boundary.md).

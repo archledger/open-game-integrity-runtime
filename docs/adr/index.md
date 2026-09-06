@@ -33,3 +33,4 @@ stay traceable.
 | [ADR-0014](0014-renewal-revocation-semantics.md) | Accepted | Renewal uses fresh evidence and one coherent session owner; finite authorization and authenticated revocation freshness bound protected use. | None | None |
 | [ADR-0015](0015-mock-binding-transcript-encoding.md) | Accepted | A test-only transcript encoding uses fixed domain tags and fail-closed canonical record rules with frozen per-class field registries. | None | None |
 | [ADR-0016](0016-test-only-ephemeral-key-hierarchy.md) | Accepted | An in-repo test-only ephemeral software key hierarchy authenticates the mock protocol without selecting production crypto libraries. | None | None |
+| [ADR-0017](0017-attestation-backend-boundary.md) | Accepted | A dependency-free AttestationBackend seam holds the trait, three disjoint assurance classes, and a strict-equality class gate; the mock attester is the labeled test backend. | None | None |
