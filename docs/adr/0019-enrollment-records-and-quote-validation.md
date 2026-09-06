@@ -4,7 +4,7 @@
 - Date: 2026-09-06
 - Owners: Initial maintainer
 - Related issues: [Local M3-022 issue](../../planning/issues/022-enrollment-and-validation.md); [M3-022 plan](../superpowers/plans/2026-09-06-m3-022-enrollment-and-validation.md)
-- Supersedes: None (amends the ADR-0018 statement contract to v2)
+- Supersedes: None
 - Superseded by: None
 
 ## Context
