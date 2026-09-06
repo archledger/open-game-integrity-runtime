@@ -179,6 +179,11 @@ impl MockSessionKey {
     pub fn authenticate(&self, message: &[u8]) -> [u8; 32] {
         hmac_sha256(&self.material, message)
     }
+
+    /// Raw key material, for directory registration inside this crate only.
+    pub(crate) fn signing_material(&self) -> [u8; 32] {
+        self.material
+    }
 }
 
 /// Failure to find a key or authenticate under it.
@@ -206,10 +211,11 @@ impl std::error::Error for DirectoryError {}
 /// Models the ADR-0016 key-compromise boundary: wrong or unknown key ids
 /// fail closed here, never as a cryptographic property of the symmetric
 /// authenticator.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct MockKeyDirectory {
     verifier_keys: Vec<(KeyId, [u8; 32])>,
     attester_keys: Vec<(KeyId, [u8; 32])>,
+    session_keys: Vec<([u8; SESSION_HANDLE_LENGTH], [u8; 32])>,
 }
 
 impl MockKeyDirectory {
@@ -253,6 +259,25 @@ impl MockKeyDirectory {
             }
             None => Err(DirectoryError::UnknownKey),
         }
+    }
+
+    /// Registers an ephemeral session key for relying-party proof
+    /// validation (the trusted mock channel for the actual key; ADR-0008
+    /// handle semantics still apply: the handle alone grants nothing).
+    pub fn register_session(&mut self, key: &MockSessionKey) {
+        self.session_keys
+            .push((*key.handle_bytes(), key.signing_material()));
+    }
+
+    /// Returns session-key material by lookup handle, if registered.
+    pub fn session_material_by_handle(
+        &self,
+        handle: &[u8; SESSION_HANDLE_LENGTH],
+    ) -> Option<[u8; 32]> {
+        self.session_keys
+            .iter()
+            .find(|(candidate, _)| candidate == handle)
+            .map(|(_, material)| *material)
     }
 
     /// Verifies an authenticator under a registered attester key.

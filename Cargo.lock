@@ -21,6 +21,7 @@ dependencies = [
  "ogir-mock-keys",
  "ogir-model",
  "ogir-protocol",
+ "ogir-verifier",
 ]
 
 [[package]]

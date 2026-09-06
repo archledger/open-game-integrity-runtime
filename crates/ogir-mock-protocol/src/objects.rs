@@ -585,18 +585,50 @@ pub fn verify_pop(
 ) -> Result<[u8; 32], TranscriptError> {
     let (inner, authenticator) = split_signed(TAG_POP, pop_bytes)?;
     let records = parse(TAG_POP, inner, &POP_SCHEMA)?;
-    let presented_digest = take_32(&records, 0x0001)?;
-    let expected_digest = sha256(permit_bytes);
-    if !ogir_mock_keys::hmac::fixed_time_equal(&presented_digest, &expected_digest) {
-        return Err(TranscriptError::AuthenticationFailed);
-    }
-    let rechallenge_nonce = take_32(&records, 0x0002)?;
-    let mut authenticator_input = TAG_POP.as_bytes().to_vec();
-    authenticator_input.extend_from_slice(permit_bytes);
-    authenticator_input.extend_from_slice(&rechallenge_nonce);
-    let expected = session_key.authenticate(&authenticator_input);
+    let rechallenge_nonce = pop_common_checks(&records, permit_bytes)?;
+    let expected = session_key.authenticate(&pop_input(permit_bytes, &rechallenge_nonce));
     if !ogir_mock_keys::hmac::fixed_time_equal(authenticator, &expected) {
         return Err(TranscriptError::AuthenticationFailed);
     }
     Ok(rechallenge_nonce)
+}
+
+/// Verifies a proof of possession under explicit session-key material
+/// (the trusted mock channel's view of the actual key), using the same
+/// canonical parse and the same ADR-0016 formula.
+pub fn verify_pop_under_material(
+    session_material: &[u8; 32],
+    permit_bytes: &[u8],
+    pop_bytes: &[u8],
+) -> Result<[u8; 32], TranscriptError> {
+    let (inner, authenticator) = split_signed(TAG_POP, pop_bytes)?;
+    let records = parse(TAG_POP, inner, &POP_SCHEMA)?;
+    let rechallenge_nonce = pop_common_checks(&records, permit_bytes)?;
+    let expected = ogir_mock_keys::hmac::hmac_sha256(
+        session_material,
+        &pop_input(permit_bytes, &rechallenge_nonce),
+    );
+    if !ogir_mock_keys::hmac::fixed_time_equal(authenticator, &expected) {
+        return Err(TranscriptError::AuthenticationFailed);
+    }
+    Ok(rechallenge_nonce)
+}
+
+fn pop_common_checks(
+    records: &crate::transcript::ParsedRecords,
+    permit_bytes: &[u8],
+) -> Result<[u8; 32], TranscriptError> {
+    let presented_digest = take_32(records, 0x0001)?;
+    let expected_digest = sha256(permit_bytes);
+    if !ogir_mock_keys::hmac::fixed_time_equal(&presented_digest, &expected_digest) {
+        return Err(TranscriptError::AuthenticationFailed);
+    }
+    take_32(records, 0x0002)
+}
+
+fn pop_input(permit_bytes: &[u8], rechallenge_nonce: &[u8; 32]) -> Vec<u8> {
+    let mut authenticator_input = TAG_POP.as_bytes().to_vec();
+    authenticator_input.extend_from_slice(permit_bytes);
+    authenticator_input.extend_from_slice(rechallenge_nonce);
+    authenticator_input
 }

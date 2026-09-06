@@ -11,8 +11,11 @@
 //! tag fails before any record is read. Full contract:
 //! [ADR-0015](../../docs/adr/0015-mock-binding-transcript-encoding.md).
 
+pub mod admission;
 pub mod frame;
 pub mod objects;
+pub mod policy;
+pub mod service;
 pub mod transcript;
 
 /// Test-only transcript encoding and verification failures.
