@@ -4,6 +4,8 @@ members = [
     "crates/ogir-protocol",
     "crates/ogir-agent",
     "crates/ogir-verifier",
+    "crates/ogir-mock-keys",
+    "crates/ogir-mock-protocol",
     "apps/ogird",
     "apps/ogir-verifierd",
 ]

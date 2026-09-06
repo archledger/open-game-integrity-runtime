@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+[package]
+name = "ogir-mock-protocol"
+description = "TEST-ONLY transcript encoding, framing, and signed mock objects for the OGIR mock protocol (ADR-0015); never production"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+ogir-model = { version = "0.0.0", path = "../ogir-model" }
+ogir-mock-keys = { version = "0.0.0", path = "../ogir-mock-keys" }
+ogir-protocol = { version = "0.0.0", path = "../ogir-protocol" }
+
+[lints]
+workspace = true

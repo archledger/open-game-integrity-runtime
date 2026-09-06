@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+[package]
+name = "ogir-mock-keys"
+description = "TEST-ONLY ephemeral software keys and authenticator for the OGIR mock protocol (ADR-0016); never production"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true
