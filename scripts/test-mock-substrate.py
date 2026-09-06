@@ -44,7 +44,8 @@ def main() -> int:
         check("TEST-ONLY" in manifest, f"{crate} description lacks the TEST-ONLY marker")
 
     production_paths = [
-        REPOSITORY_ROOT / "crates" / "ogir-model" / "Cargo.toml",
+        REPOSITORY_ROOT / "crates" / "ogir-attest" / "Cargo.toml",
+    REPOSITORY_ROOT / "crates" / "ogir-model" / "Cargo.toml",
         REPOSITORY_ROOT / "crates" / "ogir-protocol" / "Cargo.toml",
         REPOSITORY_ROOT / "crates" / "ogir-agent" / "Cargo.toml",
         REPOSITORY_ROOT / "crates" / "ogir-verifier" / "Cargo.toml",

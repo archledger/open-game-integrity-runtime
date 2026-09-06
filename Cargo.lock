@@ -11,6 +11,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ogir-attest"
+version = "0.0.0"
+
+[[package]]
 name = "ogir-mock-keys"
 version = "0.0.0"
 
@@ -18,6 +22,7 @@ version = "0.0.0"
 name = "ogir-mock-protocol"
 version = "0.0.0"
 dependencies = [
+ "ogir-attest",
  "ogir-mock-keys",
  "ogir-model",
  "ogir-protocol",

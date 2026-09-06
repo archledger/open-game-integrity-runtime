@@ -11,6 +11,7 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+ogir-attest = { version = "0.0.0", path = "../ogir-attest" }
 ogir-model = { version = "0.0.0", path = "../ogir-model" }
 ogir-mock-keys = { version = "0.0.0", path = "../ogir-mock-keys" }
 ogir-protocol = { version = "0.0.0", path = "../ogir-protocol" }

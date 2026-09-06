@@ -978,3 +978,19 @@ M2-017 slice adds a structural gate for that exclusion. The substrate never
 enters the trusted core; its namespaces are permanently experimental per
 the protocol design milestones, and production serialization and signature
 selection remains a separate post-M2 decision.
+
+## M3-020 attestation seam placement
+
+The `AttestationBackend` seam (ADR-0017) lives in the dependency-free
+production crate `crates/ogir-attest`: the trait, the three disjoint
+assurance classes (test, software TPM, hardware/firmware TPM) with
+stable labels, the shape-invariant `AttestationStatement`, and the
+strict-equality `accept_class` gate that makes class confusion
+impossible at one enforcement point. Backends implement the trait
+outside this crate; the labeled test backend is the M2 mock attester
+(`ogir-mock-protocol::attest::MockAttestationBackend`, class `test`).
+The TPM-era backends (swtpm software class, host fTPM hardware class)
+arrive in M3-021 and M3-023 behind the same contract, which is
+provisional and hardens by reviewed ADR amendment only. The isolation
+gate treats `ogir-attest` as a production manifest: mock code may
+depend on it, never the reverse.

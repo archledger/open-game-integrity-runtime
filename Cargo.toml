@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/ogir-model",
+    "crates/ogir-attest",
     "crates/ogir-protocol",
     "crates/ogir-agent",
     "crates/ogir-verifier",
