@@ -764,3 +764,19 @@ deadlines, view-order/freshness preservation, complete namespace coverage and
 value-independent diagnostics. Representation fuzzing requires an actual
 approved encoding and parser. Runtime interleaving, property and mutation
 campaigns belong to M2 mechanisms; none is claimed to have run here.
+
+## M2-016 mock specification validation
+
+This slice is documentation-only; its executed gates are documentation and
+mechanical checks, and its runtime claims are none. Executed now: template
+section completeness for ADR-0015/0016, ADR index row addition, per-field
+trust-source mapping, domain-tag enumeration, twelve-category
+attack-test-to-slice mapping totality, zero em dashes, balanced fences,
+no trailing whitespace, and relative-link validity. Planned for M2-017 and
+recorded as obligations in the ADRs: FIPS 180-4 SHA-256 vectors, RFC 4231
+HMAC vectors, deterministic derivation reproducibility, canonical
+re-encode equality, the cross-tag rejection matrix, duplicate-id,
+unknown-id, oversized, truncated, and trailing-byte rejection tables, and
+an independent second encoder. M2-019 later executes the twelve attack
+categories adversarially and freezes the conformance vectors. No encoder,
+parser, or key exists yet; nothing here substitutes for those runs.

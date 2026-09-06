@@ -963,3 +963,18 @@ unavailable; a new instance is an independent experiment, never crash recovery.
 After expiry deletion the exact old registration remains expired; a newly valid
 same-key registration is possible, so research issuers remain responsible for
 fresh nonces. The mock keeps no permanent nonce-history set.
+
+## M2-016 mock substrate placement
+
+The mock substrate specified for M2 consists of a future test-only crate
+`crates/ogir-mock-keys` (`publish = false`, no features, workspace lints)
+implementing SHA-256, the HMAC-style mock authenticator, and the three
+ephemeral test key classes of ADR-0016, plus the ADR-0015 encoders and
+parsers that later slices place in test binaries or a mock crate of their
+own. Dependency direction is one-way: mock code may use the production
+crates; no production crate (`ogir-model`, `ogir-protocol`, `ogir-agent`,
+`ogir-verifier`, `ogird`, `ogir-verifierd`) may depend on mock code, and the
+M2-017 slice adds a structural gate for that exclusion. The substrate never
+enters the trusted core; its namespaces are permanently experimental per
+the protocol design milestones, and production serialization and signature
+selection remains a separate post-M2 decision.
