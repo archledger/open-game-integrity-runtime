@@ -38,6 +38,11 @@ jobs:
       - name: Check GitHub bootstrap
         run: ./scripts/test-bootstrap-github.sh
 
+      - name: Install TPM toolchain (ADR-0018 swtpm backend)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev libtss2-dev swtpm
+
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.98.0 --profile minimal --component clippy,rustfmt
 

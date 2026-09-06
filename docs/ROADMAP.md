@@ -937,3 +937,19 @@ decision (tss-esapi via upstream crates.io 7.7.0) belongs to M3-021 and
 its own ADR plus `cargo-deny` policy event. See the
 [local issue](../planning/issues/020-attestation-backend-seam.md) and
 [ADR-0017](adr/0017-attestation-backend-boundary.md).
+
+## M3-021 dependency and swtpm backend boundary
+
+Task M3-021 executes the approved dependency recommendation: upstream
+crates.io tss-esapi 7.7.0 becomes the workspace's first external
+production dependency, recorded as a signed 53-crate cargo-deny
+allowlist and permissive SPDX license set (ADR-0018). The software-TPM
+backend creates a restricted-signing attestation key primary under the
+Owner hierarchy and issues real TPM2_Quote calls over experimental PCR
+slot 16 with caller qualifying data, behind the ADR-0017 seam as
+assurance class `software-tpm`. CI installs the TPM toolchain and runs
+the real-quote suite on swtpm; the development host runs the same suite
+locally. Verifier-side quote validation, AK enrollment, and the
+publisher-scoped identity design belong to M3-022. See the
+[local issue](../planning/issues/021-swtpm-backend.md) and
+[ADR-0018](adr/0018-tss-esapi-dependency-and-swtpm-backend.md).

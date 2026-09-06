@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+[package]
+name = "ogir-attest-tpm"
+description = "TPM-backed attestation backends behind the ogir-attest seam (ADR-0018): software-TPM (swtpm) class"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+ogir-attest = { version = "0.0.0", path = "../ogir-attest" }
+tss-esapi = { version = "7.7", default-features = false, features = ["generate-bindings"] }
+
+[lints]
+workspace = true
