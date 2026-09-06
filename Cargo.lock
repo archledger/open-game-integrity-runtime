@@ -245,11 +245,15 @@ version = "0.0.0"
 dependencies = [
  "ogir-attest",
  "tss-esapi",
+ "tss-esapi-sys",
 ]
 
 [[package]]
 name = "ogir-mock-keys"
 version = "0.0.0"
+dependencies = [
+ "ogir-attest",
+]
 
 [[package]]
 name = "ogir-mock-protocol"

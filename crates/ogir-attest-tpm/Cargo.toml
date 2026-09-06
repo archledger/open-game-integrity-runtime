@@ -13,6 +13,21 @@ publish = false
 [dependencies]
 ogir-attest = { version = "0.0.0", path = "../ogir-attest" }
 tss-esapi = { version = "7.7", default-features = false, features = ["generate-bindings"] }
+tss-esapi-sys = { version = "0.6" }
 
-[lints]
-workspace = true
+# ADR-0020 carve-out: this crate alone declares unsafe_code = "deny"
+# (not forbid) so that exactly one audited #[allow(unsafe_code)] block
+# (the Tss2_MU_TPMS_ATTEST_Marshal marshaling call) may exist. Every
+# other lint mirrors the workspace table exactly; the mirror is
+# enforced by scripts/test-mock-substrate.py.
+[lints.rust]
+missing_debug_implementations = "warn"
+unused_must_use = "deny"
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+expect_used = "deny"
+unwrap_used = "deny"
+todo = "deny"
+unimplemented = "deny"

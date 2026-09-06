@@ -158,12 +158,7 @@ fn tampered_payload_and_digest_reject() {
 
     // A statement whose digest field disagrees with the payload's PCR
     // digest: consistency check fails.
-    let mut payload = statement.quote_payload().to_vec();
-    let last = payload.len() - 1;
-    payload[last] ^= 0x01;
-    let mut digest = *statement.qualifying_digest();
-    digest[0] ^= 0xFF;
-    let _ = digest;
+    let payload = statement.quote_payload().to_vec();
     let mutated = AttestationStatement::new(
         statement.assurance_class(),
         statement.backend_id(),
@@ -180,7 +175,7 @@ fn tampered_payload_and_digest_reject() {
             &mutated
         )
         .err(),
-        Some(ValidationError::AkMismatch)
+        Some(ValidationError::DigestMismatch)
     );
 }
 
@@ -205,5 +200,134 @@ fn unknown_backend_rejects() {
         )
         .err(),
         Some(ValidationError::UnknownBackend)
+    );
+}
+
+#[test]
+fn enrolled_quote_verifies_cryptographically() {
+    use ogir_attest_tpm::validation::{QuoteVerifier, validate_quote_cryptographic};
+
+    let (instance, mut backend, registry, request) = world();
+    let statement = backend.quote(&request).unwrap_or_else(|e| panic!("{e:?}"));
+    let mut verifier =
+        QuoteVerifier::connect("127.0.0.1", instance.port()).unwrap_or_else(|e| panic!("{e:?}"));
+    let validated = validate_quote_cryptographic(
+        &registry,
+        SCOPE,
+        AssuranceClass::SoftwareTpm,
+        &request,
+        &statement,
+        &mut verifier,
+    )
+    .unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(validated.ak_modulus, backend.ak_modulus());
+}
+
+#[test]
+fn tampered_attestation_bytes_fail_cryptographic_verification() {
+    use ogir_attest_tpm::validation::{QuoteVerifier, validate_quote_cryptographic};
+
+    let (instance, mut backend, registry, request) = world();
+    let statement = backend.quote(&request).unwrap_or_else(|e| panic!("{e:?}"));
+
+    // Flip one bit inside the marshaled attestation bytes (the fifth
+    // payload field) and rebuild a well-formed statement: the semantic
+    // checks still pass, but the signature no longer covers the bytes.
+    let payload = statement.quote_payload();
+    let mut fields: Vec<Vec<u8>> = Vec::new();
+    let mut offset = 0;
+    while offset < payload.len() {
+        let length = u32::from_be_bytes([
+            payload[offset],
+            payload[offset + 1],
+            payload[offset + 2],
+            payload[offset + 3],
+        ]) as usize;
+        offset += 4;
+        fields.push(payload[offset..offset + length].to_vec());
+        offset += length;
+    }
+    let last = fields[4].len() - 1;
+    fields[4][last] ^= 0x01;
+    let mut forged = Vec::new();
+    for field in &fields {
+        forged.extend_from_slice(&(field.len() as u32).to_be_bytes());
+        forged.extend_from_slice(field);
+    }
+    let tampered = ogir_attest::AttestationStatement::new(
+        statement.assurance_class(),
+        statement.backend_id(),
+        *statement.qualifying_digest(),
+        forged,
+    )
+    .unwrap_or_else(|e| panic!("{e:?}"));
+
+    let mut verifier =
+        QuoteVerifier::connect("127.0.0.1", instance.port()).unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(
+        validate_quote_cryptographic(
+            &registry,
+            SCOPE,
+            AssuranceClass::SoftwareTpm,
+            &request,
+            &tampered,
+            &mut verifier,
+        )
+        .err(),
+        Some(ogir_attest_tpm::validation::ValidationError::SignatureInvalid)
+    );
+}
+
+#[test]
+fn copied_modulus_without_private_key_cannot_forged_verify() {
+    // A forger enrolls the victim's modulus under their own scope and
+    // crafts payload fields; without the private key, no signature they
+    // produce verifies. Modeled by swapping the signature bytes for
+    // garbage while keeping the enrolled modulus.
+    use ogir_attest_tpm::validation::{QuoteVerifier, validate_quote_cryptographic};
+
+    let (instance, mut backend, registry, request) = world();
+    let statement = backend.quote(&request).unwrap_or_else(|e| panic!("{e:?}"));
+    let payload = statement.quote_payload();
+    let mut fields: Vec<Vec<u8>> = Vec::new();
+    let mut offset = 0;
+    while offset < payload.len() {
+        let length = u32::from_be_bytes([
+            payload[offset],
+            payload[offset + 1],
+            payload[offset + 2],
+            payload[offset + 3],
+        ]) as usize;
+        offset += 4;
+        fields.push(payload[offset..offset + length].to_vec());
+        offset += length;
+    }
+    fields[2] = vec![0x55; 256]; // garbage "signature"
+    let mut forged = Vec::new();
+    for field in &fields {
+        forged.extend_from_slice(&(field.len() as u32).to_be_bytes());
+        forged.extend_from_slice(field);
+    }
+    let tampered = ogir_attest::AttestationStatement::new(
+        statement.assurance_class(),
+        statement.backend_id(),
+        *statement.qualifying_digest(),
+        forged,
+    )
+    .unwrap_or_else(|e| panic!("{e:?}"));
+
+    let mut verifier =
+        QuoteVerifier::connect("127.0.0.1", instance.port()).unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(
+        validate_quote_cryptographic(
+            &registry,
+            SCOPE,
+            AssuranceClass::SoftwareTpm,
+            &request,
+            &tampered,
+            &mut verifier,
+        )
+        .err(),
+        Some(ogir_attest_tpm::validation::ValidationError::SignatureInvalid)
     );
 }

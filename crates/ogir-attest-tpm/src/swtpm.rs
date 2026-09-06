@@ -5,12 +5,13 @@
 //! producing TPM 2.0 quotes over the selected experimental PCR with the
 //! caller's qualifying data bound into the quote (ADR-0018).
 //!
-//! Statement contract v2 (ADR-0019): `qualifying_digest` is the TPM's
-//! attested PCR digest (32 bytes; SHA-256 bank), and `quote_payload` is
-//! a length-prefixed encoding of [echoed qualifying data, attested PCR
-//! digest, RSA signature, AK public modulus]. The modulus binds the
-//! statement to the enrolled attestation key; the statement itself
-//! grants nothing.
+//! Statement contract v3 (ADR-0020): `qualifying_digest` is the TPM's
+//! attested PCR digest (32 bytes; SHA-256 bank), and `quote_payload`
+//! is a length-prefixed encoding of [echoed qualifying data, attested
+//! PCR digest, RSA signature, AK public modulus, marshaled
+//! TPMS_ATTEST bytes]. The modulus binds the statement to the enrolled
+//! key; the raw bytes let the verifier check the RSA signature
+//! cryptographically; the statement itself grants nothing.
 
 use std::str::FromStr;
 
@@ -171,11 +172,13 @@ impl AttestationBackend for SwtpmBackend {
             _ => return Err(BackendError::Internal),
         };
 
+        let attest_bytes = crate::marshal::marshal_attest(&attest)?;
         let mut payload = Vec::new();
         append_field(&mut payload, attest.extra_data().value());
         append_field(&mut payload, pcr_digest);
         append_field(&mut payload, &signature_bytes);
         append_field(&mut payload, &self.ak_modulus);
+        append_field(&mut payload, &attest_bytes);
         AttestationStatement::new(AssuranceClass::SoftwareTpm, BACKEND_ID, digest, payload)
     }
 }

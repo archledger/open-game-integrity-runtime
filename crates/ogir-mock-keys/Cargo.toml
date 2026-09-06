@@ -10,5 +10,8 @@ repository.workspace = true
 authors.workspace = true
 publish = false
 
+[dependencies]
+ogir-attest = { version = "0.0.0", path = "../ogir-attest" }
+
 [lints]
 workspace = true

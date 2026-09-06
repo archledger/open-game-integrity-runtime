@@ -320,3 +320,5 @@ mod tests {
         assert_eq!(AssuranceClass::HardwareFirmwareTpm.label(), "hardware-ftpm");
     }
 }
+
+pub mod sha256;

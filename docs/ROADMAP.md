@@ -972,3 +972,21 @@ recovery ADRs (spikes 3-5) - into M3-023, ahead of the M3-024 attack
 suite. See the
 [local issue](../planning/issues/022-enrollment-and-validation.md) and
 [ADR-0019](adr/0019-enrollment-records-and-quote-validation.md).
+
+## M3-023 cryptographic verification boundary
+
+Task M3-023 executes the human Option A decision: a single audited
+`#[allow(unsafe_code)]` marshaling block (the workspace's only unsafe
+exception, mechanically enforced to exactly one block by the isolation
+gate) serializes the signed TPMS_ATTEST bytes into statement contract
+v3; the in-repo SHA-256 moves to production `ogir-attest`; and the
+verifier-side TPM cryptographically verifies each quote's RSASSA-SHA256
+signature against the ENROLLED AK public key (ADR-0020). This closes
+the copied-public-AK exposure ADR-0019 documented: real quotes verify,
+tampered attestation bytes and forged signatures reject
+deterministically. Remaining in M3-023's original charter, now the next
+slice: the EK-bound credential-activation enrollment prototype and the
+publisher-scoped identity/privacy and recovery ADRs (roadmap spikes
+3-5), then the M3-024 attack suite and exit audit. See the
+[local issue](../planning/issues/023-cryptographic-verification.md) and
+[ADR-0020](adr/0020-audited-unsafe-marshaling-and-cryptographic-verification.md).

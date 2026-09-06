@@ -14,4 +14,4 @@
 
 pub mod hmac;
 pub mod keys;
-pub mod sha256;
+pub use ogir_attest::sha256;
