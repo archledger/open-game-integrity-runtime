@@ -73,6 +73,16 @@ impl SwtpmInstance {
         self.port
     }
 
+    /// Kills the swtpm process without cleanup (the daemon-killed
+    /// attack); Drop then has nothing to wait on.
+    #[allow(dead_code)]
+    pub fn kill(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+
     fn wait_ready(&mut self) {
         if !wait_ready(self.child.as_mut(), self.port, self.port.saturating_add(1)) {
             panic!("swtpm on port {} never listened", self.port);

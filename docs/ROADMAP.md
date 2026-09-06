@@ -1007,3 +1007,25 @@ both keys in one operation; foreign clients and EK/AK-confused
 requests reject. With spikes 1-5 now executed, the remaining M3 work is
 the M3-025 attack suite and exit audit. See the
 [local issue](../planning/issues/024-identity-recovery-enrollment.md).
+
+## M3-025 completion boundary
+
+Task M3-025 closes Milestone M3: the ten roadmap attack-test categories
+execute green as one named suite against real swtpm and the full
+enrollment/validation/cryptographic chain (software-as-hardware
+substitution, unenrolled-AK quote, wrong qualifying data, copied public
+AK without possession, stale quote, resource exhaustion, daemon killed
+during quote, malformed TPM structures, EK/AK confusion, and
+cross-publisher AK reuse), and the exit audit finds all four M3 exit
+criteria satisfied by executed-test or verified-static evidence
+(classes cannot be confused; the verifier validates AK enrollment and
+quote binding; private AK/session material is not exportable through
+OGIR APIs; all TPM errors fail closed and remain diagnosable). With
+M0, M1, M2, and M3 closed, the next milestone is M4 (one measured
+Linux boot profile). Recorded as future work, not M3 gaps: the fTPM
+hardware-class backend (class-agnostic seam ready; discrete fixture
+deferred per the accepted M3 entry recommendation) and
+endorsement-certificate EK authentication (ADR-0022 option C). See the
+[local issue](../planning/issues/025-attack-suite-and-exit-audit.md),
+[exit audit](superpowers/audits/2026-09-06-m3-exit-audit.md), and
+[plan](superpowers/plans/2026-09-06-m3-025-attack-suite-and-exit-audit.md).
