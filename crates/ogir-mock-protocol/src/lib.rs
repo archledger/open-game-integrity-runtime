@@ -15,6 +15,7 @@ pub mod admission;
 pub mod frame;
 pub mod objects;
 pub mod policy;
+pub mod renewal;
 pub mod service;
 pub mod transcript;
 
