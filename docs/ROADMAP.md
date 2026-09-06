@@ -904,3 +904,23 @@ namespaces are permanently non-production. See the
 integration status, the [approved design](superpowers/specs/2026-09-05-m2-016-mock-protocol-specification-design.md)
 for the decision record, and [test strategy](TEST_STRATEGY.md#m2-016-mock-specification-validation)
 for the executed-versus-planned validation boundary.
+
+## M2-019 completion boundary
+
+Task M2-019 closes Milestone M2's executable obligations: frozen hex
+conformance vectors for all four mock object classes with an independent
+second encoder agreeing byte for byte (ADR-0015's validation obligation),
+the CLI demonstration whose admission decision comes only from
+relying-party validation of signed artifacts with no trusted local
+boolean anywhere, the full twelve-category attack suite returning
+deterministic non-allow results, and the ADR-0014 renewal fence (one
+pending, one committed successor per predecessor, idempotent exact
+redelivery, pending grants nothing). All exit criteria are demonstrated
+by executed tests; the design gate holds (no production serialization or
+signature library selected, permanent experimental namespaces), and the
+mock substrate stays excluded from production graphs by the structural
+gate. M3 owns TPM mapping; production library selection remains a
+separate post-M2 ADR decision. See the
+[local issue](../planning/issues/019-conformance-demo-and-attacks.md) and
+[plan](superpowers/plans/2026-09-06-m2-019-conformance-demo-and-attacks.md)
+for the executed inventory.
