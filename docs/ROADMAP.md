@@ -953,3 +953,22 @@ locally. Verifier-side quote validation, AK enrollment, and the
 publisher-scoped identity design belong to M3-022. See the
 [local issue](../planning/issues/021-swtpm-backend.md) and
 [ADR-0018](adr/0018-tss-esapi-dependency-and-swtpm-backend.md).
+
+## M3-022 enrollment and validation boundary
+
+Task M3-022 delivers the publisher-scoped AK enrollment record model
+(one modulus, one scope, one assurance class - the cross-publisher
+reuse guard) and full semantic validation of swtpm statements under
+contract v2 (ADR-0019): strict class gate, known backend, payload
+structure, exact enrollment match, TPM-echoed qualifying-data equality,
+and digest consistency. Cryptographic signature verification is
+explicitly deferred: the only marshaling path for the raw attestation
+bytes requires `unsafe`, which the workspace forbids, so the
+copied-public-AK forgery class remains an open exposure until the
+unsafe-policy decision lands. The roadmap re-charters the deferred
+work - signature verification, the EK-bound credential-activation
+enrollment protocol, and the publisher-scoped identity/privacy and
+recovery ADRs (spikes 3-5) - into M3-023, ahead of the M3-024 attack
+suite. See the
+[local issue](../planning/issues/022-enrollment-and-validation.md) and
+[ADR-0019](adr/0019-enrollment-records-and-quote-validation.md).

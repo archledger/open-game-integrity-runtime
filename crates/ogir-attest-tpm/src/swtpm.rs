@@ -5,12 +5,12 @@
 //! producing TPM 2.0 quotes over the selected experimental PCR with the
 //! caller's qualifying data bound into the quote (ADR-0018).
 //!
-//! Statement contract: `qualifying_digest` is the TPM's attested PCR
-//! digest (32 bytes; the backend always selects a SHA-256 PCR bank),
-//! and `quote_payload` is a length-prefixed encoding of the echoed
-//! qualifying data, the attested PCR digest, and the RSA signature over
-//! the attestation structure. Verifier-side validation arrives in
-//! M3-022; the statement itself grants nothing.
+//! Statement contract v2 (ADR-0019): `qualifying_digest` is the TPM's
+//! attested PCR digest (32 bytes; SHA-256 bank), and `quote_payload` is
+//! a length-prefixed encoding of [echoed qualifying data, attested PCR
+//! digest, RSA signature, AK public modulus]. The modulus binds the
+//! statement to the enrolled attestation key; the statement itself
+//! grants nothing.
 
 use std::str::FromStr;
 
@@ -31,8 +31,8 @@ use tss_esapi::tcti_ldr::{NetworkTPMConfig, TctiNameConf};
 /// The experimental PCR slot quoted by this backend (debug slot 16).
 const EXPERIMENTAL_PCR: PcrSlot = PcrSlot::Slot16;
 
-/// Stable backend identifier.
-const BACKEND_ID: &str = "swtpm-tpm2-v1";
+/// Stable backend identifier (public for validator backend checks).
+pub const BACKEND_ID: &str = "swtpm-tpm2-v1";
 
 fn map_tss_error(error: tss_esapi::Error) -> BackendError {
     // Fail closed: any TSS-layer condition maps to a diagnosable seam
@@ -55,6 +55,7 @@ fn append_field(payload: &mut Vec<u8>, field: &[u8]) {
 pub struct SwtpmBackend {
     context: Context,
     ak_handle: tss_esapi::handles::KeyHandle,
+    ak_modulus: Vec<u8>,
 }
 
 impl SwtpmBackend {
@@ -62,33 +63,21 @@ impl SwtpmBackend {
     /// `127.0.0.1:2321`) and creates the restricted-signing AK primary
     /// under the Owner hierarchy.
     pub fn connect(host: &str, port: u16) -> Result<Self, BackendError> {
-        let config = match NetworkTPMConfig::from_str(&format!("host={host},port={port}")) {
-            Ok(config) => config,
-            Err(error) => {
-                return Err(map_tss_error(error));
-            }
-        };
+        let config = NetworkTPMConfig::from_str(&format!("host={host},port={port}"))
+            .map_err(map_tss_error)?;
         let tcti = TctiNameConf::Swtpm(config);
-        let mut context = match Context::new(tcti) {
-            Ok(context) => context,
-            Err(error) => {
-                return Err(map_tss_error(error));
-            }
-        };
+        let mut context = Context::new(tcti).map_err(map_tss_error)?;
 
-        let attributes = match ObjectAttributesBuilder::new()
+        let attributes = ObjectAttributesBuilder::new()
+            .with_fixed_tpm(true)
+            .with_fixed_parent(true)
             .with_sensitive_data_origin(true)
             .with_user_with_auth(true)
             .with_sign_encrypt(true)
             .with_decrypt(false)
             .with_restricted(true)
             .build()
-        {
-            Ok(attributes) => attributes,
-            Err(error) => {
-                return Err(map_tss_error(error));
-            }
-        };
+            .map_err(map_tss_error)?;
         let public = PublicBuilder::new()
             .with_public_algorithm(tss_esapi::interface_types::algorithm::PublicAlgorithm::Rsa)
             .with_rsa_unique_identifier(
@@ -118,17 +107,23 @@ impl SwtpmBackend {
             None,
             None,
         ));
-        let result = match context.create_primary(Hierarchy::Owner, public, None, None, None, None)
-        {
-            Ok(result) => result,
-            Err(error) => {
-                return Err(map_tss_error(error));
-            }
+        let result = context
+            .create_primary(Hierarchy::Owner, public, None, None, None, None)
+            .map_err(map_tss_error)?;
+        let ak_modulus = match result.out_public {
+            tss_esapi::structures::Public::Rsa { unique, .. } => unique.value().to_vec(),
+            _ => return Err(BackendError::Internal),
         };
         Ok(Self {
             context,
             ak_handle: result.key_handle,
+            ak_modulus,
         })
+    }
+
+    /// The AK's public modulus, for enrollment records (ADR-0019).
+    pub fn ak_modulus(&self) -> &[u8] {
+        &self.ak_modulus
     }
 
     fn pcr_selection() -> Result<tss_esapi::structures::PcrSelectionList, BackendError> {
@@ -180,6 +175,7 @@ impl AttestationBackend for SwtpmBackend {
         append_field(&mut payload, attest.extra_data().value());
         append_field(&mut payload, pcr_digest);
         append_field(&mut payload, &signature_bytes);
+        append_field(&mut payload, &self.ak_modulus);
         AttestationStatement::new(AssuranceClass::SoftwareTpm, BACKEND_ID, digest, payload)
     }
 }
