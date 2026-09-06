@@ -30,6 +30,10 @@ impl fmt::Debug for EvidenceBundle {
 }
 
 /// Research protocol message kinds.
+///
+/// Kinds 5 through 8 are the M2 mock classes (ADR-0015 framing plan);
+/// 9 through 63 are reserved for later mock work, and 64 and above are
+/// rejected as unknown until allocated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 pub enum MessageKind {
@@ -41,6 +45,32 @@ pub enum MessageKind {
     EndSession = 3,
     /// Return a bounded response.
     Response = 4,
+    /// M2 mock: signed test challenge.
+    MockChallenge = 5,
+    /// M2 mock: signed mock evidence transcript.
+    MockEvidence = 6,
+    /// M2 mock: short-lived test permit.
+    MockPermit = 7,
+    /// M2 mock: session-key proof of possession.
+    MockProofOfPossession = 8,
+}
+
+impl MessageKind {
+    /// Maps a raw wire value to a kind. Values without an allocated
+    /// variant, including the reserved 9-63 range, return `None`.
+    pub const fn from_u16(value: u16) -> Option<Self> {
+        match value {
+            1 => Some(Self::BeginSession),
+            2 => Some(Self::RenewSession),
+            3 => Some(Self::EndSession),
+            4 => Some(Self::Response),
+            5 => Some(Self::MockChallenge),
+            6 => Some(Self::MockEvidence),
+            7 => Some(Self::MockPermit),
+            8 => Some(Self::MockProofOfPossession),
+            _ => None,
+        }
+    }
 }
 
 /// A normalized frame header. Encoding is intentionally not frozen yet.
