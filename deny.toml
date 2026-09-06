@@ -10,11 +10,21 @@ all-features = true
 ignore = []
 
 [licenses]
+# ADR-0018: permissive set admitted with the tss-esapi tree. SPDX-only,
+# no exceptions by crate.
 allow = [
     "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
 ]
 confidence-threshold = 0.8
 exceptions = []
+
 
 [licenses.private]
 ignore = false
@@ -26,11 +36,70 @@ wildcards = "deny"
 highlight = "all"
 workspace-default-features = "allow"
 external-default-features = "allow"
-allow = []
+# ADR-0018: the tss-esapi 7.7.0 software-TPM backend tree (first
+# external production dependency, admitted 2026-09-06). Every crate in
+# the normal and build dependency graphs is enumerated; this is the
+# signed allowlist and must never grow without an ADR.
+allow = [
+    { name = "aho-corasick" },
+    { name = "autocfg" },
+    { name = "base64" },
+    { name = "bindgen" },
+    { name = "bitfield" },
+    { name = "bitfield-macros" },
+    { name = "bitflags" },
+    { name = "cexpr" },
+    { name = "cfg-if" },
+    { name = "clang-sys" },
+    { name = "either" },
+    { name = "enumflags2" },
+    { name = "enumflags2_derive" },
+    { name = "getrandom" },
+    { name = "glob" },
+    { name = "hostname-validator" },
+    { name = "itertools" },
+    { name = "libc" },
+    { name = "libloading" },
+    { name = "log" },
+    { name = "mbox" },
+    { name = "memchr" },
+    { name = "minimal-lexical" },
+    { name = "nom" },
+    { name = "num-derive" },
+    { name = "num-traits" },
+    { name = "oid" },
+    { name = "picky-asn1" },
+    { name = "picky-asn1-der" },
+    { name = "picky-asn1-x509" },
+    { name = "pkg-config" },
+    { name = "prettyplease" },
+    { name = "proc-macro2" },
+    { name = "quote" },
+    { name = "regex" },
+    { name = "regex-automata" },
+    { name = "r-efi" },
+    { name = "regex-syntax" },
+    { name = "rustc-hash" },
+    { name = "serde" },
+    { name = "serde_bytes" },
+    { name = "serde_core" },
+    { name = "serde_derive" },
+    { name = "shlex" },
+    { name = "stable_deref_trait" },
+    { name = "syn" },
+    { name = "target-lexicon" },
+    { name = "tss-esapi" },
+    { name = "tss-esapi-sys" },
+    { name = "unicode-ident" },
+    { name = "zeroize" },
+    { name = "windows-link" },
+    { name = "zeroize_derive" },
+]
 allow-workspace = true
 deny = []
 skip = []
 skip-tree = []
+
 
 [sources]
 unknown-registry = "deny"

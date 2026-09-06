@@ -45,6 +45,7 @@ def main() -> int:
 
     production_paths = [
         REPOSITORY_ROOT / "crates" / "ogir-attest" / "Cargo.toml",
+    REPOSITORY_ROOT / "crates" / "ogir-attest-tpm" / "Cargo.toml",
     REPOSITORY_ROOT / "crates" / "ogir-model" / "Cargo.toml",
         REPOSITORY_ROOT / "crates" / "ogir-protocol" / "Cargo.toml",
         REPOSITORY_ROOT / "crates" / "ogir-agent" / "Cargo.toml",

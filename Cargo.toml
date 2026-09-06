@@ -2,6 +2,7 @@
 members = [
     "crates/ogir-model",
     "crates/ogir-attest",
+    "crates/ogir-attest-tpm",
     "crates/ogir-protocol",
     "crates/ogir-agent",
     "crates/ogir-verifier",
