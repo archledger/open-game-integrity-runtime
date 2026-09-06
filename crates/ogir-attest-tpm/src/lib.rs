@@ -9,6 +9,7 @@
 
 pub mod activation;
 pub mod enrollment;
+pub mod logbridge;
 pub(crate) mod marshal;
 pub mod swtpm;
 pub mod validation;
