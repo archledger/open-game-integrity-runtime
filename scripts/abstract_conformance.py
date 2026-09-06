@@ -822,7 +822,7 @@ def _write_history_corpus_document(root, relative, raw):
         name = relative.name
         try:
             fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW,
-                         0o666, dir_fd=descriptors[-1])
+                         0o600, dir_fd=descriptors[-1])
         except FileExistsError:
             fd = os.open(name, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC | os.O_NOFOLLOW,
                          dir_fd=descriptors[-1])
