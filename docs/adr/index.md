@@ -31,3 +31,5 @@ stay traceable.
 | [ADR-0012](0012-abstract-json-conformance-corpus.md) | Accepted | One abstract JSON corpus uses snapshot/history fixtures, one authoritative manifest, one shared bounded loader, and six ordered fail-closed validation layers while production representation remains deferred. | None | None |
 | [ADR-0013](0013-isolated-mock-replay-cache.md) | Accepted | An opt-in bounded volatile mock replay cache remains isolated from durable freshness authority and production recovery. | None | None |
 | [ADR-0014](0014-renewal-revocation-semantics.md) | Accepted | Renewal uses fresh evidence and one coherent session owner; finite authorization and authenticated revocation freshness bound protected use. | None | None |
+| [ADR-0015](0015-mock-binding-transcript-encoding.md) | Accepted | A test-only transcript encoding uses fixed domain tags and fail-closed canonical record rules with frozen per-class field registries. | None | None |
+| [ADR-0016](0016-test-only-ephemeral-key-hierarchy.md) | Accepted | An in-repo test-only ephemeral software key hierarchy authenticates the mock protocol without selecting production crypto libraries. | None | None |

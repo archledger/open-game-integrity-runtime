@@ -883,3 +883,24 @@ M3 retains TPM mapping. The M1-013 corpus and M1-014 research boundaries remain
 unchanged. See the [local issue](../planning/issues/015-renewal-revocation-semantics.md)
 for integration status and [test strategy](TEST_STRATEGY.md#m1-015-renewal-and-revocation-validation)
 for the distinction between executed compatibility checks and planned behavior.
+
+## M2-016 mock specification boundary
+
+Task M2-016 integrates the approved mock protocol specification: the
+test-only transcript encoding with explicit domain separation (ADR-0015),
+the test-only ephemeral software key hierarchy (ADR-0016), the abstract
+mock message schemas and framing plan, and the placement of all twelve M2
+attack-test categories onto the M2-017/018/019 implementation slices. The
+static M1 exit-criteria audit recorded with this slice found all four M1
+exit criteria holding at `62fe2584`; M1 closes formally with this
+acceptance.
+
+These are specifications, not mechanisms: no encoder, parser, key, permit,
+proof, or demo exists, and this does not declare M2 underway operationally.
+The M2 design gate holds (no production serialization or signature library
+is selected), `ogir-model` remains dependency-free, and the experimental
+namespaces are permanently non-production. See the
+[local issue](../planning/issues/016-mock-protocol-specification.md) for
+integration status, the [approved design](superpowers/specs/2026-09-05-m2-016-mock-protocol-specification-design.md)
+for the decision record, and [test strategy](TEST_STRATEGY.md#m2-016-mock-specification-validation)
+for the executed-versus-planned validation boundary.

@@ -147,3 +147,15 @@ Required cleanup is retryable and remains Required until matching trusted
 completion; completion cannot revive terminal state. An implementation must
 prove its finite deletion and cleanup behavior, not infer it from these tables
 or from schema-valid scenarios.
+
+## M2-016 mock substrate privacy
+
+The mock protocol specification adds no evidence claim, identifier, or
+retention category. Mock challenges, evidence transcripts, permits, and
+proofs are test-process artifacts with process lifetime; no mock key
+material, nonce, or claim value may appear in diagnostics, and implementing
+slices must keep the existing redaction allowlists. The deterministic
+conformance derivation (ADR-0016) uses explicit seeds that live only in
+test vectors; it introduces no device-correlating value. Production
+representation, disclosure, and retention decisions remain deferred with
+their own approved contracts.

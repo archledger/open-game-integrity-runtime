@@ -523,3 +523,19 @@ contain positive controls and compatibility-evidence obligations.
 | S08 / A0 | [OGIR-REVOCATION-OUTAGE-TIME-001](../lab/scenarios/revocation-outage-time.scenario.json) | 3,6,9–10,39–42 | `initial-maintainer` | `all-protected-modes` |
 | S09 / A8 | [OGIR-PRIVACY-REVOCATION-STATE-001](../lab/scenarios/revocation-retention-privacy.scenario.json) | 18–19,23,34–38,43 | `initial-maintainer` | `all-protected-modes` |
 | S10 / A1 | [OGIR-RENEWAL-AUTHORITY-CONFUSION-001](../lab/scenarios/renewal-authority-confusion.scenario.json) | 1–5,15,39–43,48 | `initial-maintainer` | `all-protected-modes` |
+
+## M2-016 mock substrate threats
+
+The M2 mock substrate (ADR-0015 encoding, ADR-0016 key hierarchy) changes no
+production trust boundary: no production crate depends on it, its
+identifiers carry the permanent `OGIR-MOCK` namespace, and its artifacts are
+ephemeral test-process values. Within the mock threat model the accepted
+residual risk is the symmetric authenticator: any party holding a mock test
+secret can mint valid mock artifacts. Mock attack tests therefore model key
+compromise at the mock key directory boundary (key ids, scopes, wrong-key
+mismatch), never as a cryptographic property. The encoding itself removes
+cross-class transcript substitution, field duplication, ordering ambiguity,
+and unbounded input by construction; it supplies no confidentiality,
+non-repudiation, or side-channel resistance, and none is claimed. The full
+adversarial exercise of the twelve M2 attack-test categories belongs to the
+M2-017 through M2-019 slices recorded in the protocol document.

@@ -859,3 +859,10 @@ authorized Task 11 commit and publication remain pending.
 - **Documentation or agent-policy updates:** The M1-013F issue and design
   record the query-source citations, the dismissal justification for
   #45/#46, and the out-of-scope boundary for scanner configuration.
+
+- **Specification count verification:** An attack-test category count
+  ("13") propagated from a summary line into three scoping documents before
+  anyone recounted the roadmap's actual enumeration (twelve categories).
+  Recount every enumerated list against its primary source before citing
+  the number, especially when the number will be repeated in acceptance
+  criteria and validation gates.

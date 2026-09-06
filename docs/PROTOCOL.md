@@ -222,3 +222,102 @@ M2 still owes protected result/permit representation and validity, authenticatio
 and proof coverage, bounded parsing, issuer factories, possession, coherent owner
 access, durable order/recovery and deletion. No mock or scenario schema check
 proves these mechanisms. M3 TPM mapping is unchanged.
+
+## M2 mock protocol messages
+
+M2 proves the binding chain with test-only software keys. Four abstract
+messages plus one authenticated report flow between the mock roles
+(sample-server, sample-client/local agent, test attester, verifier, and the
+server's relying-party validator). Object encodings, domain tags, and record
+rules are defined by the test-only transcript encoding (ADR-0015) and its
+test-only key hierarchy (ADR-0016); this section fixes only the abstract
+field contracts and their trust sources. No production wire format is
+frozen.
+
+### Mock signed challenge (server or verifier to client)
+
+Fields: protocol version, publisher id, game id, build id, account scope,
+match id, policy id and version, nonce, challenge window (issued-at,
+exclusive expires-at), requested evidence profile id, issuer key id. Trust
+sources: every field is created by the publisher challenge issuer and
+becomes trusted only after publisher authentication and verifier validation
+(ADR-0005); the client treats the whole object as candidate input until the
+verifier path authenticates it.
+
+### Mock evidence (client to verifier)
+
+Fields: the complete M1-012 Evidence-binding transcript, carried by the
+ADR-0015 evidence encoding: the embedded signed challenge object, evidence
+profile id, session public key id with the actual session public key,
+collection authority contract id, protected epoch relation, collection
+sequence, collection start, snapshot-freeze end, the eight Base claims, the
+profile's subset of the two profile-specific claims, one registered
+provenance class per claim, and the manifest and measurement identities.
+Trust sources: unchanged from the trust model; the attester's construction
+grants no authority to attester-selected values, and received claims remain
+candidate inputs.
+
+### Mock permit (verifier to client, presented to the relying party)
+
+Fields: protocol version, permit id, session id, session public key id, the
+appraised challenge nonce, policy id and version, issued-at, exclusive
+expires-at, issuer key id. Trust sources: only the verifier's completed
+capability-gated flow (ADR-0007, ADR-0009) may cause issuance; validity is
+finite, half-open, and bounded per ADR-0014; the client can never mint or
+extend one. Denials are unsigned non-disciplinary reports using the existing
+`ReasonCode` vocabulary and are never permits.
+
+### Mock proof of possession (client to relying party, via the server)
+
+Fields: the session-key authenticator over the exact permit bytes plus a
+verifier-issued single-use rechallenge nonce, under the ADR-0015 proof
+domain tag. Trust sources: only the trusted local key owner holds the
+session key (ADR-0008); the relying party validates the proof against the
+actual key bound at appraisal before any admission decision.
+
+### Mock framing plan
+
+The current research kinds remain: `BeginSession = 1`, `RenewSession = 2`,
+`EndSession = 3`, `Response = 4`. M2 allocates, in the implementing slice:
+`MockChallenge = 5`, `MockEvidence = 6`, `MockPermit = 7`,
+`MockProofOfPossession = 8`. Ids 9 through 63 are reserved for later mock
+work; ids 64 and above are rejected as unknown until allocated. An unknown
+or unsupported kind, or a protocol version outside the negotiated mock
+range, is rejected before payload parsing; this is the structural home of
+the protocol-downgrade attack test. `MAX_FRAME_LENGTH` and the existing
+`FrameHeader::validate` bound every mock message; oversized frames and
+truncated payloads are rejected at the frame layer before any record is
+read. The wire encoding of the frame header itself remains unfrozen; the
+mock demo's test-only header layout is owned by the M2-017 implementation
+plan.
+
+## M2 attack-test placement
+
+The twelve required M2 attack-test categories map to implementation slices
+as follows. The M2-019 suite executes all of them adversarially; the host
+column names the slice whose code the attack primarily exercises.
+
+| Attack-test category | Host slice | Primary mechanism under test |
+| --- | --- | --- |
+| Patched client returns success | M2-018 | server admits only a verifier-signed permit with valid proof; no local boolean exists |
+| Alter each challenge field | M2-017 | transcript reconstruction and `ExpectedContext` mismatch; signed challenge bytes change |
+| Replay evidence | M2-018 | ADR-0005 freshness plus the ADR-0013 isolated replay cache |
+| Replay permit | M2-018 | ADR-0014 finite validity, one-successor fencing, idempotent exact redelivery only |
+| Cross-match reuse | M2-017 | `ExpectedContext` match-id comparison |
+| Cross-game reuse | M2-017 | `ExpectedContext` game-id comparison |
+| Cross-account reuse | M2-017 | `ExpectedContext` account-scope comparison |
+| Cross-policy reuse | M2-017 | policy id and version comparison |
+| Expired challenge | M2-017 | half-open `ChallengeWindow` boundary checks |
+| Expired permit | M2-018 | ADR-0014 exclusive expiry, no grace |
+| Unknown critical field | M2-017 | ADR-0015 unknown-critical-id rejection |
+| Oversized and truncated message | M2-017 | frame bound and record-length rejection |
+| Duplicate security-critical field | M2-017 | ADR-0015 duplicate-id rejection |
+| Protocol downgrade | M2-017 | kind and version rejection before payload parse |
+| Verifier key mismatch | M2-018 | mock key directory: wrong issuer key id fails validation |
+| Session-key mismatch | M2-019 | proof validates only under the actual session key |
+
+Exit-criteria alignment: the server admits only a verifier-signed permit
+with valid proof of possession; every attack returns a deterministic
+non-allow result; the client cannot locally mint or extend authorization;
+and the M2-019 conformance vectors are agreed by a second encoder or
+independent validator per the ADR-0015 validation obligations.
