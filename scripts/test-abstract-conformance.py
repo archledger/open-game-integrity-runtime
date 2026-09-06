@@ -11,6 +11,7 @@ import importlib
 import io
 import json
 import os
+import stat
 import subprocess
 import tempfile
 import sys
@@ -409,7 +410,7 @@ class Task5Tests(ConformanceTestCase):
             def replace_before_final_open(
                 path: Any,
                 flags: int,
-                mode: int = 0o777,
+                mode: int = stat.S_IMODE(0o777),
                 *,
                 dir_fd: int | None = None,
             ) -> int:
@@ -419,6 +420,8 @@ class Task5Tests(ConformanceTestCase):
                     fixture.mkdir()
                     replaced = True
                 return original_open(path, flags, mode, dir_fd=dir_fd)
+
+            self.assertEqual(replace_before_final_open.__defaults__, (0o777,))
 
             def observed_read(file_descriptor: int, count: int) -> bytes:
                 nonlocal fixture_reads

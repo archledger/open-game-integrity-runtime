@@ -821,3 +821,41 @@ authorized Task 11 commit and publication remain pending.
 - **Documentation or agent-policy updates:** ADR-0014, protocol, architecture,
   threat model and test strategy preserve the known-local rule and qualified
   propagation bound without claiming a production transport or numeric TTL.
+
+## 2026-09-05 — Ground scanner barrier models before designing remediations
+
+- **Context:** M1-013F remediation of CodeQL alerts #45-#48 on the M1-013
+  Python scripts, opened by the first main-branch scan after PR #28 merged.
+- **Mistaken assumption:** The initial triage proposed restructuring the
+  `_read_relative` denylist guard so the scanner would recognize it, without
+  first proving any restructure could be recognized.
+- **Observed failure:** The exact CodeQL 2.26.4 sources show
+  `ConstCompareBarrier` applies only on value-equals-constant branches, the
+  only `Path::SafeAccessCheck` is `str.startswith` on its true branch, and
+  sinks accept both normalization states. A denylist-reject-then-use guard
+  can therefore never barrier in any syntax, and no honest single affirmative
+  anchor covers the registry reader's call-site domain. The remediation was
+  revised to fix the two true positives (#47 `0o666` creation mode, #48 bare
+  `0o777` shim default) and dismiss #45/#46 as false positives with the
+  proof recorded in the approved design.
+- **Security or quality impact:** An unproven restructure would have risked a
+  deceptive vacuous barrier or a weakened symlink-defense walk; the four
+  alerts also stayed untriaged through three merges because verification
+  checked branch-scoped alerts and CI conclusions but never the
+  repository-wide open-alert list.
+- **Permanent regression test:** `HistoryTests
+  .test_materialized_corpus_documents_are_created_owner_only` pins `0o600`
+  owner-only creation for every materialized corpus document (125 files,
+  RED-verified against `0o666`, mutation spot-check kills 125/125), and the
+  `replace_before_final_open` pin asserts the shim's evaluated mode default
+  stays `0o777`.
+- **New prevention rule:** Pin the CodeQL CLI version from the CI toolcache
+  log and read the exact query and barrier-model sources before designing a
+  remediation; a scanner barrier claim must cite the modeled shape. Query the
+  repository-wide open-alert list after every merge, not only branch-scoped
+  results. Value-preserving non-literal expressions (for example
+  `stat.S_IMODE(0o777)`) are the honest way to keep mirroring a stdlib
+  default without alerting a literal-only permission query.
+- **Documentation or agent-policy updates:** The M1-013F issue and design
+  record the query-source citations, the dismissal justification for
+  #45/#46, and the out-of-scope boundary for scanner configuration.

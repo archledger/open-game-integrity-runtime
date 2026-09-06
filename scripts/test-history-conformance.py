@@ -560,6 +560,26 @@ class HistoryTests(unittest.TestCase):
                     self.assertEqual(conformance.run_admitted_history_case(self.authority, admission, case.identifier, root),
                                      (case.checkpoint, case.disposition))
 
+    def test_materialized_corpus_documents_are_created_owner_only(self) -> None:
+        previous_umask = os.umask(0)
+        try:
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                conformance.build_task7_corpus(self.authority, root)
+                documents = sorted(
+                    path
+                    for path in (root / "lab").rglob("*")
+                    if path.is_file() and not path.is_symlink()
+                )
+                self.assertEqual(len(documents), 125)
+                for path in documents:
+                    with self.subTest(path=path.relative_to(root).as_posix()):
+                        mode = os.stat(path).st_mode & 0o777
+                        self.assertEqual(mode, 0o600)
+                        self.assertEqual(mode & 0o077, 0)
+        finally:
+            os.umask(previous_umask)
+
     def test_materializer_never_follows_dangling_file_or_directory_symlinks(self) -> None:
         for relative in ("lab/conformance/corpus.json", "lab", "lab/conformance",
                          "lab/conformance/snapshots", "lab/conformance/histories"):
