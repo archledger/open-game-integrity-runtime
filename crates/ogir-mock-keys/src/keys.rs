@@ -168,8 +168,9 @@ impl MockSessionKey {
         &self.id
     }
 
-    /// Returns the 32-byte lookup-handle value for
-    /// [`ogir_model::SessionPublicKeyId`] construction by the caller.
+    /// Returns the 32-byte lookup-handle value for constructing the
+    /// model crate's `SessionPublicKeyId` by the caller. Plain text by
+    /// design: this crate has no model dependency to link against.
     pub fn handle_bytes(&self) -> &[u8; SESSION_HANDLE_LENGTH] {
         &self.handle
     }
