@@ -8,4 +8,6 @@
 //! presented where hardware is required: the seam's strict-equality
 //! class gate enforces that at admission.
 
+pub mod enrollment;
 pub mod swtpm;
+pub mod validation;
