@@ -990,3 +990,20 @@ publisher-scoped identity/privacy and recovery ADRs (roadmap spikes
 3-5), then the M3-024 attack suite and exit audit. See the
 [local issue](../planning/issues/023-cryptographic-verification.md) and
 [ADR-0020](adr/0020-audited-unsafe-marshaling-and-cryptographic-verification.md).
+
+## M3-024 identity, recovery, and enrollment boundary
+
+Task M3-024 completes the roadmap's three remaining M3 research-spike
+decisions: publisher-scoped attestation identity and privacy (ADR-0021:
+per-scope keys, no cross-publisher linkability, documented intra-scope
+linkability), fail-closed recovery after TPM state loss (ADR-0022: TPM
+clear, motherboard replacement, firmware update, and agent
+reinstallation all end affected keys; recovery is always explicit
+re-enrollment), and the EK-bound credential-activation enrollment
+prototype (spike 3): the verifier seals an enrollment token with
+TPM2_MakeCredential to the client's EK public and AK name, and the
+client recovers it with TPM2_ActivateCredential, proving possession of
+both keys in one operation; foreign clients and EK/AK-confused
+requests reject. With spikes 1-5 now executed, the remaining M3 work is
+the M3-025 attack suite and exit audit. See the
+[local issue](../planning/issues/024-identity-recovery-enrollment.md).
