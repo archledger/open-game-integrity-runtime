@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+[package]
+name = "ogir-bootlog"
+description = "Dependency-free TCG2 measured-boot event-log ingestion, PCR replay, and platform-profile schema (ADR-0023)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+ogir-attest = { version = "0.0.0", path = "../ogir-attest" }
+
+[lints]
+workspace = true

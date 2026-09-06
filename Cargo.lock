@@ -249,6 +249,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ogir-bootlog"
+version = "0.0.0"
+dependencies = [
+ "ogir-attest",
+]
+
+[[package]]
 name = "ogir-mock-keys"
 version = "0.0.0"
 dependencies = [
