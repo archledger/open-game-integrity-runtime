@@ -1029,3 +1029,23 @@ endorsement-certificate EK authentication (ADR-0022 option C). See the
 [local issue](../planning/issues/025-attack-suite-and-exit-audit.md),
 [exit audit](superpowers/audits/2026-09-06-m3-exit-audit.md), and
 [plan](superpowers/plans/2026-09-06-m3-025-attack-suite-and-exit-audit.md).
+
+## M4-026 ingestion boundary
+
+Task M4-026 delivers the M4 foundation per the accepted entry
+recommendations (in-repo parser, EFI-phase-first scope): the
+dependency-free ogir-bootlog crate with the TCG2 event-log parser
+(Spec ID Event03 + TCG_PCR_EVENT2, total and fail-closed), PCR replay
+with exact TPM semantics (EV_NO_ACTION exclusion and
+StartupLocality-3 all-FF PCR 0 initialization), exact and
+subset-matching comparison modes, and the platform-profile schema
+carrying the ADR-0014 non-weakening successor relation. The REAL
+development-host fixture (a 116-event firmware log from this machine's
+Secure-Boot-enabled LNL boot) ships in-tree: PCRs 2 and 7 replay
+exactly to the live readback; PCR 0 is recorded as a known
+firmware-log fidelity gap - the roadmap's own log-does-not-reproduce
+category seen in the wild, documented rather than papered over. Next:
+M4-027 (replay validation against live quotes) per the entry
+decomposition. See the
+[local issue](../planning/issues/026-profile-schema-and-log-ingestion.md)
+and [ADR-0023](adr/0023-platform-profile-and-log-ingestion.md).
