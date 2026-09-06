@@ -35,7 +35,10 @@ impl SwtpmInstance {
         // Parallel tests race for ports: retry so a server/ctrl port
         // collision cannot fail the suite.
         for _ in 0..10 {
-            let state_dir = std::env::temp_dir().join(format!(
+            // Cargo's compile-time per-crate scratch directory: a fixed,
+            // build-controlled base (never an ambient environment path)
+            // plus a unique per-run name.
+            let state_dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!(
                 "ogir-swtpm-{}-{}/",
                 std::process::id(),
                 counter()
