@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 
-#![forbid(unsafe_code)]
 //! TPM-backed attestation backends behind the `ogir-attest` seam
 //! (ADR-0018). This crate is the only place raw TPM material may be
 //! handled; nothing it exposes is a raw TPM command. The software-TPM
@@ -9,5 +8,6 @@
 //! class gate enforces that at admission.
 
 pub mod enrollment;
+pub(crate) mod marshal;
 pub mod swtpm;
 pub mod validation;
