@@ -1087,3 +1087,20 @@ it; M4-028b boots the ESP under QEMU/OVMF + swtpm and exports the
 event-log fixture. See the
 [local issue](../planning/issues/028a-image-build.md) and
 [image/README.md](../image/README.md).
+
+## M4-028b boot-harness boundary (partial: chassis + findings)
+
+Task M4-028b delivers the QEMU/OVMF/swtpm boot harness chassis and
+the honest blocker finding: the harness boots the built UKI (with
+secboot OVMF, the test-key UKI is correctly rejected by Secure Boot;
+with non-secboot OVMF, the kernel boots and the serial log confirms
+the known command line), and the swtpm state persists. THE BLOCKER:
+Fedora's edk2-ovmf-20260812 ships NO TCG2/TPM2 measurement support
+in any OVMF_CODE variant (zero Tcg2Dxe/TCG2/TPM2 strings in the
+firmware volumes), so the TPM PCRs remain zero regardless of the boot
+outcome - the measurements never happen. The documented fixes (any
+one): build edk2 from source with TCG2 enabled; use Debian/Ubuntu's
+ovmf package (which includes TCG2Dxe); or use a TCG2-enabled
+prebuilt. The harness needs only the OGIR_OVMF_CODE override - see
+image/boot-findings.md and image/boot-test.sh. The PCR 11 replay
+validation and the event-log export follow once the blocker clears.
