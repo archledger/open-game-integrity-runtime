@@ -1067,3 +1067,23 @@ rejects deterministically - the roadmap's log-does-not-reproduce
 category hosted. Next: M4-028 (the QEMU/OVMF + swtpm test image with
 UKI/PCR 11). See the
 [local issue](../planning/issues/027-replay-quote-validation.md).
+
+## M4-028a image-build boundary
+
+Task M4-028a delivers the dedicated test image's BUILD per the
+accepted M4-028 entry recommendations (UKI-only minimal image;
+in-repo tooling under image/; committed TEST-ONLY signing keys for
+deterministic fixtures; the distro kernel as payload): the
+key-generation script (self-signed keys branded
+OGIR TEST-ONLY DO NOT TRUST), the build script (ukify assembles
+kernel + initramfs + the known command line + systemd-stub into the
+UKI; sbsign signs it; mtools packs it into a FAT ESP - no rootfs),
+and the static verification script scripts/test-image-build.py (PE
+magic, sbverify against the committed key, the TEST-ONLY subject
+branding, the .linux/.initrd/.uname/.cmdline sections, the exact
+known command line, and the ESP boot entry - all fail closed). The
+built UKI measures its sections into PCR 11 (and 9) when OVMF loads
+it; M4-028b boots the ESP under QEMU/OVMF + swtpm and exports the
+event-log fixture. See the
+[local issue](../planning/issues/028a-image-build.md) and
+[image/README.md](../image/README.md).
