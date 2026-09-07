@@ -1135,3 +1135,32 @@ evidence is what CI validates). See the
 [ADR-0024](../adr/0024-tcg2-ovmf-acquisition-and-measured-capture.md),
 and [image/boot-findings.md](../image/boot-findings.md).
 
+## M4-029 boundary (the signed reference manifest and revocation fixtures)
+
+Task M4-029 delivers the reference-data half of M4's fourth exit
+criterion: updating the accepted profile requires signed, reviewed
+reference data. ADR-0025 defines the canonical line-oriented
+manifest (profile identity, Secure Boot state, SHA-256 PCR
+expectations, component minimum versions, accepted signing roots as
+DER fingerprints, revocations, and one RSASSA-SHA256 signature over
+the exact payload bytes) parsed fail-closed by ogir-bootlog and
+verified against a verifier-PINNED anchor through the audited TPM
+path (ogir-attest-tpm; no new dependencies, no self-declared
+signers). The committed fixtures pin the M4-028c capture truth:
+manifest.txt (revision 1, expectations generated from the committed
+pcrs.txt and asserted equal to the event-log replay; the accepted
+root is the committed TEST-ONLY image key) and manifest-revoked.txt
+(revision 2, retiring test-uki v1 by revocation plus a floor rise -
+a non-weakening successor). Update semantics are explicit: floors
+compare as dotted-numeric segments (refining ADR-0023's lexical
+compare), revocations persist, added signing roots and changed
+expectations are fresh acceptances, never successor bumps.
+docs/PROFILE_STATES.md is the user-facing explanation of accepted,
+unsupported (unknown profile, firmware update, below floor,
+revoked, custom key, absent TPM), and attack-indicating states, with
+the reason each reports and the principle that unsupported is never
+an accusation. Open deliberately: the Secure Boot enforcement boot
+(the enrolled varstore) joins the M4-030 attack categories, which
+consume these fixtures. See the
+[local issue](../planning/issues/029-reference-manifest.md) and
+[ADR-0025](../adr/0025-signed-reference-manifest.md).

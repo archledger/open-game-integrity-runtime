@@ -10,6 +10,7 @@
 use std::error::Error;
 use std::fmt;
 
+pub mod manifest;
 pub mod parser;
 pub mod profile;
 pub mod replay;
@@ -27,6 +28,17 @@ pub enum BootlogError {
     PcrMismatch,
     /// The profile itself was invalid.
     InvalidProfile(&'static str),
+    /// The manifest violated the canonical grammar (ADR-0025).
+    InvalidManifest(&'static str),
+    /// The checked boot component version is revoked.
+    ComponentRevoked,
+    /// The checked boot component is below its minimum version.
+    BelowMinimumVersion,
+    /// The checked boot component is not declared by the profile.
+    UnknownComponent,
+    /// The claimed profile is not the accepted one (reference data,
+    /// never an attack verdict).
+    UnsupportedProfile,
 }
 
 impl fmt::Display for BootlogError {
@@ -37,6 +49,15 @@ impl fmt::Display for BootlogError {
             Self::Malformed(detail) => write!(formatter, "malformed event log: {detail}"),
             Self::PcrMismatch => formatter.write_str("replayed PCRs do not match expectations"),
             Self::InvalidProfile(detail) => write!(formatter, "invalid profile: {detail}"),
+            Self::InvalidManifest(detail) => write!(formatter, "invalid manifest: {detail}"),
+            Self::ComponentRevoked => formatter.write_str("boot component version is revoked"),
+            Self::BelowMinimumVersion => {
+                formatter.write_str("boot component is below its minimum version")
+            }
+            Self::UnknownComponent => formatter.write_str("boot component is not declared"),
+            Self::UnsupportedProfile => {
+                formatter.write_str("claimed profile is not the accepted one")
+            }
         }
     }
 }
