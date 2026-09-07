@@ -137,11 +137,13 @@ pub fn parse(bytes: &[u8]) -> Result<EventLog, BootlogError> {
     let mut algorithms = Vec::with_capacity(algorithm_count as usize);
     for _ in 0..algorithm_count {
         let algorithm_id = tail.u16()?;
-        let digest_size = tail.u8()?;
+        // digestSize is a u16 field (TCG EFI Protocol Specification);
+        // multi-bank logs (SHA-1/256/384/512) misalign if read as u8.
+        let digest_size = tail.u16()?;
         if digest_size == 0 || digest_size > 64 {
             return Err(BootlogError::Malformed("digest size out of range"));
         }
-        algorithms.push((algorithm_id, digest_size));
+        algorithms.push((algorithm_id, digest_size as u8));
     }
     // The remaining vendorInfo length byte plus vendor bytes are
     // present in some logs; remaining tail is ignored deliberately

@@ -50,3 +50,32 @@ override - the harness needs no other change.
 - The PCR readback path: with TCG2 OVMF, the PCRs will actually
   contain measurements; the readback method (swtpm state or a
   in-guest reader for the event log) is then the remaining work.
+
+## Resolution (M4-028c, 2026-09-07)
+
+The blocker is CONFIRMED and RESOLVED.
+
+**Confirmed empirically, not by strings.** A traced swtpm under the
+Fedora OVMF shows zero firmware TPM2_Extend traffic and a full guest
+boot leaves PCRs 0-9 and 11 at zero with no event log published
+(read live from inside the guest through /dev/tpmrm0). One caveat on
+the original evidence: firmware volumes are LZMA-compressed, so
+`strings` alone can prove nothing either way - Ubuntu's TCG2-enabled
+OVMF also shows zero Tcg2Dxe strings. Only executed TPM traffic or
+live PCR values settle the question. (The PCR 10 activity observed
+during the first trace is NOT firmware: it is the Linux kernel's IMA
+plus its TPM2 HMAC-session support, which CreatePrimary/StartAuthSession
+sequence made look deceptively like a firmware TCG2 flow.)
+
+**Resolved** by fix option 2: `image/fetch-ovmf-tcg2.sh` pins Ubuntu's
+`ovmf-generic_2026.05-2ubuntu2_all.deb`, verifies the package and both
+extracted firmware volumes against committed SHA-256 hashes, and
+`image/boot-capture.sh` runs the measured capture under it (ADR-0024):
+firmware PCRs 0-7 and 9 all measured, the event log published and
+exported from the guest, and the sd-stub UKI phase measured into
+PCR 11 (non-zero, replay-validated).
+
+**Still open, deliberately:** the test-key-enrolled varstore and
+Secure Boot enforcement of the capture image (the M4-030 attack
+categories that need SB, not the measurement chain).
+

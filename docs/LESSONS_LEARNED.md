@@ -866,3 +866,32 @@ authorized Task 11 commit and publication remain pending.
   Recount every enumerated list against its primary source before citing
   the number, especially when the number will be repeated in acceptance
   criteria and validation gates.
+
+- **Compressed firmware volumes make strings evidence worthless
+  (2026-09-07, M4-028c):** Both Fedora's TCG2-less OVMF and Ubuntu's
+  TCG2-enabled OVMF show ZERO Tcg2Dxe strings - the DXE firmware
+  volume is LZMA-compressed, so an absent driver and a hidden driver
+  look identical to `strings`. Absence (or presence) of capability in
+  a compressed image must be proven by executed behavior: a traced
+  swtpm (TPM command log) or live PCR values read after boot. The
+  same boot also produced a convincing false positive: the kernel's
+  TPM2 HMAC-session support (CreatePrimary, StartAuthSession) plus
+  IMA extends looked exactly like a firmware TCG2 flow in the trace.
+  Attribute TPM traffic to its layer (firmware vs kernel) by WHERE it
+  lands: firmware measures PCRs 0-7; IMA measures PCR 10.
+- **Verify the guest tool inventory before scripting in-initramfs
+  (2026-09-07, M4-028c):** The dracut initramfs ships none of dd, wc,
+  od, awk, head, sync, or busybox - three capture iterations failed
+  on silently-missing commands before an `lsinitrd` inventory settled
+  it. Evidence dumps must use only the verified set (cat, echo, ls,
+  grep, sed, cut, cp, mount, tpm2) plus builtin drivers (ata_piix for
+  the disk; virtio modules are absent).
+- **tpm2-tools cannot create a restricted-sign key from flags on this
+  version (2026-09-07, M4-028c):** `create`/`createprimary` with
+  sign|restricted attributes fail TPM_RC_SCHEME (no scheme) or
+  TPM_RC_SYMMETRIC (scheme suffix sets a storage symmetric); the
+  canonical `createek` + `createak` pair is the working path, and the
+  EK must be the createek policy-auth one (a password primary fails
+  createak's policy session 0x99D). Also: swtpm holds only two
+  object slots - flush the EK context before quoting, or everything
+  fails with a misleading out-of-memory (0x902).
