@@ -39,7 +39,10 @@ def check(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    artifacts = Path(sys.argv[1] if len(sys.argv) > 1 else "image/build/capture/artifacts")
+    # The canonical capture directory, derived from the script's own
+    # location (a build-controlled constant, never user input): this
+    # gate validates THE capture boot-capture.sh just produced.
+    artifacts = Path(__file__).resolve().parents[1] / "image" / "build" / "capture" / "artifacts"
     if not artifacts.is_dir():
         print(f"FAIL: artifacts directory missing: {artifacts}")
         return 1
