@@ -244,6 +244,7 @@ name = "ogir-attest-tpm"
 version = "0.0.0"
 dependencies = [
  "ogir-attest",
+ "ogir-bootlog",
  "tss-esapi",
  "tss-esapi-sys",
 ]

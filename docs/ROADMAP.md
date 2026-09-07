@@ -1049,3 +1049,21 @@ M4-027 (replay validation against live quotes) per the entry
 decomposition. See the
 [local issue](../planning/issues/026-profile-schema-and-log-ingestion.md)
 and [ADR-0023](adr/0023-platform-profile-and-log-ingestion.md).
+
+## M4-027 log-quote validation boundary
+
+Task M4-027 connects the M4-026 ingestion to the M3 quote chain: the
+log-quote bridge extends a parsed event log's per-bank digests into a
+live swtpm PCR (reproducing the replay's extension sequence exactly),
+quotes it through the SwtpmBackend, and validates that the log's
+replayed value agrees with the quote - with the TPM2 semantic that
+Quote's pcrDigest is the hash of the selected PCR values, so the
+verifier reconstructs the value from the log, hashes it, and compares.
+The measured triangle (event log, live TPM bank, quoted digest) is
+proven end to end on the real host fixture: the replayed PCR 7 value
+equals the live extended bank, and the quote validates against it. The
+mismatching-log attack (a different bank's events behind the quote)
+rejects deterministically - the roadmap's log-does-not-reproduce
+category hosted. Next: M4-028 (the QEMU/OVMF + swtpm test image with
+UKI/PCR 11). See the
+[local issue](../planning/issues/027-replay-quote-validation.md).

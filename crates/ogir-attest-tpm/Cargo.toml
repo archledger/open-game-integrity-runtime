@@ -12,6 +12,7 @@ publish = false
 
 [dependencies]
 ogir-attest = { version = "0.0.0", path = "../ogir-attest" }
+ogir-bootlog = { version = "0.0.0", path = "../ogir-bootlog" }
 tss-esapi = { version = "7.7", default-features = false, features = ["generate-bindings"] }
 tss-esapi-sys = { version = "0.6" }
 
