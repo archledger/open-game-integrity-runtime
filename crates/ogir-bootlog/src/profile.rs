@@ -45,7 +45,8 @@ impl PlatformProfile {
     /// profile per the ADR-0014 transition relation: the revision must
     /// increase, and no expectation may be removed or loosened (each
     /// old expectation must be carried forward unchanged; new
-    /// expectations may be added, and minimum versions may only rise).
+    /// expectations may be added, and minimum versions may only rise,
+    /// compared as canonical dotted-numeric versions per ADR-0025).
     pub fn is_non_weakening_successor(&self, other: &PlatformProfile) -> bool {
         if other.revision <= self.revision || other.name != self.name {
             return false;
@@ -57,7 +58,9 @@ impl PlatformProfile {
         }
         for (component, floor) in &self.minimum_versions {
             match other.minimum_versions.get(component) {
-                Some(other_floor) if other_floor >= floor => {}
+                Some(other_floor)
+                    if crate::manifest::cmp_version(other_floor, floor)
+                        != std::cmp::Ordering::Less => {}
                 _ => return false,
             }
         }

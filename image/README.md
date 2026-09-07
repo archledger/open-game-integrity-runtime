@@ -7,6 +7,10 @@ no production user data. The measurement chain is what M4 proves.
   Boot keys (clearly labeled; never production, per the ADR-0016
   philosophy). The committed `keys/test-*.der`/`*.pem` pair makes
   fixture builds deterministic.
+- `keys/generate-test-manifest-key.sh` - the TEST-ONLY reference-
+  manifest anchor key pair (ADR-0025), also committed for
+  deterministic fixtures; `scripts/sign-reference-manifest.sh` uses
+  it to sign manifest payloads.
 - `build-image.sh` — assembles the UKI with ukify (kernel + initramfs
   + known command line + systemd-stub), signs it with sbsign against
   the test key, and packs it into a FAT ESP image with mtools.
