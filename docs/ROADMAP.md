@@ -1104,3 +1104,34 @@ ovmf package (which includes TCG2Dxe); or use a TCG2-enabled
 prebuilt. The harness needs only the OGIR_OVMF_CODE override - see
 image/boot-findings.md and image/boot-test.sh. The PCR 11 replay
 validation and the event-log export follow once the blocker clears.
+
+## M4-028c boundary (the measured capture: TCG2 OVMF + UKI fixture + the triangle)
+
+Task M4-028c closes the measured-boot proof the TCG2 blocker held
+back. The blocker was re-verified EMPIRICALLY (a traced swtpm shows
+zero firmware TPM2_Extend traffic under Fedora's OVMF; a full guest
+boot leaves PCRs 0-9 and 11 at zero with no event log; the observed
+PCR 10 activity is the kernel's IMA, not firmware - and compressed
+firmware volumes mean strings alone can never prove either side).
+The fix: image/fetch-ovmf-tcg2.sh pins Ubuntu's hash-verified
+TCG2-enabled ovmf-generic (ADR-0024). image/boot-capture.sh builds a
+SECOND TEST-ONLY-signed UKI with the capture init embedded (sd-stub
+measures it into PCR 11 through the firmware TCG2 protocol), boots
+it under the TCG2 OVMF + swtpm with an IDE evidence disk, and the
+guest exports the binary event log, the live PCR values, and a
+createek/createak TPM2 quote with the recorded nonce.
+scripts/test-measured-capture.py gates the artifacts; the committed
+fixture is validated durably by the Rust triangle test: the
+ogir-bootlog replay equals the live PCR read (PCR 11 included), the
+quote's pcrDigest equals SHA256 of the concatenated replayed values
+and echoes the nonce, and the QuoteVerifier cryptographically
+verifies the signature (tamper rejects). A production parser fix
+landed with it: the TCG EFI Spec ID digestSize field is u16 (the
+multi-bank log the single-bank host fixture could never exercise).
+Open deliberately: the test-key-enrolled varstore and SB enforcement
+of the capture image (M4-030 territory), and CI boots (the committed
+evidence is what CI validates). See the
+[local issue](../planning/issues/028c-measured-capture.md),
+[ADR-0024](../adr/0024-tcg2-ovmf-acquisition-and-measured-capture.md),
+and [image/boot-findings.md](../image/boot-findings.md).
+

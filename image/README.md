@@ -13,7 +13,27 @@ no production user data. The measurement chain is what M4 proves.
 
 Outputs land in `image/build/`: `ogir-test.uki` (the signed UKI) and
 `ogir-test.esp` (the FAT ESP). M4-028b boots the ESP under
-OVMF + swtpm and exports the event-log fixture.
+OVMF + swtpm (`boot-test.sh`).
+
+## The measured capture (M4-028c)
+
+`fetch-ovmf-tcg2.sh` obtains the pinned, hash-verified TCG2-enabled
+OVMF the capture requires (Fedora's ships none; see
+`boot-findings.md` and ADR-0024). `boot-capture.sh` then builds a
+SECOND signed UKI - the same TEST-ONLY key, with a capture init
+embedded in the initramfs (`capture-init.sh`, nonce-substituted at
+build time) - boots it under the TCG2 OVMF + swtpm, and exports the
+full evidence set from inside the guest: the binary TCG2 event log,
+the live PCR values, and a TPM2 quote (canonical `createek`/
+`createak` pair) with the recorded nonce. sd-stub measures the
+capture UKI into PCR 11 through the firmware's TCG2 protocol like any
+UKI. Artifacts land in `image/build/capture/artifacts/`;
+`scripts/test-measured-capture.py` gates them, and the committed
+fixture is validated by the Rust triangle test in
+`crates/ogir-attest-tpm/tests/uki_capture_triangle.rs`.
+
+The capture is a dev-host gate (QEMU boots are not wired into CI);
+the committed evidence is what CI validates.
 
 ## Tooling
 
