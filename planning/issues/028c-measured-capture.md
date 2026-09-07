@@ -1,9 +1,7 @@
-# M4-028c: The measured capture (TCG2 OVMF, UKI fixture export, PCR 11 triangle)
+# M4-028c: The measured capture (TCG2 OVMF, PCR 11 fixture, the triangle)
+<!-- labels: type: implementation,area: measured-boot,area: tpm,status: needs-review -->
+<!-- milestone: M4 Measured Boot Profile -->
 
-- Agent: zcode
-- Date: 2026-09-07
-- Status: Implemented (this issue documents the slice)
-- ADR: [ADR-0024](../../docs/adr/0024-tcg2-ovmf-acquisition-and-measured-capture.md)
 
 ## Problem
 
