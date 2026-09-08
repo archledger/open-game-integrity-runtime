@@ -62,7 +62,11 @@ def main() -> None:
             result = run(prefix, "start")
             if result.returncode != 0:
                 fail(f"start failed for {prefix.name}: {result.stderr}")
-        run_root = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "ogir-vtpm"
+        raw_runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+        if raw_runtime.startswith("/") and ".." not in raw_runtime.split("/"):
+            run_root = Path(raw_runtime) / "ogir-vtpm"
+        else:
+            run_root = Path("/tmp") / "ogir-vtpm"
         sockets = sorted(p.name for p in run_root.glob("*/swtpm.sock"))
         if len(sockets) != 2:
             fail(f"two prefixes must have two distinct sockets, found {sockets}")
