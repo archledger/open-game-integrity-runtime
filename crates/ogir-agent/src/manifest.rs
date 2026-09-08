@@ -158,12 +158,34 @@ mod tests {
         );
     }
 
+    /// Waits until the child has exec'd the expected binary: a
+    /// fresh fork still shows the parent's image in /proc/pid/exe,
+    /// which on loaded runners hashes the wrong executable.
+    fn settle(child: &std::process::Child, expected: &str) {
+        for _ in 0..100 {
+            if let Ok(target) = std::fs::read_link(format!("/proc/{}/exe", child.id())) {
+                let name = target
+                    .to_string_lossy()
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or_default()
+                    .to_string();
+                if name == expected || name == format!("{expected} (deleted)") {
+                    return;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        panic!("child never exec'd {expected}");
+    }
+
     #[test]
     fn a_different_process_has_a_different_executable_digest() {
         let mut child = std::process::Command::new("sleep")
             .arg("5")
             .spawn()
             .unwrap_or_else(|e| panic!("{e:?}"));
+        settle(&child, "sleep");
         let child_binding = CallerBinding::pin(&PeerCredentials {
             pid: child.id(),
             uid: 0,
