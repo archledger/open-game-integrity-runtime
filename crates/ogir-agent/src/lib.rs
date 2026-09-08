@@ -12,6 +12,7 @@ mod audited;
 
 pub mod binding;
 pub mod correlation;
+pub mod enforcement;
 pub mod events;
 pub mod manifest;
 pub mod observation;

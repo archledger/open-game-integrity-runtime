@@ -1553,3 +1553,31 @@ ON MERGE, MILESTONE M7 IS COMPLETE: M0-M7 closed; next is M8
 (scoped protected-session enforcement). See the
 [local issue](../planning/issues/044-suite-and-audit.md) and
 [ADR-0040](../adr/0040-m7-noninterference-suite.md).
+## M8-045 boundary (the enforcement seam, the first property, and the bypass/noninterference suite)
+
+Task M8-045 opens Milestone M8 (ADR-0041).
+ogir_agent::enforcement delivers the FIRST PROPERTY through a
+mechanism-INDEPENDENT seam: MemoryInterface (ptrace,
+process_vm_writev, proc-mem-write - stable disclosure spellings),
+the MemoryAccessControl trait (activate/decide/deactivate + a
+mechanism name; nothing mechanism-specific leaks), the
+SessionPolicy composed with the M7 observation (activation;
+IMMUTABILITY while active - re-activation and target swaps
+reject; deactivation emitting the policy-loss event onto the
+session stream and closing permit renewal), and the
+SimulatedBackend (the property's logic for CI; the LSM and
+ptrace-blocking backends are their own dev-host slices). The
+bypass/noninterference suite: every covered interface DENIES an
+unrelated same-user process against the ACTIVE target; the SAME
+access against an UNPROTECTED process is OutOfScope - and,
+EXECUTED on the dev host, an unrelated process's /proc/pid/mem
+stays openable while protection is active for the game
+(enforcement is game-scoped only; the innocent process is
+deliberately not corrupted - the open proves the OS permission
+the policy must not touch). Cleanup restores the no-claim state.
+Five enforcement unit tests + three suite tests green. Open
+deliberately: the real kernel backends (LSM/ptrace-blocking) as
+dev-host slices, the session-policy disclosure doc, and the M8
+exit audit. See the
+[local issue](../planning/issues/045-enforcement-seam.md) and
+[ADR-0041](../docs/../adr/0041-scoped-enforcement.md).
