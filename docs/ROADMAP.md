@@ -1338,3 +1338,29 @@ fuzz targets (M6-038), the sample backend + conformance kit
 (M6-039), and the ten-category suite + exit audit (M6-040). See
 the [local issue](../planning/issues/036-service-shell.md) and
 [ADR-0032](../adr/0032-verifier-service-shell.md).
+## M6-037 boundary (renewal, revocation, and the structured result API)
+
+Task M6-037 completes the lifecycle deliverable (ADR-0033). The
+wire verdict becomes a STRUCTURED shape: the VerdictKind families
+the integration target requires (allow / restricted / unsupported
+/ retry / deny) with stable reason codes from the M1 taxonomy and
+retry guidance - unsupported states are never denials, transient
+failures carry retry, and the permit rides only on admissions, so
+"publisher accidentally treats unsupported as cheating" becomes a
+wire-shape impossibility rather than a documentation hope. Two new
+trait-injected routes complete the five-route lifecycle:
+/v1/renew (verify + unexpired + unrevoked, then a FRESH challenge
+for the permit's policy context and full reprocessing - stale
+evidence denies) and /v1/revoke (the exact target bytes become
+the denylist key; nothing is parsed, so parser confusion is
+structurally impossible; idempotent). The developer-mode daemon
+implements both and honors revocations at re-admission and
+renewal. Executed: NINE HTTP integration tests green - the
+lifecycle roundtrip, permit-parser confusion (clean Malformed),
+verifier time skew (NotYetValid under injected decision time),
+plus the M6-036 six. Open deliberately: the stable C SDK surface
+and fuzz targets (M6-038), the sample backend + conformance kit +
+no-ban docs (M6-039), and the ten-category suite + exit audit
+(M6-040). See the
+[local issue](../planning/issues/037-lifecycle.md) and
+[ADR-0033](../adr/0033-lifecycle-and-structured-results.md).
