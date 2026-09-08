@@ -1287,3 +1287,28 @@ Open deliberately: the game/runtime manifest derivation and the
 thirteen-category attack suite with the M5 exit audit (M5-035).
 See the [local issue](../planning/issues/034-transport.md) and
 [ADR-0030](../adr/0030-wine-transport-and-correlation.md).
+## M5-035 boundary (the runtime manifest, the attack suite, and the M5 exit audit; M5 COMPLETE)
+
+Task M5-035 closes Milestone M5 (ADR-0031).
+ogir_agent::manifest derives the REDACTED runtime manifest of a
+PINNED caller from procfs: the executable's digest and size,
+bounded module digests from file-backed executable mappings, and
+the mount-namespace digest - the substitution anchor; derivation
+requires the pin, and malformed maps fail closed. The
+thirteen-category attack suite
+(crates/ogir-agent/tests/m5_attack_suite.rs) consolidates the
+milestone's required attack tests in the house inventory pattern:
+replaced bridge, copied environment, PID reuse, exit-during-
+binding, prefix substitution, mount-namespace substitution
+(environment-honest under EPERM), parent/child distinctness,
+oversized requests, layout-mismatch shapes, invalid frames,
+socket impersonation, request flood, and the
+no-privileged-operation-is-expressible proof; the wine-side legs
+anchor to their executed evidence (ADR-0029/0030). The M5 exit
+audit (docs/superpowers/audits/2026-09-08-m5-exit-audit.md) finds
+criteria 1, 2, and 4 satisfied by executed work and criterion 3
+partial with the fuzz-target remainder recorded for the M6 SDK
+slice. ON MERGE, MILESTONE M5 IS COMPLETE: M0-M5 closed; next is
+M6 (publisher verifier and sample-game SDK). See the
+[local issue](../planning/issues/035-manifest-and-suite.md) and
+[ADR-0031](../adr/0031-runtime-manifest-and-m5-suite.md).
