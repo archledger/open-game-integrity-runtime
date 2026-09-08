@@ -1,0 +1,28 @@
+{
+ "id": "OGIR-M9-032",
+ "title": "New unsafe requires explicit isolation and review",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "the referenced house suite is part of the release gate"
+ ],
+ "steps": [
+  "run the referenced suite entry",
+  "observe the recorded outcome"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 32: Safe Rust is the default; new `unsafe` or C code requires explicit isolation and review."
+ ],
+ "residual_risk": [
+  "registry mapping for the supply chain compromise family; the executable leg is the referenced suite; executable evidence: the isolation gate: exactly one allow attribute per carved-out crate, enforced every build"
+ ]
+}

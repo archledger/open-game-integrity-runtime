@@ -1,0 +1,28 @@
+{
+ "id": "OGIR-M9-029",
+ "title": "Bridge and portal run without privilege",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "the referenced house suite is part of the release gate"
+ ],
+ "steps": [
+  "run the referenced suite entry",
+  "observe the recorded outcome"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 29: The Windows bridge and portal run without system privilege."
+ ],
+ "residual_risk": [
+  "registry mapping for the daemon exploitation family; the executable leg is the referenced suite; executable evidence: the M5-031 portal: same-UID socket; the ADR-0029 bridge: no privileged operation"
+ ]
+}

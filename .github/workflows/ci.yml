@@ -74,6 +74,10 @@ jobs:
       - name: Check shell syntax
         run: bash -n scripts/*.sh
 
+      - name: Invariant coverage and scenario traceability
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 scripts/check-invariant-coverage.py
+
       - name: Conformance kit self-test
         run: PYTHONDONTWRITEBYTECODE=1 python3 scripts/conformance-kit.py --self-test
 

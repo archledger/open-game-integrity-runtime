@@ -1,0 +1,28 @@
+{
+ "id": "OGIR-M9-035",
+ "title": "No unrelated process inventory",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "the referenced house suite is part of the release gate"
+ ],
+ "steps": [
+  "run the referenced suite entry",
+  "observe the recorded outcome"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 35: Unrelated process lists, personal files, browser/chat activity, and biometric material are outside the protocol."
+ ],
+ "residual_risk": [
+  "registry mapping for the privacy abuse family; the executable leg is the referenced suite; executable evidence: the M7-044 noninterference suite: five legs, structural and executed"
+ ]
+}

@@ -1,0 +1,28 @@
+{
+ "id": "OGIR-M9-036",
+ "title": "Stable identifiers publisher-scoped",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "the referenced house suite is part of the release gate"
+ ],
+ "steps": [
+  "run the referenced suite entry",
+  "observe the recorded outcome"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 36: Stable identifiers are scoped to the publisher where possible."
+ ],
+ "residual_risk": [
+  "registry mapping for the privacy abuse family; the executable leg is the referenced suite; executable evidence: the M3-024 ADR-0021 scoping: per-publisher keys; cross-publisher linkability structurally absent"
+ ]
+}

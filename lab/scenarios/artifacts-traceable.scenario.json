@@ -1,0 +1,28 @@
+{
+ "id": "OGIR-M9-044",
+ "title": "Release artifacts traceable to reviewed source",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "the referenced house suite is part of the release gate"
+ ],
+ "steps": [
+  "run the referenced suite entry",
+  "observe the recorded outcome"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 44: Release artifacts are traceable to reviewed source and build instructions."
+ ],
+ "residual_risk": [
+  "registry mapping for the release compromise family; the executable leg is the referenced suite; executable evidence: the signed-commit + DCO + verified-signature discipline on every merged PR; the ADR-0024 hash-pinning pattern"
+ ]
+}

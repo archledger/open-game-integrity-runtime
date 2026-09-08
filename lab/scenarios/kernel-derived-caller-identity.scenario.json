@@ -1,0 +1,28 @@
+{
+ "id": "OGIR-M9-012",
+ "title": "Kernel-derived portal identity",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "the referenced house suite is part of the release gate"
+ ],
+ "steps": [
+  "run the referenced suite entry",
+  "observe the recorded outcome"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 12: The portal derives caller identity from kernel-provided credentials and race-resistant process handles."
+ ],
+ "residual_risk": [
+  "registry mapping for the fake caller and identity confusion family; the executable leg is the referenced suite; executable evidence: the M5-031 portal suite: SO_PEERCRED before any payload; the M5-032 pidfd pin is race-resistant"
+ ]
+}

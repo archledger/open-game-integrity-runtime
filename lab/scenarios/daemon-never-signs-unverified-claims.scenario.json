@@ -1,0 +1,28 @@
+{
+ "id": "OGIR-M9-021",
+ "title": "Daemon never signs caller-supplied claims",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "the referenced house suite is part of the release gate"
+ ],
+ "steps": [
+  "run the referenced suite entry",
+  "observe the recorded outcome"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 21: The daemon never signs caller-supplied security claims without independently deriving or verifying them."
+ ],
+ "residual_risk": [
+  "registry mapping for the daemon exploitation family; the executable leg is the referenced suite; executable evidence: the M4 manifest/correlation chain: everything independently derived from the pinned process's procfs"
+ ]
+}

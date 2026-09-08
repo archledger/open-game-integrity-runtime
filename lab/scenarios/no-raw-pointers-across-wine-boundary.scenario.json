@@ -1,0 +1,28 @@
+{
+ "id": "OGIR-M9-028",
+ "title": "No raw Windows pointers cross the boundary",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "the referenced house suite is part of the release gate"
+ ],
+ "steps": [
+  "run the referenced suite entry",
+  "observe the recorded outcome"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 28: No raw Windows pointer or unchecked length crosses the Wine/Unix boundary."
+ ],
+ "residual_risk": [
+  "registry mapping for the client/bridge patching family; the executable leg is the referenced suite; executable evidence: the ADR-0029 C ABI: bounded request/response only; the invalid pointer/length legs of the M5-033 harness"
+ ]
+}

@@ -1,0 +1,28 @@
+{
+ "id": "OGIR-M9-020",
+ "title": "Claim provenance classes stay distinguished",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "the referenced house suite is part of the release gate"
+ ],
+ "steps": [
+  "run the referenced suite entry",
+  "observe the recorded outcome"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 20: Hardware-certified, measured-log-derived, and trusted-agent-observed claims are distinguished."
+ ],
+ "residual_risk": [
+  "registry mapping for the verifier/policy/reference compromise family; the executable leg is the referenced suite; executable evidence: the M3-020 assurance-class seam: strict-equality class gate; the M3-025 software-as-hardware attack denies"
+ ]
+}
