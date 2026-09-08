@@ -1197,3 +1197,26 @@ MILESTONE M4 IS COMPLETE: M0-M4 closed; next is M5 (the Proton
 bridge and race-resistant caller binding). See the
 [local issue](../planning/issues/030-attack-suite-and-exit-audit.md)
 and [ADR-0026](../adr/0026-sb-varstore-and-measured-admission.md).
+## M5-031 boundary (the unprivileged local portal and the native sample client)
+
+Task M5-031 opens Milestone M5 with implementation-order step 1
+(ADR-0027). ogir_agent::portal is the unprivileged local endpoint:
+same-UID Unix-domain socket (0600; freshly created parents 0700,
+pre-existing directories never re-permissioned), credentials read
+from SO_PEERCRED BEFORE any payload parses (the kernel-derived
+identity the M5 entry spike proved crosses the wine bridge), frames
+bounded by a 1024-byte ceiling that rejects without reading the
+body, connections bounded to 16 frames, fail-closed decoding into
+normalized responses, and a deliberately minimal v1 message set
+(Hello/HelloAck - the ack reports the OBSERVED credentials; Rejected).
+The audited-block posture extends: ogir-agent joins ogir-attest-tpm
+as the second carved-out crate with exactly one audited unsafe
+block (the getsockopt shim), enforced by the amended isolation gate.
+The native sample client is
+crates/ogir-agent/examples/portal-client.rs. The credential,
+flood, oversized, and malformed legs are integration-tested against
+real sockets. Open deliberately: the pidfd/process-start-time
+binding (M5-032), the PE DLL and transport (M5-033/034), and the
+richer message set those slices bring. See the
+[local issue](../planning/issues/031-portal.md) and
+[ADR-0027](../adr/0027-local-portal-and-peer-cred-shim.md).

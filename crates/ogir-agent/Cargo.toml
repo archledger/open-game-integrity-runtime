@@ -13,5 +13,20 @@ publish = false
 ogir-model = { path = "../ogir-model", version = "=0.0.0" }
 ogir-protocol = { path = "../ogir-protocol", version = "=0.0.0" }
 
-[lints]
-workspace = true
+# ADR-0027 carve-out (mirroring ADR-0020's form): this crate
+# declares unsafe_code = "deny" (not forbid) so that exactly one
+# audited #[allow(unsafe_code)] block (the SO_PEERCRED getsockopt
+# shim in portal.rs) may exist. Every other lint mirrors the
+# workspace table exactly; both carve-outs are enforced by
+# scripts/test-mock-substrate.py.
+[lints.rust]
+missing_debug_implementations = "warn"
+unused_must_use = "deny"
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+expect_used = "deny"
+unwrap_used = "deny"
+todo = "deny"
+unimplemented = "deny"

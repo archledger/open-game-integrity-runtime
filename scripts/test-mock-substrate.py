@@ -58,33 +58,37 @@ def main() -> int:
         for crate in MOCK_CRATES:
             check(crate not in text, f"{path.relative_to(REPOSITORY_ROOT)} references {crate}")
 
-    # ADR-0020: ogir-attest-tpm is the ONLY crate with its own lint
-    # table (unsafe_code = "deny" instead of the workspace forbid);
-    # every other lint must mirror the workspace table exactly, and no
-    # other crate may leave [lints] workspace = true.
+    # ADR-0020 + ADR-0027: ogir-attest-tpm and ogir-agent are the ONLY
+    # crates with their own lint tables (unsafe_code = "deny" instead
+    # of the workspace forbid); every other lint must mirror the
+    # workspace table exactly, and no other crate may leave
+    # [lints] workspace = true. Each carved-out crate holds EXACTLY ONE
+    # audited #[allow(unsafe_code)] block (the ADR-0020 marshaling
+    # call; the ADR-0027 SO_PEERCRED getsockopt shim).
     import re as _re
     workspace = (REPOSITORY_ROOT / "Cargo.toml").read_text(encoding="utf-8")
-    attest_tpm = (REPOSITORY_ROOT / "crates" / "ogir-attest-tpm" / "Cargo.toml").read_text(
-        encoding="utf-8"
-    )
-    check('unsafe_code = "deny"' in attest_tpm,
-          "ogir-attest-tpm lost the ADR-0020 unsafe_code deny posture")
-    check("[lints]" + chr(10) + "workspace = true" not in attest_tpm,
-          "ogir-attest-tpm must keep its own lint table (ADR-0020)")
-    for crate in MOCK_CRATES + ("ogir-model", "ogir-protocol", "ogir-agent",
+    for crate_name in ("ogir-attest-tpm", "ogir-agent"):
+        manifest = (REPOSITORY_ROOT / "crates" / crate_name / "Cargo.toml").read_text(
+            encoding="utf-8"
+        )
+        check('unsafe_code = "deny"' in manifest,
+              f"{crate_name} lost its audited unsafe_code deny posture")
+        check("[lints]" + chr(10) + "workspace = true" not in manifest,
+              f"{crate_name} must keep its own lint table")
+        sources = list((REPOSITORY_ROOT / "crates" / crate_name / "src").rglob("*.rs"))
+        allow_count = sum(
+            path.read_text(encoding="utf-8").count("#[allow(unsafe_code)]")
+            for path in sources
+        )
+        check(allow_count == 1,
+              f"exactly one audited #[allow(unsafe_code)] block is permitted in {crate_name}, found {allow_count}")
+    for crate in MOCK_CRATES + ("ogir-model", "ogir-protocol",
                                 "ogir-verifier", "ogir-attest"):
         manifest = (REPOSITORY_ROOT / "crates" / crate / "Cargo.toml").read_text(
             encoding="utf-8"
         )
         check("unsafe_code" not in manifest,
               f"{crate} must not override the workspace unsafe posture")
-    attest_tpm_sources = list((REPOSITORY_ROOT / "crates" / "ogir-attest-tpm" / "src").rglob("*.rs"))
-    allow_count = sum(
-        path.read_text(encoding="utf-8").count("#[allow(unsafe_code)]")
-        for path in attest_tpm_sources
-    )
-    check(allow_count == 1,
-          f"exactly one audited #[allow(unsafe_code)] block is permitted, found {allow_count}")
 
     if FAILURES:
         for failure in FAILURES:
