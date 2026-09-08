@@ -37,7 +37,7 @@ impl EventKind {
 /// One integrity-change event: the kind, the session identity
 /// digest, a monotonic sequence number, and the BEFORE/AFTER state
 /// digests (never the observations themselves).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct IntegrityEvent {
     pub kind: EventKind,
     pub session: [u8; 32],
@@ -46,9 +46,14 @@ pub struct IntegrityEvent {
     pub after: [u8; 32],
 }
 
+impl std::fmt::Debug for IntegrityEvent {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("IntegrityEvent([DIGESTS REDACTED])")
+    }
+}
+
 /// The bounded per-session event log. Oldest events drop when the
 /// bound is hit (the log is a rolling diagnostic, not a ledger).
-#[derive(Debug)]
 pub struct EventLog {
     session: [u8; 32],
     events: std::collections::VecDeque<IntegrityEvent>,
@@ -75,6 +80,17 @@ impl std::fmt::Display for EventError {
 }
 
 impl std::error::Error for EventError {}
+
+impl std::fmt::Debug for EventLog {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "EventLog(session=[REDACTED], events={}, sequence={})",
+            self.events.len(),
+            self.sequence
+        )
+    }
+}
 
 impl EventLog {
     pub fn new(session: [u8; 32]) -> Self {
