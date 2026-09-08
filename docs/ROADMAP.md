@@ -1240,3 +1240,28 @@ the session seam (M5-034), and the live parent/child and reuse
 executions (the M5-035 suite). See the
 [local issue](../planning/issues/032-caller-binding.md) and
 [ADR-0028](../adr/0028-race-resistant-caller-binding.md).
+## M5-033 boundary (the ogir-client prototype)
+
+Task M5-033 delivers implementation-order steps 2 and 3 (ADR-0029):
+the stable C ABI from sdk/include/ogir.h as a real mingw PE DLL
+(strict argument validation; transport open/close via ntdll's
+unix-call dispatch) plus the winegcc unixlib carrying real
+spec-bound ms_abi exports AND initialized dispatch tables, so
+either loader role works. The executed loader map (six traced
+points, wine-11.0 Staging) is recorded in the ADR: WINEDLLPATH dead
+for imports, LoadLibrary never resolves winelib artifacts, the
+attach runs only in the unforced n,b phase, and the deployment is
+native-PE-beside-the-app + unixlib in wine's machine-unix
+directory. PROVEN LIVE: the 64-bit harness under wine against the
+Rust portal - 13/13 PASS, the portal observing and pinning the
+wine process's kernel credentials (CallerBinding alive). The WoW64
+32-bit leg fails closed by design (custom arg structs need a proper
+wow64 conversion layer - future work; the fail-closed behavior IS
+the layout-mismatch defense). Session functions return UNSUPPORTED
+until the M5-034/035 message set. Open deliberately: the
+wine/Proton transport executions on other hosts incl. archhost's
+GE-Proton (M5-034), the wine server/prefix/process-tree/cgroup
+correlation, redacted tracing, and the game/runtime manifest
+(M5-035 with the thirteen-category suite). See the
+[local issue](../planning/issues/033-ogir-client.md) and
+[ADR-0029](../adr/0029-ogir-client-prototype.md).

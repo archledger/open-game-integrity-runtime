@@ -130,6 +130,40 @@ pub fn peer_credentials(stream: &UnixStream) -> io::Result<PeerCredentials> {
     })
 }
 
+/// Validates a caller-supplied socket path and returns the
+/// reconstructed clean path: absolute, no parent traversal, within
+/// the sun_path budget. Anything else is rejected.
+fn sanitize_socket_path(path: &Path) -> io::Result<PathBuf> {
+    use std::path::Component;
+    if !path.is_absolute() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "the portal socket path must be absolute",
+        ));
+    }
+    let mut clean = PathBuf::new();
+    clean.push("/");
+    for component in path.components() {
+        match component {
+            Component::Normal(part) => clean.push(part),
+            Component::RootDir | Component::CurDir => {}
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "the portal socket path may not traverse",
+                ));
+            }
+        }
+    }
+    if clean.as_os_str().len() > 104 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "the portal socket path exceeds the sun_path budget",
+        ));
+    }
+    Ok(clean)
+}
+
 /// A bound portal.
 #[derive(Debug)]
 pub struct Portal {
@@ -142,6 +176,11 @@ impl Portal {
     /// directory with 0700 and the socket itself 0600: only the same
     /// UID may connect.
     pub fn bind(path: &Path) -> io::Result<Self> {
+        // The socket path is configuration (often from the
+        // environment); validate and RECONSTRUCT it before any
+        // filesystem use so a hostile value can neither traverse
+        // nor overflow sun_path.
+        let path = sanitize_socket_path(path)?;
         if let Some(parent) = path.parent() {
             // Harden only directories this call creates; never touch
             // the permissions of a pre-existing shared directory.
@@ -150,12 +189,9 @@ impl Portal {
                 std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
             }
         }
-        let listener = UnixListener::bind(path)?;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
-        Ok(Self {
-            listener,
-            path: path.to_path_buf(),
-        })
+        let listener = UnixListener::bind(&path)?;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        Ok(Self { listener, path })
     }
 
     /// Accepts one connection and reads its kernel-derived

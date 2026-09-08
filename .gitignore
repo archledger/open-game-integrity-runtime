@@ -21,3 +21,6 @@ corpus/
 crashes/
 image/build/
 image/build/
+proton/ogir-client/build/
+proton/ogir-client/deploy/
+proton/ogir-client/rundir/
