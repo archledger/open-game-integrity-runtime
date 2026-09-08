@@ -15,6 +15,7 @@ pub mod correlation;
 pub mod manifest;
 pub mod observation;
 pub mod portal;
+pub mod registry;
 
 mod session;
 
