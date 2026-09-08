@@ -258,6 +258,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ogir-dev-verifierd"
+version = "0.0.0"
+dependencies = [
+ "ogir-mock-keys",
+ "ogir-mock-protocol",
+ "ogir-model",
+ "ogir-verifier",
+]
+
+[[package]]
 name = "ogir-mock-keys"
 version = "0.0.0"
 dependencies = [

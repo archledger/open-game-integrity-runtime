@@ -1312,3 +1312,29 @@ slice. ON MERGE, MILESTONE M5 IS COMPLETE: M0-M5 closed; next is
 M6 (publisher verifier and sample-game SDK). See the
 [local issue](../planning/issues/035-manifest-and-suite.md) and
 [ADR-0031](../adr/0031-runtime-manifest-and-m5-suite.md).
+## M6-036 boundary (the verifier service shell and the developer-mode daemon)
+
+Task M6-036 opens Milestone M6 (ADR-0032).
+ogir-verifier gains the production shell: bjson (a strict bounded
+JSON codec for flat string/hex objects with fixed ceilings and
+total fail-closed rejection), http (a bounded HTTP/1.1 endpoint:
+4KB header ceiling, capped required Content-Length, one request
+per connection, fixed statuses, no TLS - the authority's transport
+protection is the deployment's documented duty), and service (the
+routes /v1/challenge, /v1/dev/evidence, /v1/evidence over
+trait-injected semantics with decision time as a parameter).
+crates/ogir-dev-verifierd is the developer-mode deliverable: the
+mock substrate (MockVerifierService, exact-context policy,
+deterministic seed keys) composed into the shell, rebuilt per
+challenge issuance so the three-step flow exercises the full
+verify-replay-policy-permit chain; it is mock-tier by construction
+(the isolation gate asserts its existence and keeps it out of the
+production graph). PROVEN over real TCP: the full flow ADMITS with
+a permit, duplicates deny ReplayDetected, premature submissions
+deny cleanly, malformed bodies and unknown routes 400, oversized
+bodies are refused unread. Open deliberately: renewal/revocation
+and the structured diagnostic API (M6-037), the stable SDK and
+fuzz targets (M6-038), the sample backend + conformance kit
+(M6-039), and the ten-category suite + exit audit (M6-040). See
+the [local issue](../planning/issues/036-service-shell.md) and
+[ADR-0032](../adr/0032-verifier-service-shell.md).
