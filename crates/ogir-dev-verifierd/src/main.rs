@@ -12,7 +12,9 @@ fn main() {
         .nth(1)
         .unwrap_or_else(|| "127.0.0.1:8080".to_string());
     println!("ogir-dev-verifierd: developer mode (test keys, simulated profiles)");
-    println!("listening on http://{address} (no TLS: bind localhost or front with your proxy)");
+    // The address is caller-supplied argv; never echo it (the
+    // caller knows what it passed).
+    println!("listening (no TLS: bind localhost or front with your proxy)");
     if let Err(error) = ogir_dev_verifierd::run_dev_daemon(&address, unix_now) {
         eprintln!("daemon failed: {error}");
         std::process::exit(1);
