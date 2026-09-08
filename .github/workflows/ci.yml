@@ -74,6 +74,9 @@ jobs:
       - name: Check shell syntax
         run: bash -n scripts/*.sh
 
+      - name: Conformance kit self-test
+        run: PYTHONDONTWRITEBYTECODE=1 python3 scripts/conformance-kit.py --self-test
+
       - name: Compile-check the C SDK header and the C++ wrapper
         run: |
           gcc -std=c17 -Wall -Wextra -Werror -fsyntax-only -x c - <<'EOF'

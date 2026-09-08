@@ -1392,3 +1392,30 @@ Open deliberately: the sample backend + conformance kit + no-ban
 docs (M6-039), and the ten-category suite + exit audit (M6-040).
 See the [local issue](../planning/issues/038-stable-sdk.md) and
 [ADR-0034](../adr/0034-stable-sdk-and-fuzzing.md).
+## M6-039 boundary (the sample backend, the conformance kit, and the no-ban documentation)
+
+Task M6-039 delivers the integration deliverables (ADR-0035).
+scripts/conformance-kit.py is the standalone publisher kit: 15
+fail-closed checks over plain HTTP in five groups - the five-step
+flow (issuance, simulation, submission with the structured verdict
+and permit), the lifecycle (stale-evidence renewal never admits;
+revocation confirms and is idempotent), freshness (duplicates
+never re-admit; the taxonomy reason rides the wire), and the wire
+bounds (malformed/unknown/missing 400; oversized refused unread -
+the reset close is the expected refusal shape). --self-test
+validates the kit offline and runs in CI. The sample backend
+(examples/sample-game-server.rs) demonstrates the roadmap's five
+steps against a running daemon with the publisher's policy table
+in full view: verdict families map to gameplay states (Admit,
+AdmitRestricted, CasualFallback, RetryLater, EndGracefully) - THE
+PUBLISHER'S choice, with the documented intended mapping incl.
+casual fallback (unsupported: full game, no protected extras, no
+flag) and the graceful end. docs/CASUAL_FALLBACK.md is the
+integration contract: the one rule (an attestation result is never
+a cheating accusation), the family table, the fallback path, the
+never-list, and the local quickstart. Executed: the kit 15/15
+against the running daemon; the sample completes the flow with the
+lifecycle demo. Open deliberately: the ten-category M6 attack
+suite + exit audit (M6-040) closing the milestone. See the
+[local issue](../planning/issues/039-sample-and-kit.md) and
+[ADR-0035](../adr/0035-sample-backend-and-conformance-kit.md).
