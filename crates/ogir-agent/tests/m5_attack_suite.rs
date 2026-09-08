@@ -369,11 +369,13 @@ fn cat12_request_flood_is_bounded() {
         write_frame(&mut client, &frame).unwrap_or_else(|e| panic!("{e:?}"));
         let _ = ogir_agent::portal::read_frame(&mut client);
     }
-    write_frame(&mut client, &frame).unwrap_or_else(|e| panic!("{e:?}"));
-    client.flush().unwrap_or_else(|e| panic!("{e:?}"));
-    client
-        .shutdown(Shutdown::Write)
-        .unwrap_or_else(|e| panic!("{e:?}"));
+    // The flood write races the server's post-budget close: on
+    // fast runners the server may already have hung up (EPIPE).
+    // The verdict comes from the joined server thread, so the
+    // final write's failure mode is irrelevant either way.
+    let _ = write_frame(&mut client, &frame);
+    let _ = client.flush();
+    let _ = client.shutdown(Shutdown::Write);
     assert_eq!(
         server_handle
             .join()
