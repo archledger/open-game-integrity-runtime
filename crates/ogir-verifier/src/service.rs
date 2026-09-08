@@ -17,15 +17,104 @@ use crate::http::{
     STATUS_OK, write_response,
 };
 
-/// The wire-level verdict: everything a relying party needs, and
-/// nothing it should not parse further.
+/// The wire-level verdict families the integration target
+/// requires a game server to handle. Each carries the stable
+/// reason-code taxonomy and retry guidance - the structured
+/// result and diagnostic API (M6-037, ADR-0033).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VerdictKind {
+    Allow,
+    Restricted,
+    Unsupported,
+    Retry,
+    Deny,
+}
+
+impl VerdictKind {
+    /// The stable wire spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Allow => "allow",
+            Self::Restricted => "restricted",
+            Self::Unsupported => "unsupported",
+            Self::Retry => "retry",
+            Self::Deny => "deny",
+        }
+    }
+
+    /// Retry guidance for the relying party.
+    pub fn retryable(self) -> bool {
+        matches!(self, Self::Retry | Self::Restricted)
+    }
+}
+
+/// The structured wire verdict: the kind, the stable reason code,
+/// and - only for admissions - the opaque signed permit. Nothing
+/// here is disciplinary; the reason codes are the M1 taxonomy
+/// made wire-visible.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WireVerdict {
-    /// Admission with the opaque signed permit.
-    Allow { permit_hex: Vec<u8> },
-    /// A deterministic, non-disciplinary denial with its public
-    /// reason code.
-    Deny { reason: String },
+pub struct WireVerdict {
+    pub kind: VerdictKind,
+    pub reason_code: String,
+    pub permit_hex: Option<Vec<u8>>,
+}
+
+impl WireVerdict {
+    pub fn allow(permit_hex: Vec<u8>) -> Self {
+        Self {
+            kind: VerdictKind::Allow,
+            reason_code: "Admitted".to_string(),
+            permit_hex: Some(permit_hex),
+        }
+    }
+
+    /// Maps a reason-code name from the taxonomy to the structured
+    /// verdict: unsupported states are never denials, and
+    /// transient failures carry retry guidance.
+    pub fn from_reason(reason: &str) -> Self {
+        let kind = match reason {
+            "UnsupportedVersionOrProfile"
+            | "UnsupportedPlatform"
+            | "UnsupportedCriticalRequirement" => VerdictKind::Unsupported,
+            "TransientFailure" | "AttestationUnavailable" => VerdictKind::Retry,
+            _ => VerdictKind::Deny,
+        };
+        Self {
+            kind,
+            reason_code: reason.to_string(),
+            permit_hex: None,
+        }
+    }
+}
+
+/// Renewal request: fresh evidence for an existing permit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenewalRequest {
+    pub permit_hex: Vec<u8>,
+    pub evidence_hex: Vec<u8>,
+}
+
+/// Renewal outcome: a fresh permit, or a structured verdict.
+pub type RenewalOutcome = Result<Vec<u8>, WireVerdict>;
+
+/// Renews a permit per the ADR-0014 semantics: fresh evidence and
+/// one coherent session owner; implemented by the substrate.
+pub trait PermitRenewer {
+    fn renew(&self, now: u64, request: &RenewalRequest) -> RenewalOutcome;
+}
+
+/// Revocation request: the opaque artifact being retired.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevocationRequest {
+    pub target_hex: Vec<u8>,
+}
+
+/// Revocation outcome: confirmation or a structured verdict.
+pub type RevocationOutcome = Result<(), WireVerdict>;
+
+/// Records a revocation the verifier will honor from now on.
+pub trait RevocationAuthority {
+    fn revoke(&self, request: &RevocationRequest) -> RevocationOutcome;
 }
 
 /// Challenge issuance requests (flat, bounded text fields).
@@ -88,6 +177,8 @@ pub fn serve_one(
     issuer: &dyn ChallengeIssuer,
     simulator: Option<&dyn EvidenceSimulator>,
     processor: &dyn EvidenceProcessor,
+    renewer: &dyn PermitRenewer,
+    revocation: &dyn RevocationAuthority,
 ) -> Result<(), RouteError> {
     let request = crate::http::read_request(stream).map_err(RouteError::Http)?;
 
@@ -97,7 +188,9 @@ pub fn serve_one(
         return Ok(());
     }
 
-    let response = route(&request, now, issuer, simulator, processor);
+    let response = route(
+        &request, now, issuer, simulator, processor, renewer, revocation,
+    );
     let (status, body) = match response {
         Ok(body) => (STATUS_OK, body),
         Err(detail) => (STATUS_BAD_REQUEST, error_body(&detail)),
@@ -106,12 +199,15 @@ pub fn serve_one(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn route(
     request: &Request,
     now: u64,
     issuer: &dyn ChallengeIssuer,
     simulator: Option<&dyn EvidenceSimulator>,
     processor: &dyn EvidenceProcessor,
+    renewer: &dyn PermitRenewer,
+    revocation: &dyn RevocationAuthority,
 ) -> Result<String, String> {
     match request.path.as_str() {
         "/v1/challenge" => {
@@ -159,19 +255,50 @@ fn route(
             let challenge = require_hex(&members, "challenge_hex").map_err(|e| e.to_string())?;
             let evidence = require_hex(&members, "evidence_hex").map_err(|e| e.to_string())?;
             let verdict = processor.process(now, challenge, evidence);
-            Ok(match verdict {
-                WireVerdict::Allow { permit_hex } => encode_object(&[
-                    ("verdict", Value::Str("allow".to_string())),
-                    ("permit_hex", Value::Hex(permit_hex)),
-                ]),
-                WireVerdict::Deny { reason } => encode_object(&[
-                    ("verdict", Value::Str("deny".to_string())),
-                    ("reason", Value::Str(reason)),
-                ]),
-            })
+            Ok(encode_verdict(&verdict))
+        }
+        "/v1/renew" => {
+            let members = decode_object(&request.body).map_err(|e| e.to_string())?;
+            let permit = require_hex(&members, "permit_hex").map_err(|e| e.to_string())?;
+            let evidence = require_hex(&members, "evidence_hex").map_err(|e| e.to_string())?;
+            let renewal = RenewalRequest {
+                permit_hex: permit.to_vec(),
+                evidence_hex: evidence.to_vec(),
+            };
+            match renewer.renew(now, &renewal) {
+                Ok(permit_hex) => Ok(encode_object(&[("permit_hex", Value::Hex(permit_hex))])),
+                Err(verdict) => Ok(encode_verdict(&verdict)),
+            }
+        }
+        "/v1/revoke" => {
+            let members = decode_object(&request.body).map_err(|e| e.to_string())?;
+            let target = require_hex(&members, "target_hex").map_err(|e| e.to_string())?;
+            let revocation_request = RevocationRequest {
+                target_hex: target.to_vec(),
+            };
+            match revocation.revoke(&revocation_request) {
+                Ok(()) => Ok(encode_object(&[(
+                    "revoked",
+                    Value::Str("confirmed".to_string()),
+                )])),
+                Err(verdict) => Ok(encode_verdict(&verdict)),
+            }
         }
         _ => Err("unknown route".to_string()),
     }
+}
+
+/// Encodes the structured verdict: the kind, the stable reason
+/// code, and the permit only for admissions.
+pub fn encode_verdict(verdict: &WireVerdict) -> String {
+    let mut members: Vec<(&str, Value)> = vec![
+        ("verdict", Value::Str(verdict.kind.as_str().to_string())),
+        ("reason_code", Value::Str(verdict.reason_code.clone())),
+    ];
+    if let Some(permit) = &verdict.permit_hex {
+        members.push(("permit_hex", Value::Hex(permit.clone())));
+    }
+    encode_object(&members)
 }
 
 /// Runs the service loop until the process is stopped. Each
@@ -182,13 +309,23 @@ pub fn serve_forever(
     issuer: &dyn ChallengeIssuer,
     simulator: Option<&dyn EvidenceSimulator>,
     processor: &dyn EvidenceProcessor,
+    renewer: &dyn PermitRenewer,
+    revocation: &dyn RevocationAuthority,
 ) -> Result<(), RouteError> {
     loop {
         let mut stream = listener
             .accept()
             .map_err(|e| RouteError::Internal(e.to_string()))?;
         let now = now_source();
-        let _ = serve_one(&mut stream, now, issuer, simulator, processor);
+        let _ = serve_one(
+            &mut stream,
+            now,
+            issuer,
+            simulator,
+            processor,
+            renewer,
+            revocation,
+        );
     }
 }
 
@@ -232,14 +369,25 @@ mod tests {
     impl EvidenceProcessor for FixedProcessor {
         fn process(&self, _now: u64, challenge: &[u8], evidence: &[u8]) -> WireVerdict {
             if evidence == challenge {
-                WireVerdict::Allow {
-                    permit_hex: vec![0xAA],
-                }
+                WireVerdict::allow(vec![0xAA])
             } else {
-                WireVerdict::Deny {
-                    reason: "EvidenceInvalid".to_string(),
-                }
+                WireVerdict::from_reason("EvidenceInvalid")
             }
+        }
+    }
+
+    struct NoopRenewer;
+    struct NoopRevocation;
+
+    impl PermitRenewer for NoopRenewer {
+        fn renew(&self, _now: u64, _request: &RenewalRequest) -> RenewalOutcome {
+            Err(WireVerdict::from_reason("UnsupportedVersionOrProfile"))
+        }
+    }
+
+    impl RevocationAuthority for NoopRevocation {
+        fn revoke(&self, _request: &RevocationRequest) -> RevocationOutcome {
+            Ok(())
         }
     }
 
@@ -262,6 +410,8 @@ mod tests {
             &FixedIssuer,
             None,
             &FixedProcessor,
+            &NoopRenewer,
+            &NoopRevocation,
         )
         .unwrap_or_else(|e| panic!("{e}"));
         assert!(body.contains("\"challenge_hex\":\"0102\""));
@@ -279,6 +429,8 @@ mod tests {
             &FixedIssuer,
             None,
             &FixedProcessor,
+            &NoopRenewer,
+            &NoopRevocation,
         )
         .unwrap_or_else(|e| panic!("{e}"));
         assert!(allow.contains("\"verdict\":\"allow\""));
@@ -293,10 +445,12 @@ mod tests {
             &FixedIssuer,
             None,
             &FixedProcessor,
+            &NoopRenewer,
+            &NoopRevocation,
         )
         .unwrap_or_else(|e| panic!("{e}"));
         assert!(deny.contains("\"verdict\":\"deny\""));
-        assert!(deny.contains("\"reason\":\"EvidenceInvalid\""));
+        assert!(deny.contains("\"reason_code\":\"EvidenceInvalid\""));
     }
 
     #[test]
@@ -307,6 +461,8 @@ mod tests {
             &FixedIssuer,
             Some(&FixedSimulator),
             &FixedProcessor,
+            &NoopRenewer,
+            &NoopRevocation,
         )
         .unwrap_or_else(|e| panic!("{e}"));
         assert!(body.contains("\"evidence_hex\":\"0102\""), "{body}");
@@ -321,6 +477,8 @@ mod tests {
                 &FixedIssuer,
                 None,
                 &FixedProcessor,
+                &NoopRenewer,
+                &NoopRevocation,
             ),
             Err("developer mode is not enabled".to_string())
         );
@@ -335,6 +493,8 @@ mod tests {
                 &FixedIssuer,
                 None,
                 &FixedProcessor,
+                &NoopRenewer,
+                &NoopRevocation,
             ),
             Err("unknown route".to_string())
         );
@@ -345,6 +505,8 @@ mod tests {
                 &FixedIssuer,
                 None,
                 &FixedProcessor,
+                &NoopRenewer,
+                &NoopRevocation,
             )
             .is_err()
         );
