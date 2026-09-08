@@ -7,6 +7,9 @@ no production user data. The measurement chain is what M4 proves.
   Boot keys (clearly labeled; never production, per the ADR-0016
   philosophy). The committed `keys/test-*.der`/`*.pem` pair makes
   fixture builds deterministic.
+- `enroll-test-key.sh` - derives the TEST-ONLY-enrolled Secure Boot
+  varstore (PK = KEK = db = the image key, via virt-fw-vars; M4-030,
+  ADR-0026) for `scripts/test-sb-boot.py`, the enforcement gate.
 - `keys/generate-test-manifest-key.sh` - the TEST-ONLY reference-
   manifest anchor key pair (ADR-0025), also committed for
   deterministic fixtures; `scripts/sign-reference-manifest.sh` uses
