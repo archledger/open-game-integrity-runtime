@@ -45,6 +45,11 @@ def run(prefix: Path, action: str) -> subprocess.CompletedProcess:
 
 def main() -> None:
     tmp = Path(tempfile.mkdtemp(prefix="ogir-vtpm-test-"))
+    runtime_dir = tmp / "runtime"
+    runtime_dir.mkdir()
+    # The test OWNS the runtime root for its children: the env
+    # value never feeds a path the test builds (it replaces it).
+    os.environ["XDG_RUNTIME_DIR"] = str(runtime_dir)
     try:
         one = tmp / "prefix-one"
         two = tmp / "prefix-two"
@@ -71,7 +76,7 @@ def main() -> None:
             digest = hashlib.sha256(str(prefix.resolve()).encode()).hexdigest()[:16]
             return Path("ogir-vtpm") / digest / "swtpm.sock"
 
-        runtime = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
+        runtime = runtime_dir
         one_socket = runtime / socket_path(one)
         two_socket = runtime / socket_path(two)
         if not one_socket.exists() or not two_socket.exists():
