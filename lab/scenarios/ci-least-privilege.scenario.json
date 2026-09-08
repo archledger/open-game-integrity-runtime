@@ -1,0 +1,28 @@
+{
+ "id": "OGIR-M9-045",
+ "title": "CI uses least privilege and immutable refs",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "the referenced house suite is part of the release gate"
+ ],
+ "steps": [
+  "run the referenced suite entry",
+  "observe the recorded outcome"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 45: CI workflows use least privilege and immutable action references."
+ ],
+ "residual_risk": [
+  "registry mapping for the CI compromise family; the executable leg is the referenced suite; executable evidence: the CI workflow review: no secrets in PRs from forks, pinned toolchain versions, the code-scanning gates"
+ ]
+}

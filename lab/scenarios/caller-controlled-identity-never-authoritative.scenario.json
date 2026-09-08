@@ -1,0 +1,28 @@
+{
+ "id": "OGIR-M9-011",
+ "title": "Fake caller with copied identifiers",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "the referenced house suite is part of the release gate"
+ ],
+ "steps": [
+  "run the referenced suite entry",
+  "observe the recorded outcome"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 11: Caller-controlled PID, path, App ID, build ID, prefix, and environment values are never authoritative."
+ ],
+ "residual_risk": [
+  "registry mapping for the client/bridge patching; fake caller and identity confusion family; the executable leg is the referenced suite; executable evidence: the M5 attack suite cat01/cat02: copied App ID/environment yield different pins and manifests; a patched bridge speaks as just another client"
+ ]
+}

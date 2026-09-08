@@ -1609,3 +1609,27 @@ COMPLETE: M0-M8 closed; next is M9 (continuous attack
 laboratory). See the
 [local issue](../planning/issues/046-kernel-backend.md) and
 [ADR-0042](../adr/0042-pr-set-dumpable-backend.md).
+## M9-047 boundary (the invariant-coverage gate, the registry completion, and the dashboard; M9 COMPLETE)
+
+Task M9-047 closes Milestone M9 (ADR-0043). The laboratory's
+pre-existing pieces (the 40-scenario schema + traceability gate
+run every slice since M1; the per-family corpus IS the milestone
+attack suites M2-M8; the fuzz crate from M6-038) gain the missing
+mapping layer: scripts/check-invariant-coverage.py fail-closes on
+any of docs/SECURITY_INVARIANTS.md's 48 numbered invariants
+unmapped in the scenario registry (CI-enforced); the 21
+invariants that were executed inside the milestone suites but
+unmapped gain registry scenarios pointing at their existing suite
+legs (registry: 61 scenarios, 48/48 mapped); and
+scripts/security-dashboard.py prints per-invariant scenario counts
+and gate status - test status, not marketing scores. The M9 exit
+audit: criteria 1-3 satisfied (the mapping is mechanical; the
+defect->regression record holds; the critical scenarios run in
+the rust CI job before every merge); criterion 4 PARTIAL - the
+dev-host and archhost legs are reproducible and documented, but
+true bare-metal (physical TPM) coverage has NOT been executed
+(the M4 profile is the emulated one by design); recorded as the
+open follow-up. ON MERGE, MILESTONE M9 IS COMPLETE: M0-M9 closed;
+next is M10 (Wine TPM compatibility). See the
+[local issue](../planning/issues/047-laboratory.md) and
+[ADR-0043](../adr/0043-attack-laboratory.md).

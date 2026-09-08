@@ -1,0 +1,28 @@
+{
+ "id": "OGIR-M9-024",
+ "title": "Signed encodings reject ambiguity",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "the referenced house suite is part of the release gate"
+ ],
+ "steps": [
+  "run the referenced suite entry",
+  "observe the recorded outcome"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 24: Signed encodings are canonical and reject duplicate or ambiguous security-critical fields."
+ ],
+ "residual_risk": [
+  "registry mapping for the parser ambiguity family; the executable leg is the referenced suite; executable evidence: the M2-017 transcript encoding: fail-closed canonical rules, frozen field registries, duplicate rejection"
+ ]
+}

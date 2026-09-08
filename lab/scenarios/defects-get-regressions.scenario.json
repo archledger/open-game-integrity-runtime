@@ -1,0 +1,28 @@
+{
+ "id": "OGIR-M9-047",
+ "title": "Every confirmed defect gets a regression",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "the referenced house suite is part of the release gate"
+ ],
+ "steps": [
+  "run the referenced suite entry",
+  "observe the recorded outcome"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 47: Every confirmed security defect receives a permanent regression test."
+ ],
+ "residual_risk": [
+  "registry mapping for the false-positive and recovery behavior family; the executable leg is the referenced suite; executable evidence: the house record: every CI-caught failure (the manifest settle, the flood race, the alert remediations) landed with its regression test in the same merge"
+ ]
+}
