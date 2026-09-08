@@ -74,13 +74,18 @@ jobs:
       - name: Check shell syntax
         run: bash -n scripts/*.sh
 
-      - name: Compile-check the C SDK header
+      - name: Compile-check the C SDK header and the C++ wrapper
         run: |
           gcc -std=c17 -Wall -Wextra -Werror -fsyntax-only -x c - <<'EOF'
           #include "sdk/include/ogir.h"
           int main(void) {
               ogir_session *session = 0;
               (void)session;
-              return 0;
+              return OGIR_ABI_VERSION_MAJOR - 1;
           }
+          EOF
+          g++ -std=c++17 -Wall -Wextra -Werror -fsyntax-only -x c++ \
+            -I sdk/include -I sdk/cpp/include - <<'EOF'
+          #include "ogir/client.hpp"
+          int main() { ogir::Client c; (void)c; return 0; }
           EOF

@@ -1364,3 +1364,31 @@ no-ban docs (M6-039), and the ten-category suite + exit audit
 (M6-040). See the
 [local issue](../planning/issues/037-lifecycle.md) and
 [ADR-0033](../adr/0033-lifecycle-and-structured-results.md).
+## M6-038 boundary (the v1 SDK freeze, the C++ wrapper, and the fuzz targets)
+
+Task M6-038 delivers the SDK deliverables and the recorded fuzz
+remainder (ADR-0034). sdk/include/ogir.h becomes the FROZEN v1
+ABI: OGIR_ABI_VERSION macros, the ogir_verdict enum mirroring
+ADR-0033's five families, the structured ogir_result (verdict,
+retryable, stable reason_code, borrowed permit view),
+ogir_abi_version(), and ogir_session_get_result() - eight exports
+pinned by the fail-closed scripts/test-sdk-surface.py gate (the
+pre-freeze disclaimer is gone; the M6-039 conformance kit builds
+on the freeze). The header-only C++ wrapper
+(sdk/cpp/include/ogir/client.hpp) mirrors it with RAII
+Client/Session, a Verdict enum class whose unknown families fail
+closed to Deny, and Result as a value type COPYING the permit out
+of session memory. docs/UNREAL_INTEGRATION_DESIGN.md is the
+Unreal-facing design (plugin boundary, USTRUCT mirror, no-ban
+family mapping, lifetime, Proton deployment recap) - deliberately
+not a plugin. The fuzz crate (fuzz/, workspace-excluded,
+gitignored corpus) closes the recorded M5+M6-036 remainder with
+three targets: bjson_decode (codec never panics; decoded inputs
+re-encode bounded), portal_frame_decode (the v1 decoder admits
+only Hello), and service_route (the full HTTP router with null
+backends never panics) - smoke-executed 3000/3000/800 runs clean.
+CI compile-checks BOTH the C header and the C++ wrapper per push.
+Open deliberately: the sample backend + conformance kit + no-ban
+docs (M6-039), and the ten-category suite + exit audit (M6-040).
+See the [local issue](../planning/issues/038-stable-sdk.md) and
+[ADR-0034](../adr/0034-stable-sdk-and-fuzzing.md).

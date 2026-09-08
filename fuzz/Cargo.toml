@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+[package]
+name = "ogir-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+ogir-verifier = { path = "../crates/ogir-verifier" }
+ogir-agent = { path = "../crates/ogir-agent" }
+
+[[bin]]
+name = "bjson_decode"
+path = "fuzz_targets/bjson_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "portal_frame_decode"
+path = "fuzz_targets/portal_frame_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "service_route"
+path = "fuzz_targets/service_route.rs"
+test = false
+doc = false
+bench = false
