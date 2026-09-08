@@ -1633,3 +1633,27 @@ open follow-up. ON MERGE, MILESTONE M9 IS COMPLETE: M0-M9 closed;
 next is M10 (Wine TPM compatibility). See the
 [local issue](../planning/issues/047-laboratory.md) and
 [ADR-0043](../adr/0043-attack-laboratory.md).
+## M10-048 boundary (the per-prefix virtual TPM; M10 opened)
+
+Task M10-048 opens Milestone M10 (ADR-0044).
+wine/vtpm/vtpm-manager.sh (LGPL-2.1-or-later) runs ONE swtpm per
+wine prefix: state under <prefix>/vtpm/ (0700), sockets under
+$XDG_RUNTIME_DIR/ogir-vtpm/<sha256-16-of-path> (two prefixes can
+never collide - structural isolation), idempotent start,
+kill-escalating stop, and a reset that WIPES the state. The
+manager NEVER references the host TPM - mechanically checked by
+wine/tests/test-vtpm-manager.py (LGPL) together with per-prefix
+state/socket separation, reset-wipes (mtime-checked), and
+cleanup-removes-sockets. THE CAPABILITY CONTRACT: the vTPM is
+ordinary Windows TPM API compatibility, NOT hardware-host
+attestation - ADR-0017's software-tpm class, gate-rejected
+wherever hardware is required (invariant 17); recorded in
+wine/README.md. Executed: the manager smoke and the four-family
+gate PASS on the dev host. Open deliberately: the TBS
+context/device/submit/close/cancel implementation against the
+per-prefix socket, the WoW64 ABI tests, the remaining attack
+families (exhaustion, malformed buffers, cancellation races,
+cross-prefix leakage at the API layer, vTPM-presented-as-hardware),
+and the M10 exit audit. See the
+[local issue](../planning/issues/048-wine-vtpm.md) and
+[ADR-0044](../adr/0044-per-prefix-vtpm.md).
