@@ -82,6 +82,8 @@ pub struct SessionRegistry {
     /// Tombstones: identities that ended, kept so a dead identity
     /// can never re-register as itself (restart detection is the
     /// identity check in the observation, not the registry).
+    /// Per-session integrity-change logs (M7-043).
+    logs: HashMap<[u8; 32], crate::events::EventLog>,
     terminated: Vec<[u8; 32]>,
 }
 
@@ -102,6 +104,8 @@ impl SessionRegistry {
         }
         self.sessions
             .insert(identity, RegisteredSession { observation, pin });
+        self.logs
+            .insert(identity, crate::events::EventLog::new(identity));
         Ok(identity)
     }
 
@@ -123,11 +127,51 @@ impl SessionRegistry {
             return Err(RegistryError::UnknownOrTerminated);
         };
         if !entry.pin.still_pins() {
+            // The terminal event, best effort into the log.
+            if let Some(log) = self.logs.get_mut(identity) {
+                let before = entry.observation.state.0;
+                let _ = log.record(crate::events::EventKind::ProcessExited, before, before);
+            }
             return Err(RegistryError::UnknownOrTerminated);
         }
         let fresh = crate::observation::observe_pinned(&entry.pin).map_err(map_observation)?;
+        let before_state = entry.observation.state.0;
+        let after_state = fresh.state.0;
+        if before_state != after_state
+            && let Some(kind) = crate::events::diagnose(&entry.observation, &fresh)
+            && let Some(log) = self.logs.get_mut(identity)
+        {
+            let _ = log.record(kind, before_state, after_state);
+        }
         entry.observation = fresh.clone();
         Ok(fresh)
+    }
+
+    /// The session's integrity events (a snapshot copy, oldest
+    /// first). None when the identity is unknown.
+    pub fn events(&self, identity: &[u8; 32]) -> Option<Vec<crate::events::IntegrityEvent>> {
+        self.logs.get(identity).map(|log| log.events())
+    }
+
+    /// The RENEWAL GATE (M7-043): a permit issued at event
+    /// sequence S may renew only when the stream is quiet since S
+    /// and the session is still live. This is the gate, never a
+    /// grant - renewal always proceeds to full re-verification.
+    pub fn renewal_gate(
+        &self,
+        identity: &[u8; 32],
+        permit_sequence: u64,
+    ) -> Result<crate::events::RenewalDecision, RegistryError> {
+        let Some(entry) = self.sessions.get(identity) else {
+            return Err(RegistryError::UnknownOrTerminated);
+        };
+        if !entry.pin.still_pins() {
+            return Err(RegistryError::UnknownOrTerminated);
+        }
+        let Some(log) = self.logs.get(identity) else {
+            return Err(RegistryError::UnknownOrTerminated);
+        };
+        Ok(crate::events::renewal_gate(log, permit_sequence))
     }
 
     /// Ends a session and removes it (the normal-exit path and the
@@ -138,6 +182,7 @@ impl SessionRegistry {
             return Err(RegistryError::UnknownOrTerminated);
         }
         self.sessions.remove(identity);
+        self.logs.remove(identity);
         self.terminated.push(*identity);
         Ok(CleanupReason::ProcessExited)
     }
@@ -154,6 +199,7 @@ impl SessionRegistry {
             .collect();
         for identity in &dead {
             self.sessions.remove(identity);
+            self.logs.remove(identity);
             self.terminated.push(*identity);
         }
         dead
@@ -426,5 +472,140 @@ mod tests {
         assert_eq!(refreshed.identity.digest, identity);
         let _ = child.kill();
         let _ = child.wait();
+    }
+}
+
+#[cfg(test)]
+mod event_tests {
+    use super::*;
+    use crate::events::{EventKind, RenewalDecision};
+
+    fn settled_child() -> std::process::Child {
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        for _ in 0..100 {
+            let exe = std::fs::read_link(format!("/proc/{}/exe", child.id()))
+                .map(|target| {
+                    target
+                        .to_string_lossy()
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or_default()
+                        .to_string()
+                })
+                .unwrap_or_default();
+            if exe == "sleep" || exe == "sleep (deleted)" {
+                let count = || {
+                    std::fs::read_to_string(format!("/proc/{}/maps", child.id()))
+                        .map(|maps| {
+                            maps.lines()
+                                .filter(|line| {
+                                    line.contains('x')
+                                        && line
+                                            .rsplit(' ')
+                                            .next()
+                                            .is_some_and(|p| p.starts_with('/') && p.len() > 1)
+                                })
+                                .count()
+                        })
+                        .unwrap_or_default()
+                };
+                let first = count();
+                std::thread::sleep(std::time::Duration::from_millis(30));
+                if count() == first {
+                    return child;
+                }
+                continue;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("child never exec'd");
+    }
+
+    fn credentials(pid: u32) -> PeerCredentials {
+        PeerCredentials {
+            pid,
+            uid: 0,
+            gid: 0,
+        }
+    }
+
+    /// A quiet session's refresh emits NOTHING and the renewal
+    /// gate stays quiet.
+    #[test]
+    fn quiet_sessions_emit_no_events() {
+        let mut child = settled_child();
+        let mut registry = SessionRegistry::new();
+        let identity = registry
+            .admit(&credentials(child.id()))
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let _ = registry
+            .refresh(&identity)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let events = registry.events(&identity).unwrap_or_default();
+        assert!(events.is_empty(), "{events:?}");
+        assert_eq!(
+            registry.renewal_gate(&identity, 0),
+            Ok(RenewalDecision::MayReverify)
+        );
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    /// The process exiting emits the terminal event and the gate
+    /// fails closed (renewal of a dead session is impossible).
+    #[test]
+    fn exit_emits_the_terminal_event_and_closes_renewal() {
+        let mut child = settled_child();
+        let mut registry = SessionRegistry::new();
+        let identity = registry
+            .admit(&credentials(child.id()))
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let _ = child.kill();
+        let _ = child.wait();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        // The refresh emits ProcessExited and fails closed.
+        assert_eq!(
+            registry.refresh(&identity),
+            Err(RegistryError::UnknownOrTerminated)
+        );
+        let events = registry.events(&identity).unwrap_or_default();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, EventKind::ProcessExited);
+        // The renewal gate of a dead session fails closed.
+        assert_eq!(
+            registry.renewal_gate(&identity, 0),
+            Err(RegistryError::UnknownOrTerminated)
+        );
+    }
+
+    /// The full invalidation story: a permit issued at sequence 0
+    /// renews while quiet; an event moves the stream; the same
+    /// permit must now RE-ESTABLISH; a fresh permit at the new
+    /// sequence renews again.
+    #[test]
+    fn renewal_invalidation_flow() {
+        let mut child = settled_child();
+        let mut registry = SessionRegistry::new();
+        let identity = registry
+            .admit(&credentials(child.id()))
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        // Permit at sequence 0: quiet stream.
+        assert_eq!(
+            registry.renewal_gate(&identity, 0),
+            Ok(RenewalDecision::MayReverify)
+        );
+        // The terminal event moves the stream.
+        let _ = child.kill();
+        let _ = child.wait();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let _ = registry.refresh(&identity);
+        // The dead-session gate fails closed (stronger than
+        // MustReestablish - there is nothing to renew).
+        assert!(registry.renewal_gate(&identity, 0).is_err());
     }
 }

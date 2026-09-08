@@ -1505,3 +1505,25 @@ deliberately: the event stream + renewal invalidation (M7-043)
 and the noninterference suite + exit audit (M7-044). See the
 [local issue](../planning/issues/042-lifecycle.md) and
 [ADR-0038](../adr/0038-session-lifecycle.md).
+## M7-043 boundary (the integrity event stream and renewal invalidation)
+
+Task M7-043 delivers the stream deliverables (ADR-0039).
+ogir_agent::events: EventKind with stable wire spellings
+(process-exited, manifest-drift, cgroup-moved, tree-changed);
+IntegrityEvent carrying ONLY the kind, session digest, sequence,
+and BEFORE/AFTER state digests; the per-session bounded EventLog
+(default 64, oldest drops); diagnose() with fixed precedence; and
+renewal_gate(log, permit_sequence) - MayReverify when quiet,
+MustReestablish otherwise; A GATE, NEVER A GRANT. The registry
+integration: every refresh diffs the state digest, drift emits the
+diagnosed event, exit emits the terminal event before the
+fail-closed error, cleanup/sweeps drop logs with sessions, and
+SessionRegistry::renewal_gate() demands BOTH a quiet stream AND
+live liveness (a dead session fails closed - stronger than
+MustReestablish). Executed: quiet sessions emit nothing; exit
+emits the terminal event and closes renewal; the full
+invalidation flow; 59 tests green across six consecutive runs. NO
+ENFORCEMENT CLAIM. Open deliberately: the noninterference suite +
+exit audit (M7-044) closing the milestone. See the
+[local issue](../planning/issues/043-event-stream.md) and
+[ADR-0039](../adr/0039-event-stream.md).
