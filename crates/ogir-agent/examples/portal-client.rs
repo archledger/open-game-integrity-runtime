@@ -17,7 +17,9 @@ fn main() {
     let mut stream = match UnixStream::connect(&path) {
         Ok(stream) => stream,
         Err(error) => {
-            eprintln!("cannot connect to {path}: {error}");
+            // The path is caller-supplied argv; never echo it into
+            // logs (the caller already knows what it passed).
+            eprintln!("cannot connect to the requested portal socket: {error}");
             std::process::exit(1);
         }
     };
