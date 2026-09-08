@@ -1220,3 +1220,23 @@ binding (M5-032), the PE DLL and transport (M5-033/034), and the
 richer message set those slices bring. See the
 [local issue](../planning/issues/031-portal.md) and
 [ADR-0027](../adr/0027-local-portal-and-peer-cred-shim.md).
+## M5-032 boundary (race-resistant caller binding)
+
+Task M5-032 delivers implementation-order step 5 (ADR-0028):
+ogir_agent::binding pins the process behind the portal's
+kernel-derived credentials by pairing the /proc start time with a
+pidfd opened at bind time. Either observation failing means the
+process is gone and the binding fails closed (the
+exit-during-binding category); still_pins() probes the pinned
+process exactly (a reused pid is unreachable through the fd); and
+matches() reconciles fresh credentials by pid AND start time (the
+PID-reuse defense). The audited surface consolidates into
+ogir_agent::audited - the crate's single gate-enforced
+#[allow(unsafe_code)] attribute on the module declaration, one libc
+call per function with written safety arguments (getsockopt from
+ADR-0027; pidfd_open, pidfd_send_signal(0), close new here). Open
+deliberately: wiring the binding into the portal's accept path and
+the session seam (M5-034), and the live parent/child and reuse
+executions (the M5-035 suite). See the
+[local issue](../planning/issues/032-caller-binding.md) and
+[ADR-0028](../adr/0028-race-resistant-caller-binding.md).
