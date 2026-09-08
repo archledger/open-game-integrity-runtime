@@ -16,6 +16,13 @@ already exist from M1-M8; the missing pieces are the
 invariant-to-scenario MAPPING (the exit criterion) and the
 dashboard.
 
+## Decision drivers
+
+- The exit criterion must be MECHANICAL, not an audit document.
+- The registry records mappings to ALREADY-EXECUTED suites; it
+  does not duplicate tests.
+- The dashboard must not invent scores the roadmap does not claim.
+
 ## Options considered
 
 1. **Manual audit of the mapping.** Decays silently; not a gate.
