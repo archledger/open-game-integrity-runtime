@@ -4,9 +4,16 @@
 //! posture is deny-with-one-audited-block (ADR-0027, portal.rs), the
 //! same carve-out form as ADR-0020.
 
-mod session;
+// The ONE audited unsafe module in this crate (ADR-0027/ADR-0028):
+// exactly one gate-enforced audited-allow attribute, one
+// libc call per function, written safety arguments inside.
+#[allow(unsafe_code)]
+mod audited;
 
+pub mod binding;
 pub mod portal;
+
+mod session;
 
 pub use session::{
     BoundCaller, CleanupCompleted, CleanupRequest, CleanupStatus, CreatedEvidence, LocalSession,

@@ -97,39 +97,6 @@ impl From<io::Error> for PortalError {
 /// with a stack-allocated, correctly-sized `ucred` buffer and its
 /// address (the syscall writes at most that many bytes), and the
 /// same-block call of the declared `getsockopt`. The descriptor
-/// comes from `UnixStream::as_raw_fd`, which the standard library
-/// guarantees valid for the stream's lifetime. No heap, no globals,
-/// no pointers that outlive the call.
-/// The single audited unsafe block of this crate (ADR-0027).
-///
-/// # Safety
-///
-/// The function performs exactly one `getsockopt` call for the
-/// fixed options `SOL_SOCKET`/`SO_PEERCRED`, writing at most
-/// `*length` bytes into the caller's buffer (the kernel defines
-/// SO_PEERCRED to write exactly one `struct ucred` when the buffer
-/// is at least that large). The descriptor must belong to a live
-/// connected Unix socket. No heap, no globals, no pointers that
-/// outlive the call.
-#[allow(unsafe_code)]
-fn getsockopt_peer_cred(socket: i32, value: *mut core::ffi::c_void, length: *mut u32) -> i32 {
-    const SOL_SOCKET: i32 = 1;
-    const SO_PEERCRED: i32 = 17;
-    // SAFETY: the declaration is local and call-compatible; see the
-    // function-level safety argument above.
-    unsafe extern "C" {
-        fn getsockopt(
-            socket: i32,
-            level: i32,
-            name: i32,
-            value: *mut core::ffi::c_void,
-            length: *mut u32,
-        ) -> i32;
-    }
-    // SAFETY: one call, stack buffer, fixed options (above).
-    unsafe { getsockopt(socket, SOL_SOCKET, SO_PEERCRED, value, length) }
-}
-
 /// Reads the kernel-reported credentials of a connected peer via
 /// SO_PEERCRED. Identity comes from the kernel, never the caller.
 pub fn peer_credentials(stream: &UnixStream) -> io::Result<PeerCredentials> {
@@ -145,7 +112,7 @@ pub fn peer_credentials(stream: &UnixStream) -> io::Result<PeerCredentials> {
         gid: 0,
     };
     let mut length = std::mem::size_of::<Ucred>() as u32;
-    let result = getsockopt_peer_cred(
+    let result = crate::audited::getsockopt_peer_cred(
         stream.as_raw_fd(),
         &mut ucred as *mut Ucred as *mut core::ffi::c_void,
         &mut length,
