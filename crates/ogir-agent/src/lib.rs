@@ -12,6 +12,7 @@ mod audited;
 
 pub mod binding;
 pub mod correlation;
+pub mod dumpable_backend;
 pub mod enforcement;
 pub mod events;
 pub mod manifest;
