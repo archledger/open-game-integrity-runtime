@@ -50,6 +50,20 @@ impl std::error::Error for ManifestError {}
 
 const MAX_MODULES: usize = 64;
 
+/// Reads a file with a few bounded retries: transient failures of
+/// live-process file reads under load are not real state changes.
+fn retry_read(path: &str) -> Option<Vec<u8>> {
+    for attempt in 0..10 {
+        if let Ok(bytes) = std::fs::read(path) {
+            return Some(bytes);
+        }
+        if attempt < 9 {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+    None
+}
+
 fn sha256(bytes: &[u8]) -> [u8; 32] {
     ogir_attest::sha256::sha256(bytes)
 }
@@ -113,7 +127,11 @@ pub fn derive(binding: &CallerBinding) -> Result<RuntimeManifest, ManifestError>
         if seen_paths.len() > MAX_MODULES {
             return Err(ManifestError::Malformed);
         }
-        let Ok(bytes) = std::fs::read(path) else {
+        // A transient read failure of a LIVE process's mapped file
+        // (observed under parallel load) must not become false
+        // drift: retry a bounded number of times before skipping.
+        let bytes = retry_read(path);
+        let Some(bytes) = bytes else {
             continue;
         };
         module_digests.push((sha256(&bytes), bytes.len() as u64));

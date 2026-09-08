@@ -1452,3 +1452,31 @@ MILESTONE M6 IS COMPLETE: M0-M6 closed; next is M7
 (protected-session observation). See the
 [local issue](../planning/issues/040-suite-and-audit.md) and
 [ADR-0036](../adr/0036-m6-attack-suite.md).
+## M7-041 boundary (the observation core)
+
+Task M7-041 opens Milestone M7 (ADR-0037).
+ogir_agent::observation composes the M5 chain into ONE tracked
+record: the ObservedTree (the bounded upward walk - pid + kernel
+start time per hop, max 64, the pinned node first), the
+SessionIdentity (SHA-256 over the cgroup-path digest + pid + start
+time - stable while the process lives, never reused after a
+restart), the StateDigest (SHA-256 over everything observed with
+module digests ORDER-INDEPENDENT - a change means the observed
+world changed and renewal must re-verify), the RedactedObservation
+(the trust-boundary view: digests, pids, start times, structural
+counts ONLY), and observe/observe_pinned/refresh/same_state (the
+refresh is identity-checked: a restarted same-pid process is a
+DIFFERENT session). NONINTERFERENCE IS STRUCTURAL: only the pinned
+process's procfs is read, the tree is walked upward from the pin,
+nothing is enumerated globally. Two production fixes landed from
+the stability chase: manifest module reads retry a bounded budget
+(a transient read failure must not become false drift) and the
+state material is maps-order independent. Nine tests green across
+FIFTEEN consecutive parallel runs, including the quiet-stability
+contract and the mid-exec finding (exe changes at exec; the loader
+maps libc moments later - observations settle first). NO
+ENFORCEMENT CLAIM. Open deliberately: the lifecycle cleanup matrix
+(M7-042), the event stream + renewal invalidation (M7-043), and
+the noninterference suite + exit audit (M7-044). See the
+[local issue](../planning/issues/041-observation-core.md) and
+[ADR-0037](../adr/0037-observation-core.md).
