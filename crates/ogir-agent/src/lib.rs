@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
-#![forbid(unsafe_code)]
-//! Backend-neutral interfaces for the local OGIR agent.
+//! Backend-neutral interfaces for the local OGIR agent. The unsafe
+//! posture is deny-with-one-audited-block (ADR-0027, portal.rs), the
+//! same carve-out form as ADR-0020.
 
 mod session;
+
+pub mod portal;
 
 pub use session::{
     BoundCaller, CleanupCompleted, CleanupRequest, CleanupStatus, CreatedEvidence, LocalSession,
