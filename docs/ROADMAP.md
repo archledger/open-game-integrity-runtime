@@ -1419,3 +1419,36 @@ lifecycle demo. Open deliberately: the ten-category M6 attack
 suite + exit audit (M6-040) closing the milestone. See the
 [local issue](../planning/issues/039-sample-and-kit.md) and
 [ADR-0035](../adr/0035-sample-backend-and-conformance-kit.md).
+## M6-040 boundary (the attack suite and the M6 exit audit; M6 COMPLETE)
+
+Task M6-040 closes Milestone M6 (ADR-0036). The ten-category
+attack suite (crates/ogir-dev-verifierd/tests/m6_attack_suite.rs)
+runs over REAL TCP against the production shell with the
+developer-mode backend, consolidating the focused legs and adding
+the remaining ones: unsigned evidence never admits (signature
+validation cannot be neglected - the backend validates before any
+verdict); wrong-expected-context submissions deny; a
+corrupted-signature challenge (the stale-key shape) rejects; a
+revoked permit never reanimates (renewal denies Revoked); permit
+parser confusion denies Malformed; permit-only renewal without
+fresh evidence denies; verifier time skew denies NotYetValid under
+injected decision time; duplicates never re-admit; outage is a
+loud client error while transient taxonomy codes map to the Retry
+family (never punitive); and unsupported is never deny - asserted
+at the wire family, retryability, spelling, and permit-absence
+levels, plus a compile-time service-trait completeness check.
+11/11 green across three consecutive runs. The M6 exit audit
+(docs/superpowers/audits/2026-09-08-m6-exit-audit.md) finds all
+three criteria satisfied by executed work: the fresh-publisher
+kit criterion (15/15, stdlib Python, three-command quickstart),
+the deterministic-and-self-hostable criterion (injected decision
+time; single binary; documented TLS posture), and the
+insecure-patterns-impossible criterion (the frozen SDK's distinct
+verdict families; the kit's wire-bounds group). Honest limitations
+recorded: developer-mode end-to-end (the production backend
+composes the real chain later), restricted not yet emitted,
+wow64 fail-closed, CI self-test rather than fuzzing. ON MERGE,
+MILESTONE M6 IS COMPLETE: M0-M6 closed; next is M7
+(protected-session observation). See the
+[local issue](../planning/issues/040-suite-and-audit.md) and
+[ADR-0036](../adr/0036-m6-attack-suite.md).
