@@ -66,7 +66,13 @@ key fingerprint whose signature boot components must carry. A boot
 under any other key - a vendor key, a user-enrolled custom key -
 measures differently (PCR 7 records the Secure Boot configuration)
 and its components are not signed by an accepted root, so the state
-is reported as a signing-root mismatch: unsupported, not malicious.
+is reported as a signing-root mismatch: unsupported, not malicious. Since M4-030 the
+enforcement is also proven live in the emulator:
+`image/enroll-test-key.sh` derives the TEST-ONLY-enrolled varstore
+and `scripts/test-sb-boot.py` boots under it both ways - the good
+UKI boots with the kernel reporting lockdown from EFI Secure Boot
+mode, and a one-byte-modified UKI is rejected by the firmware
+(ADR-0026).
 
 ## Attack-indicating (evidence is internally inconsistent)
 

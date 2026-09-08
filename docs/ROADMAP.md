@@ -1164,3 +1164,36 @@ an accusation. Open deliberately: the Secure Boot enforcement boot
 consume these fixtures. See the
 [local issue](../planning/issues/029-reference-manifest.md) and
 [ADR-0025](../adr/0025-signed-reference-manifest.md).
+## M4-030 boundary (the attack suite, the enrolled varstore, and the M4 exit audit; M4 COMPLETE)
+
+Task M4-030 closes Milestone M4. ogir_bootlog::admission::admit_boot
+is the production decision point: profile identity, Secure Boot
+state, an EXPLICITLY accepted component signing root, then every
+manifest PCR expectation - no leg alone admits (ADR-0026, with three
+new distinguishable reasons: SecureBootDisabled, SigningRootRejected,
+SigningRootNotValidated). The enrolled varstore closes the last
+deferred M4-028b deliverable: image/enroll-test-key.sh derives it
+deterministically with virt-fw-vars (PK = KEK = db = the committed
+TEST-ONLY key, from the ADR-0024 template), and
+scripts/test-sb-boot.py proves enforcement both ways on the dev host:
+the good UKI boots under Secure Boot with kernel lockdown reported,
+and a one-byte-modified UKI is rejected by the firmware. The
+measured attack suite
+(crates/ogir-attest-tpm/tests/measured_attack_suite.rs) hosts all
+ten roadmap categories as the named milestone inventory - Secure
+Boot disabled, modified UKI, modified initramfs/cmdline,
+user-enrolled custom key, unapproved kernel with valid signature,
+forged/truncated/reordered log, log-does-not-reproduce-quote (live,
+through the M4-027 bridge), revoked component, firmware-update
+unknown profile (distinguishable as unsupported, not attack), and
+no-TPM/cleared-TPM fail-closed - plus the SB-alone-is-never-
+sufficient exit negative; 12/12 green against real swtpm, with
+mutations made on the parsed log structure so each is exactly the
+measurement change it claims. The M4 exit audit
+(docs/superpowers/audits/2026-09-07-m4-exit-audit.md) finds all four
+criteria satisfied by executed work and records the honest
+limitations (the emulated profile; no hardware fixture). ON MERGE,
+MILESTONE M4 IS COMPLETE: M0-M4 closed; next is M5 (the Proton
+bridge and race-resistant caller binding). See the
+[local issue](../planning/issues/030-attack-suite-and-exit-audit.md)
+and [ADR-0026](../adr/0026-sb-varstore-and-measured-admission.md).

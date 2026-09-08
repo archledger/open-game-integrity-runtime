@@ -10,6 +10,7 @@
 use std::error::Error;
 use std::fmt;
 
+pub mod admission;
 pub mod manifest;
 pub mod parser;
 pub mod profile;
@@ -39,6 +40,15 @@ pub enum BootlogError {
     /// The claimed profile is not the accepted one (reference data,
     /// never an attack verdict).
     UnsupportedProfile,
+    /// The profile requires Secure Boot and the platform reported it
+    /// disabled (M4-030 admission).
+    SecureBootDisabled,
+    /// The booted components' signing root is not accepted by the
+    /// manifest (the custom-key distinction).
+    SigningRootRejected,
+    /// The component signing root was not signature-validated at
+    /// collection; admission fails closed.
+    SigningRootNotValidated,
 }
 
 impl fmt::Display for BootlogError {
@@ -57,6 +67,15 @@ impl fmt::Display for BootlogError {
             Self::UnknownComponent => formatter.write_str("boot component is not declared"),
             Self::UnsupportedProfile => {
                 formatter.write_str("claimed profile is not the accepted one")
+            }
+            Self::SecureBootDisabled => {
+                formatter.write_str("Secure Boot is required and reported disabled")
+            }
+            Self::SigningRootRejected => {
+                formatter.write_str("component signing root is not accepted")
+            }
+            Self::SigningRootNotValidated => {
+                formatter.write_str("component signing root was not validated")
             }
         }
     }

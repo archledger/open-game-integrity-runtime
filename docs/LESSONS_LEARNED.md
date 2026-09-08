@@ -895,3 +895,22 @@ authorized Task 11 commit and publication remain pending.
   createak's policy session 0x99D). Also: swtpm holds only two
   object slots - flush the EK context before quoting, or everything
   fails with a misleading out-of-memory (0x902).
+- **virt-fw-vars --enroll-cert does not populate db (2026-09-07,
+  M4-030):** The one-shot enrollment filled PK and KEK and created a
+  dummy dbx - but left db EMPTY, and the boot under the "enrolled"
+  store was rejected by Secure Boot. The explicit triple
+  (--set-pk-cert, --add-kek-cert, --add-db-cert) is required, and
+  the enrollment script now fails closed unless PK, KEK, and db are
+  all present in the written store. Lesson generalized: verify the
+  written artifact's own inventory (--print), not just the tool's
+  exit code.
+- **A UKI boot with no rootfs never exits QEMU (2026-09-07,
+  M4-030):** The good test UKI's kernel lands in the initramfs
+  emergency shell ("Press Enter to continue") and a rejected boot
+  leaves OVMF at its boot menu - both wait forever, so the boot
+  script's inner timeout (exit 124) is the NORMAL end for both
+  outcomes. A Secure Boot gate must drive its verdict from the
+  serial log contents (command line present, lockdown notice,
+  rejection message), never from the boot's exit code. Related: two
+  QEMUs cannot share one ESP image (write lock) - boots are
+  sequential, and a timed-out QEMU must be reaped before the next.
