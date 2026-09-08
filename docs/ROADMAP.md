@@ -1581,3 +1581,31 @@ dev-host slices, the session-policy disclosure doc, and the M8
 exit audit. See the
 [local issue](../planning/issues/045-enforcement-seam.md) and
 [ADR-0041](../docs/../adr/0041-scoped-enforcement.md).
+## M8-046 boundary (the pr-set-dumpable backend, the kernel-real bypass test, the disclosure, and the M8 exit audit; M8 COMPLETE)
+
+Task M8-046 closes Milestone M8 (ADR-0042).
+ogir_agent::dumpable_backend::DumpableBackend is the FIRST REAL
+kernel mechanism behind the seam (mechanism name
+pr-set-dumpable): the prctl lives in the audited module as its
+second integer-only shim (the single-attribute posture holds). The
+kernel-real bypass test EXECUTES the property: a double-forked,
+ancestor-free protected process (stdio detached, setsid, dumpable
+cleared, NO EXEC - execve RESETS the flag, the suite's first
+empirical discovery) refuses a same-user unrelated process's
+/proc/pid/mem open (the kernel's own EACCES, live) while an
+unprotected unrelated process's mem stays openable in the same
+run; readiness is the kernel's own observable (/proc/pid/stat
+becomes root-owned). The second discovery: the kernel's dumpable
+check EXEMPTS ANCESTORS - disclosed as the mechanism's honest
+limitation and deferred to the LSM backend.
+docs/ENFORCEMENT_DISCLOSURE.md is the user-visible policy
+disclosure (the one property, the covered spellings, the
+mechanism and its limits, and the explicit never-list). The M8
+exit audit finds the bypass/noninterference criterion satisfied
+for the first property; the LSM backend and the later
+experimental controls remain future work behind the same seam per
+the roadmap's own sequencing rule. ON MERGE, MILESTONE M8 IS
+COMPLETE: M0-M8 closed; next is M9 (continuous attack
+laboratory). See the
+[local issue](../planning/issues/046-kernel-backend.md) and
+[ADR-0042](../adr/0042-pr-set-dumpable-backend.md).

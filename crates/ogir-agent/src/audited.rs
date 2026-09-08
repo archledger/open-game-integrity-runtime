@@ -79,6 +79,25 @@ pub fn pidfd_send_signal_zero(pidfd: i32) -> i32 {
     }
 }
 
+/// Sets the calling process's dumpable flag via
+/// prctl(PR_SET_DUMPABLE, value) (ADR-0042: the second audited
+/// call in this module - integer-only arguments, no pointers).
+///
+/// # Safety
+///
+/// Exactly one prctl call with two integer by-value arguments; the
+/// kernel reads no memory through them and the caller owns the
+/// policy decision (the enforcement seam's activate path).
+pub fn prctl_set_dumpable(value: i32) -> i32 {
+    const PR_SET_DUMPABLE: i32 = 4;
+    // SAFETY: see the function-level safety argument above.
+    unsafe { prctl(PR_SET_DUMPABLE, value as std::ffi::c_ulong) }
+}
+
+unsafe extern "C" {
+    fn prctl(option: i32, arg2: std::ffi::c_ulong, ...) -> i32;
+}
+
 /// Closes a raw descriptor.
 ///
 /// # Safety
