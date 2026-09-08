@@ -70,14 +70,14 @@ possible; this slice turns it into the shippable artifact set.
 
 ## Decision
 
-Ship the pair. `wine/ogir-client/pe/ogir_client.c` is the real PE
+Ship the pair. `proton/ogir-client/pe/ogir_client.c` is the real PE
 DLL (mingw, both AMD64 and i386): the public C ABI with strict
 argument validation (null out pointers, null-data-with-length,
 oversized blobs beyond 4096, capacity checks, null-tolerance on
 close) and transport open/close dispatched through ntdll's
 `__wine_unix_call` (bound via a dlltool import library for the two
 wine-private data exports).
-`wine/ogir-client/ogir_client_dll.c` is the winegcc artifact
+`proton/ogir-client/ogir_client_dll.c` is the winegcc artifact
 spec-bound to ms_abi wrappers (the header's default-convention
 declarations collide with ms_abi definitions, so the wrappers carry
 distinct names): the same native transport the dispatch entries

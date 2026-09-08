@@ -20,7 +20,7 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parent.parent
-BUILD = ROOT / "wine" / "ogir-client" / "build"
+BUILD = ROOT / "proton" / "ogir-client" / "build"
 
 REQUIRED_SO_SYMBOLS = [
     "__wine_spec_nt_header",

@@ -17,7 +17,12 @@ for tool in winegcc x86_64-w64-mingw32-gcc i686-w64-mingw32-gcc x86_64-w64-mingw
 done
 [[ -f ../../sdk/include/ogir.h ]] || { echo "missing sdk header" >&2; exit 1; }
 
-mkdir -p build
+mkdir -p build/wine-include/wine
+
+# The wine-side unixlib header, generated into the build tree from
+# the system wine installation (it is LGPL wine material and stays
+# out of the repository; the metadata gate keeps it that way).
+cp /usr/include/wine/unixlib.h build/wine-include/wine/unixlib.h
 
 # 1. The winelib module: spec-bound ms_abi C ABI + the native
 #    AF_UNIX transport in one artifact.
@@ -45,7 +50,7 @@ i686-w64-mingw32-gcc -o build/ogir-abi-test32.exe \
 #    defense; see ADR-0029).
 i686-w64-mingw32-dlltool -d build/ntdll_unix.def -l build/libntdll_unix32.a -D ntdll.dll
 i686-w64-mingw32-gcc -shared -o build/ogir-client32.dll \
-    pe/ogir_client.c -I../../sdk/include -I. -I/usr/include/wine/windows \
+    pe/ogir_client.c -I../../sdk/include -I. -Ibuild/wine-include -I/usr/include/wine/windows \
     -Lbuild -lntdll_unix32
 
 echo "built:"

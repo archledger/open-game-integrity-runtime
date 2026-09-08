@@ -13,13 +13,13 @@ must cross the boundary inside the wine process.
 
 ## What this slice delivers
 
-1. `wine/ogir-client/pe/ogir_client.c` - the real mingw PE DLL
+1. `proton/ogir-client/pe/ogir_client.c` - the real mingw PE DLL
    (AMD64 + i386): the public C ABI with strict argument validation
    (null out pointers, null-data-with-length, blobs over 4096,
    capacity checks, null-tolerant close) and transport open/close
    dispatched through ntdll's `__wine_unix_call` (bound via a
    dlltool import library for the two wine-private data exports).
-2. `wine/ogir-client/ogir_client_dll.c` + `ogir_client.spec` - the
+2. `proton/ogir-client/ogir_client_dll.c` + `ogir_client.spec` - the
    winegcc unixlib: spec-bound ms_abi exports AND initialized
    dispatch tables (an uninitialized table attaches nothing), the
    AF_UNIX transport with the bounded frame codec mirroring the
