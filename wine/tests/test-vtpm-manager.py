@@ -62,14 +62,22 @@ def main() -> None:
             result = run(prefix, "start")
             if result.returncode != 0:
                 fail(f"start failed for {prefix.name}: {result.stderr}")
-        raw_runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
-        if raw_runtime.startswith("/") and ".." not in raw_runtime.split("/"):
-            run_root = Path(raw_runtime) / "ogir-vtpm"
-        else:
-            run_root = Path("/tmp") / "ogir-vtpm"
-        sockets = sorted(p.name for p in run_root.glob("*/swtpm.sock"))
-        if len(sockets) != 2:
-            fail(f"two prefixes must have two distinct sockets, found {sockets}")
+        # The expected socket paths, computed exactly as the
+        # manager computes them (hash of the prefix path): no env
+        # value feeds a glob root.
+        import hashlib
+
+        def socket_path(prefix: Path) -> Path:
+            digest = hashlib.sha256(str(prefix.resolve()).encode()).hexdigest()[:16]
+            return Path("ogir-vtpm") / digest / "swtpm.sock"
+
+        runtime = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
+        one_socket = runtime / socket_path(one)
+        two_socket = runtime / socket_path(two)
+        if not one_socket.exists() or not two_socket.exists():
+            fail(f"both per-prefix sockets must exist: {one_socket}, {two_socket}")
+        if one_socket == two_socket:
+            fail("two prefixes must have two distinct sockets")
         state_one = one / "vtpm" / "tpm2-00.permall"
         state_two = two / "vtpm" / "tpm2-00.permall"
         if not (state_one.exists() and state_two.exists()):
@@ -104,9 +112,8 @@ def main() -> None:
             run(prefix, "stop")
         if run(one, "status").stdout.strip() != "stopped":
             fail("stop must stop")
-        leftovers = list(run_root.glob("*/swtpm.sock"))
-        if leftovers:
-            fail(f"stop must remove sockets, found {leftovers}")
+        if one_socket.exists() or two_socket.exists():
+            fail("stop must remove both per-prefix sockets")
     finally:
         for prefix in (tmp / "prefix-one", tmp / "prefix-two"):
             run(prefix, "stop")
