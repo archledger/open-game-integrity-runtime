@@ -18,7 +18,8 @@ fn main() {
     let portal = match Portal::bind(std::path::Path::new(&path)) {
         Ok(portal) => portal,
         Err(error) => {
-            eprintln!("cannot bind {path}: {error}");
+            // Never echo the caller-supplied path.
+            eprintln!("cannot bind the requested portal socket: {error}");
             std::process::exit(1);
         }
     };
@@ -33,10 +34,9 @@ fn main() {
             }
         };
         let binding = CallerBinding::pin(&credentials);
-        println!(
-            "round {round}: peer pid={} uid={} gid={}",
-            credentials.pid, credentials.uid, credentials.gid
-        );
+        // pid and start time only; uid/gid are sensitive-adjacent
+        // and add nothing for development.
+        println!("round {round}: peer pid={}", credentials.pid);
         match binding {
             Ok(binding) => {
                 println!(
