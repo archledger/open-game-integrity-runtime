@@ -547,7 +547,7 @@ mod event_tests {
             .refresh(&identity)
             .unwrap_or_else(|e| panic!("{e:?}"));
         let events = registry.events(&identity).unwrap_or_default();
-        assert!(events.is_empty(), "{events:?}");
+        assert_eq!(events.len(), 0, "a quiet session must emit nothing");
         assert_eq!(
             registry.renewal_gate(&identity, 0),
             Ok(RenewalDecision::MayReverify)
