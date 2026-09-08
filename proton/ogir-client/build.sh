@@ -39,7 +39,16 @@ x86_64-w64-mingw32-dlltool -d build/ogir-client.def -l build/libogir-client.dll.
 i686-w64-mingw32-dlltool -d build/ogir-client.def -l build/libogir-client32.dll.a -D ogir-client.dll \
     --as i686-w64-mingw32-as 2>/dev/null || i686-w64-mingw32-dlltool -d build/ogir-client.def -l build/libogir-client32.dll.a -D ogir-client.dll
 
-# 3. The ABI harnesses against the public header, importing the DLL.
+printf 'LIBRARY ntdll.dll\nEXPORTS\n  __wine_unix_call_dispatcher DATA\n  __wine_unixlib_handle DATA\n' \
+    > build/ntdll_unix.def
+x86_64-w64-mingw32-dlltool -d build/ntdll_unix.def -l build/libntdll_unix.a -D ntdll.dll
+i686-w64-mingw32-dlltool -d build/ntdll_unix.def -l build/libntdll_unix32.a -D ntdll.dll
+# 3. The 64-bit PE DLL (the ABI surface games load).
+x86_64-w64-mingw32-gcc -shared -o build/ogir-client.dll \
+    pe/ogir_client.c -I../../sdk/include -I. -Ibuild/wine-include \
+    -I/usr/include/wine/windows -Lbuild -lntdll_unix
+
+# 3b. The ABI harnesses against the public header, importing the DLL.
 x86_64-w64-mingw32-gcc -o build/ogir-abi-test.exe \
     abi_test.c -I../../sdk/include -Lbuild -logir-client.dll
 i686-w64-mingw32-gcc -o build/ogir-abi-test32.exe \
@@ -48,7 +57,6 @@ i686-w64-mingw32-gcc -o build/ogir-abi-test32.exe \
 # 4. The 32-bit PE variant for the WoW64 leg (its unix calls fail
 #    closed in the prototype - the recorded layout-mismatch
 #    defense; see ADR-0029).
-i686-w64-mingw32-dlltool -d build/ntdll_unix.def -l build/libntdll_unix32.a -D ntdll.dll
 i686-w64-mingw32-gcc -shared -o build/ogir-client32.dll \
     pe/ogir_client.c -I../../sdk/include -I. -Ibuild/wine-include -I/usr/include/wine/windows \
     -Lbuild -lntdll_unix32

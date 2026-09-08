@@ -11,6 +11,7 @@
 mod audited;
 
 pub mod binding;
+pub mod correlation;
 pub mod portal;
 
 mod session;

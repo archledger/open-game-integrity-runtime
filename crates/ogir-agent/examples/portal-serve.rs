@@ -9,7 +9,16 @@
 use std::time::Duration;
 
 use ogir_agent::binding::CallerBinding;
+use ogir_agent::correlation::correlate;
 use ogir_agent::portal::{Portal, serve_connection};
+
+fn short_digest(digest: &[u8; 32]) -> String {
+    digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>()[..16]
+        .to_string()
+}
 
 fn main() {
     let path = std::env::args()
@@ -44,6 +53,25 @@ fn main() {
                     binding.start_time(),
                     binding.still_pins()
                 );
+                // Redacted tracing (M5-034): structural facts and
+                // digest prefixes only - never paths or values.
+                if let Ok(context) = correlate(&binding) {
+                    println!(
+                        "  wine: prefix={} loaders={} ancestry={} cgroup={}",
+                        context
+                            .wineprefix_digest
+                            .as_ref()
+                            .map(short_digest)
+                            .unwrap_or_else(|| "none".to_string()),
+                        context.loader_digests.len(),
+                        context.ancestry_depth,
+                        context
+                            .cgroup_path_digest
+                            .as_ref()
+                            .map(short_digest)
+                            .unwrap_or_else(|| "root".to_string()),
+                    );
+                }
             }
             Err(error) => println!("  pin failed (fail closed): {error}"),
         }

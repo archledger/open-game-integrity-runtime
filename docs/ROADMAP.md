@@ -1265,3 +1265,25 @@ correlation, redacted tracing, and the game/runtime manifest
 (M5-035 with the thirteen-category suite). See the
 [local issue](../planning/issues/033-ogir-client.md) and
 [ADR-0029](../adr/0029-ogir-client-prototype.md).
+## M5-034 boundary (the wine/Proton transport and redacted correlation)
+
+Task M5-034 delivers implementation-order steps 3-6 (ADR-0030):
+the transport EXECUTED on a second machine (archhost, the user's
+designated target) under BOTH system wine 11.17 mainline (13/13
+harness PASS with the portal pinning the caller) and REAL
+GE-Proton10-34 via headless `proton run` (exit 0, a second pinned
+connection) - the mainline recipe is per-prefix: the PE in the
+WINEPREFIX system32 plus the unixlib in the installation's
+machine-unix directory; under Proton the unixlib lives in the
+Proton build's own wine tree and the PE in the compat prefix.
+ogir_agent::correlation derives the REDACTED wine context of a
+pinned caller (WINEPREFIX and loader value DIGESTS, bounded
+process-tree depth, cgroup controllers and path digest) and the
+development portal host demonstrates the redacted tracing; the two
+deployments on archhost are distinguishable by prefix digest
+without learning the user's paths. build.sh is self-contained
+(generates its dispatch import libraries; builds the 64-bit PE).
+Open deliberately: the game/runtime manifest derivation and the
+thirteen-category attack suite with the M5 exit audit (M5-035).
+See the [local issue](../planning/issues/034-transport.md) and
+[ADR-0030](../adr/0030-wine-transport-and-correlation.md).
