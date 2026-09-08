@@ -1527,3 +1527,29 @@ ENFORCEMENT CLAIM. Open deliberately: the noninterference suite +
 exit audit (M7-044) closing the milestone. See the
 [local issue](../planning/issues/043-event-stream.md) and
 [ADR-0039](../adr/0039-event-stream.md).
+## M7-044 boundary (the noninterference suite and the M7 exit audit; M7 COMPLETE)
+
+Task M7-044 closes Milestone M7 (ADR-0040). The
+noninterference suite (crates/ogir-agent/tests/
+m7_noninterference_suite.rs) executes the criterion five ways:
+an unrelated sibling NEVER appears in any observed tree (and
+killing it does not move the state digest); same-prefix unrelated
+processes stay isolated (matching prefix digests, disjoint trees,
+distinct identities); the redacted view carries no inventory
+surface (no path, name, or command material by type shape AND
+runtime inspection); per-session event logs never reference
+another session; and observation itself is noninterfering (a
+sibling's observation does not change the lone process's state
+digest). The four-scenario cleanup matrix is consolidated and the
+NO-ENFORCEMENT-CLAIM pin lands (compile-time: no observation type
+implements an Enforcement trait; runtime: a drifting refresh
+returns a record, never an instruction). 7/7 across three
+consecutive runs. The M7 exit audit
+(docs/superpowers/audits/2026-09-08-m7-exit-audit.md) finds all
+four criteria satisfied by executed work with honest limitations
+recorded (the stream is host-side API; sequences reset with the
+registry; the tree walk stops at unreadable hops - fail-visible).
+ON MERGE, MILESTONE M7 IS COMPLETE: M0-M7 closed; next is M8
+(scoped protected-session enforcement). See the
+[local issue](../planning/issues/044-suite-and-audit.md) and
+[ADR-0040](../adr/0040-m7-noninterference-suite.md).
