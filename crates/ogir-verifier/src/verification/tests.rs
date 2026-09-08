@@ -4612,9 +4612,12 @@ fn validate_parent_verification_source(source: &str) -> Result<(), String> {
     let expected = rust_tokens_with_literals(
         r#"
             #![forbid(unsafe_code)]
+            pub mod bjson;
             mod freshness;
+            pub mod http;
             #[cfg(feature = "research-mock-replay")]
             pub mod mock_replay;
+            pub mod service;
             mod verification;
             pub use freshness::{
                 ChallengeBinding, FreshnessChecked, FreshnessGuard, ReplayKey,

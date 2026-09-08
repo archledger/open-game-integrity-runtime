@@ -18,6 +18,10 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 MOCK_CRATES = ("ogir-mock-keys", "ogir-mock-protocol")
+# ADR-0032: the developer-mode daemon composes the mock substrate
+# into the service shell; it is mock-tier by construction and is
+# excluded from the production graph (asserted below).
+MOCK_TIER_CONSUMERS = ("ogir-dev-verifierd",)
 FAILURES: list[str] = []
 
 
@@ -52,6 +56,11 @@ def main() -> int:
         REPOSITORY_ROOT / "crates" / "ogir-verifier" / "Cargo.toml",
         REPOSITORY_ROOT / "apps" / "ogird" / "Cargo.toml",
         REPOSITORY_ROOT / "apps" / "ogir-verifierd" / "Cargo.toml",
+    ]
+    production_paths = [
+        path
+        for path in production_paths
+        if not any(consumer in str(path) for consumer in MOCK_TIER_CONSUMERS)
     ]
     for path in production_paths:
         text = path.read_text(encoding="utf-8")
@@ -89,6 +98,17 @@ def main() -> int:
         )
         check("unsafe_code" not in manifest,
               f"{crate} must not override the workspace unsafe posture")
+
+    # ADR-0032: the developer-mode daemon must exist, must depend on
+    # the production service shell, and its mock references must be
+    # exactly the substrate crates.
+    dev_manifest = (
+        REPOSITORY_ROOT / "crates" / "ogir-dev-verifierd" / "Cargo.toml"
+    ).read_text(encoding="utf-8")
+    check("ogir-verifier" in dev_manifest, "ogir-dev-verifierd must compose the service shell")
+    for crate in MOCK_CRATES:
+        check(crate in dev_manifest or crate == "ogir-mock-keys",
+              f"unexpected mock wiring for {crate}")
 
     if FAILURES:
         for failure in FAILURES:

@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0
+[package]
+name = "ogir-dev-verifierd"
+description = "Developer-mode verifier daemon composing the test substrate into the service shell (M6-036, ADR-0032)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+# The developer-mode deliverable: this crate composes the TEST
+# substrate (ADR-0016/0017) into the production service shell. It
+# is mock-tier by construction and is NEVER part of the production
+# graph (enforced by scripts/test-mock-substrate.py).
+[dependencies]
+ogir-model = { path = "../ogir-model", version = "=0.0.0" }
+ogir-mock-keys = { path = "../ogir-mock-keys", version = "=0.0.0" }
+ogir-mock-protocol = { path = "../ogir-mock-protocol", version = "=0.0.0" }
+ogir-verifier = { path = "../ogir-verifier", version = "=0.0.0" }
+
+[lints]
+workspace = true
