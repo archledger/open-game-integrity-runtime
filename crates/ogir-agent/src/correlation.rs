@@ -64,8 +64,20 @@ fn sha256_hex_digest(bytes: &[u8]) -> [u8; 32] {
 /// using any of this).
 pub fn correlate(binding: &CallerBinding) -> Result<WineContext, CorrelationError> {
     let pid = binding.pid();
-    let environ =
-        std::fs::read(format!("/proc/{pid}/environ")).map_err(|_| CorrelationError::Unreadable)?;
+    // A transient read failure of a live process's environ (observed
+    // on loaded CI runners) is not an unreadable process: retry a
+    // bounded budget first.
+    let mut environ = None;
+    for attempt in 0..10 {
+        if let Ok(bytes) = std::fs::read(format!("/proc/{pid}/environ")) {
+            environ = Some(bytes);
+            break;
+        }
+        if attempt < 9 {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+    let environ = environ.ok_or(CorrelationError::Unreadable)?;
 
     let mut values: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     for entry in environ.split(|byte| *byte == 0) {
