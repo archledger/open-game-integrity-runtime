@@ -1480,3 +1480,28 @@ ENFORCEMENT CLAIM. Open deliberately: the lifecycle cleanup matrix
 the noninterference suite + exit audit (M7-044). See the
 [local issue](../planning/issues/041-observation-core.md) and
 [ADR-0037](../adr/0037-observation-core.md).
+## M7-042 boundary (the session registry and the lifecycle cleanup matrix)
+
+Task M7-042 delivers the lifecycle deliverable (ADR-0038).
+ogir_agent::registry::SessionRegistry: admit() pins+observes+
+registers under the identity digest (duplicates are protocol
+errors; dead callers fail closed); state() reports from the PIN
+(exact liveness); cleanup() ends and TOMBSTONES (a dead identity
+never re-registers as itself); sweep_dead() is the crash path for
+a fleet; refresh() re-observes a live session (the M7-043 drift
+input); and after_registry_loss() makes the restart/shutdown
+posture EXECUTABLE - the registry is deliberately NOT persisted
+(ADR-0022 fail-closed), prior identities are unknown, and
+re-establishment is the only path (a still-live process re-admits
+to the same identity as a FRESH registration). The
+four-scenario cleanup matrix is the test set: normal exit
+(cleanup + tombstone), crash (Terminated -> sweep -> refresh
+refuses), agent restart (registry dropped -> re-admission works),
+system shutdown (startup empty; ghost identities unknown - by
+design indistinguishable from restart, the honest boundary of
+what the registry can know). Nine tests green across ten
+consecutive runs, plus multi-session independence. Open
+deliberately: the event stream + renewal invalidation (M7-043)
+and the noninterference suite + exit audit (M7-044). See the
+[local issue](../planning/issues/042-lifecycle.md) and
+[ADR-0038](../adr/0038-session-lifecycle.md).
