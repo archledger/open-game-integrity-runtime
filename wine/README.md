@@ -27,3 +27,19 @@ assurance classes (ADR-0017) a swtpm-backed TPM is exactly the
 `software-tpm` class, and the class gate rejects it wherever
 hardware is required; the capability is never presented, ranked,
 or accepted as hardware assurance (invariant 17).
+
+## The TBS compatibility layer (M10-049)
+
+`tbs/tbs.c` (+ `tbs/include/tbs.h`, `tbs/tbs.spec`) implements
+the DOCUMENTED TBS surface - context create, submit, cancel,
+close, and device info - against the per-prefix vTPM's sockets
+(upstream Wine's tbs.dll is stubs). One connection per submit:
+the manager starts the data channel in server `disconnect` mode
+because swtpm serves one persistent data client at a time.
+Discovery is the manager-maintained `<prefix>/vtpm/sockets`
+symlink - no runtime-dir layout knowledge in C. The layer
+returns TPM errors VERBATIM (compat transport, never synthesis),
+validates per the documented tables, and has NO physical TPM
+path (grep-gated by `wine/tests/test-tbs.py` together with the
+fail-closed, parameter, lifecycle, and transparency scenarios).
+The capability contract above is unchanged by this layer.

@@ -72,15 +72,26 @@ def main() -> None:
         # value feeds a glob root.
         import hashlib
 
-        def socket_path(prefix: Path) -> Path:
+        def socket_path(prefix: Path, name: str = "swtpm.sock") -> Path:
             digest = hashlib.sha256(str(prefix.resolve()).encode()).hexdigest()[:16]
-            return Path("ogir-vtpm") / digest / "swtpm.sock"
+            return Path("ogir-vtpm") / digest / name
 
         runtime = runtime_dir
         one_socket = runtime / socket_path(one)
         two_socket = runtime / socket_path(two)
+        one_data = runtime / socket_path(one, "tpm.sock")
         if not one_socket.exists() or not two_socket.exists():
             fail(f"both per-prefix sockets must exist: {one_socket}, {two_socket}")
+        # The data channel and the discovery symlink (M10-049) must
+        # be there for a running vtpm: the TBS layer talks TPM
+        # commands over the socket and finds it via the symlink.
+        if not one_data.exists():
+            fail(f"the per-prefix data socket must exist: {one_data}")
+        one_link = one / "vtpm" / "sockets"
+        if not one_link.is_symlink():
+            fail("the prefix must carry the vtpm/sockets discovery symlink")
+        elif one_link.resolve() != one_data.parent.resolve():
+            fail("the discovery symlink must point at this prefix's runtime dir")
         if one_socket == two_socket:
             fail("two prefixes must have two distinct sockets")
         state_one = one / "vtpm" / "tpm2-00.permall"
@@ -119,6 +130,8 @@ def main() -> None:
             fail("stop must stop")
         if one_socket.exists() or two_socket.exists():
             fail("stop must remove both per-prefix sockets")
+        if one_data.exists():
+            fail("stop must remove the per-prefix data socket")
     finally:
         for prefix in (tmp / "prefix-one", tmp / "prefix-two"):
             run(prefix, "stop")
