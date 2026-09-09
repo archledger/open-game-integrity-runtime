@@ -1,8 +1,8 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
 /*
  * Trusted Platform Module Base Services over the per-prefix
  * virtual TPM (OGIR M10-049, ADR-0045).
  *
- * SPDX-License-Identifier: LGPL-2.1-or-later
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
