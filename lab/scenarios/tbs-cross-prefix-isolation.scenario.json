@@ -1,0 +1,29 @@
+{
+ "id": "OGIR-M10-TBS-CROSSPREFIX",
+ "title": "Reach another prefix's TPM through the TBS layer",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "two wine prefixes each run their own per-prefix virtual TPM"
+ ],
+ "steps": [
+  "stop one prefix's virtual TPM while the other keeps running",
+  "ask the stopped prefix's TBS layer for a context, device info, and submits"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 17: Raw Windows TPM compatibility terminates at an isolated virtual TPM.",
+  "invariant 18: The TPM Endorsement Key is not exposed as a universal game identifier."
+ ],
+ "residual_risk": [
+  "the layer resolves only its own prefix's vtpm/sockets discovery path, so a dead prefix fails closed (TPM not found / IOERROR) while the other prefix keeps serving; identity material never crosses; executable evidence: wine/tests/test-tbs-attacks.py cross-prefix family"
+ ]
+}

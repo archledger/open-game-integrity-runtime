@@ -1697,3 +1697,35 @@ vTPM-presented-as-hardware), the M10 exit audit, and upstream
 submission of the patch. See the
 [local issue](../planning/issues/049-tbs-layer.md) and
 [ADR-0045](../adr/0045-tbs-compat-layer.md).
+## M10-050 boundary (the TBS API-layer attack families)
+
+Task M10-050 executes the M10 roadmap's API-layer attack tests
+against the TBS layer (ADR-0046): EXHAUSTION (the 64-slot
+context registry fills to TBS_E_TOO_MANY_TBS_CONTEXTS and
+recovers after close-all; a 50-submit loop leaks no
+descriptors), MALFORMED (unknown tag and header/length mismatch
+answered by the vTPM's OWN errors verbatim with transport
+success; a gate-controlled fake-socket matrix serves immediate
+EOF, responseSize below the header, responseSize 0xffffffff, and
+trailing garbage past the declared size - IOERROR or bounded
+exactly at 16 bytes), CANCELLATION RACES (a 25-cancel storm
+recovers; a 60-submit process and a 40-cancel process race the
+same live prefix concurrently with nothing lost and no hang;
+cancel after the vTPM stops fails closed as IOERROR),
+CROSS-PREFIX LEAKAGE (prefix A stopped + prefix B live: A fails
+closed while B keeps serving - no reach-across, identity
+material never crosses), and VTPM-AS-HARDWARE (the vendor
+identity served THROUGH the layer is the software emulator's -
+manufacturer IBM at PT 0x105, vendor string SW at 0x106; the
+research note records TPM_CAP_TPM_PROPERTIES=6 and the PT_FIXED
+numbering, verified against tss2 headers and the executed
+query). Five registry scenarios map the families to invariants
+17, 18, 20, 23, 26, and 40 (66 scenarios; coverage 48/48).
+Nothing in the layer needed hardening: the executed attacks
+confirmed the M10-049 design. Executed on the dev host: the
+attack gate, the M10-049 functional gate, the manager gate, the
+traceability gate, and the coverage gate all PASS. Open
+deliberately: the WoW64 ABI tests, the M10 exit audit, and
+upstream submission. See the
+[local issue](../planning/issues/050-tbs-attack-families.md) and
+[ADR-0046](../adr/0046-tbs-attack-families.md).

@@ -1,0 +1,29 @@
+{
+ "id": "OGIR-M10-TBS-MALFORMED",
+ "title": "Feed malformed commands and responses to the TBS layer",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "a per-prefix virtual TPM is running, or a gate-controlled fake data socket is substituted"
+ ],
+ "steps": [
+  "submit commands with an unknown tag or a header size inconsistent with the submitted octets",
+  "serve responses that close early, declare a size below the header, declare 0xffffffff, or append trailing garbage past the declared size"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 26: Malformed input can never produce an allow result.",
+  "invariant 23: Every untrusted parser has fixed limits for total bytes, nesting, fields, strings, collections, and processing time."
+ ],
+ "residual_risk": [
+  "request-side malformation is answered by the virtual TPM's own error verbatim (transport transparency, not synthesis); response-side malformation fails closed as IOERROR or is bounded exactly at the declared size; executable evidence: wine/tests/test-tbs-attacks.py malformed family"
+ ]
+}

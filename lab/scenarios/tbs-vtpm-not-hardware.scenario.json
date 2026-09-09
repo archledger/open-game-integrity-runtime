@@ -1,0 +1,29 @@
+{
+ "id": "OGIR-M10-TBS-NOTHARDWARE",
+ "title": "Present the per-prefix virtual TPM as hardware assurance",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "a per-prefix virtual TPM is running under the M10-048 manager"
+ ],
+ "steps": [
+  "query the TPM vendor identity through the TBS layer's submit path",
+  "read the layer's device info"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 17: Raw Windows TPM compatibility terminates at an isolated virtual TPM.",
+  "invariant 20: Hardware-certified, measured-log-derived, and trusted-agent-observed claims are distinguished."
+ ],
+ "residual_risk": [
+  "the identity served through the layer is the software emulator's own (manufacturer IBM, vendor string SW) and the device info keeps reserved fields zero; the ADR-0017 class gate rejects the software-tpm class wherever hardware is required; executable evidence: wine/tests/test-tbs-attacks.py vtpm-as-hardware family"
+ ]
+}

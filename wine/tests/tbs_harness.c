@@ -1,15 +1,17 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 /*
- * Scenario harness for the TBS compat layer (M10-049). Compiled
- * with wine/tbs/tbs.c in standalone mode by the dev-host gate
- * (wine/tests/test-tbs.py); each scenario exercises one behavior
- * and prints machine-readable lines the gate asserts on. The
- * harness never fabricates outcomes: TBS codes and TPM response
- * bytes are printed exactly as the layer returned them.
+ * Scenario harness for the TBS compat layer (M10-049; attack
+ * scenarios added in M10-050). Compiled with wine/tbs/tbs.c in
+ * standalone mode by the dev-host gates (wine/tests/test-tbs.py,
+ * wine/tests/test-tbs-attacks.py); each scenario exercises one
+ * behavior and prints machine-readable lines the gate asserts
+ * on. The harness never fabricates outcomes: TBS codes and TPM
+ * response bytes are printed exactly as the layer returned them.
  *
  * Usage: tbs_harness <scenario> [arg]
  */
 
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,6 +68,25 @@ static void print_response(const char *label, const unsigned char *buf, UINT32 s
     for (UINT32 i = 0; i < size; i++)
         printf("%02x", buf[i]);
     printf("\n");
+}
+
+/* Open-descriptor count via /proc/self/fd (dev-host Linux): the
+ * fd-stability attack asserts submits do not leak descriptors. */
+static long count_open_fds(void)
+{
+    DIR *dir = opendir("/proc/self/fd");
+    struct dirent *entry;
+    long count = 0;
+
+    if (!dir)
+        return -1;
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, ".."))
+            count++;
+    }
+    closedir(dir);
+    return count;
 }
 
 static int run_submit(TBS_HCONTEXT context, unsigned int count, unsigned int declared_size,
@@ -326,6 +347,157 @@ int main(int argc, char **argv)
         printf("FIRSTSUBMIT 0x%08x SIZE %u\n", code, result_size);
         printf("CLOSE1 0x%08x\n", Tbsip_Context_Close(context));
         printf("CLOSE2 0x%08x\n", Tbsip_Context_Close(other));
+        return 0;
+    }
+
+    /* ===== M10-050 attack scenarios ===== */
+
+    if (!strcmp(scenario, "exhaust-contexts"))
+    {
+        TBS_HCONTEXT held[256];
+        unsigned int created = 0;
+        TBS_RESULT last = TBS_SUCCESS;
+        while (created < 256)
+        {
+            TBS_HCONTEXT c = create_v2(4);
+            if (!c)
+            {
+                /* Report the failure code by recreating with the
+                 * raw call so the exact code is observable. */
+                TBS_CONTEXT_PARAMS2 params;
+                memset(&params, 0, sizeof(params));
+                params.version = TPM_VERSION_20;
+                params.asUINT32 = 4;
+                TBS_HCONTEXT probe = NULL;
+                last = Tbsi_Context_Create((TBS_CONTEXT_PARAMS *)&params, &probe);
+                break;
+            }
+            held[created++] = c;
+        }
+        printf("CREATED %u\n", created);
+        printf("EXHAUSTED 0x%08x\n", last);
+        for (unsigned int i = 0; i < created; i++)
+            Tbsip_Context_Close(held[i]);
+        printf("RECOVERY %s\n", create_v2(4) ? "ok" : "fail");
+        return 0;
+    }
+    if (!strcmp(scenario, "fd-stability"))
+    {
+        int iterations = argc > 2 ? atoi(argv[2]) : 50;
+        unsigned int ok = 0;
+        long before = count_open_fds();
+        for (int i = 0; i < iterations; i++)
+        {
+            code = run_submit(context, 4, 12, TBS_COMMAND_LOCALITY_ZERO, TBS_COMMAND_PRIORITY_NORMAL,
+                              result, sizeof(result), &result_size);
+            if (code == TBS_SUCCESS)
+                ok++;
+        }
+        long after = count_open_fds();
+        printf("FDSTART %ld\n", before);
+        printf("FDEND %ld\n", after);
+        printf("SUBMITS %u/%d\n", ok, iterations);
+        Tbsip_Context_Close(context);
+        return 0;
+    }
+    if (!strcmp(scenario, "submit-bad-tag"))
+    {
+        unsigned char command[16];
+        make_getrandom(command, 16, 12);
+        store_be16(command, 0x1234); /* a tag no TPM accepts */
+        result_size = sizeof(result);
+        code = Tbsip_Submit_Command(context, TBS_COMMAND_LOCALITY_ZERO, TBS_COMMAND_PRIORITY_NORMAL,
+                                    command, 12, result, &result_size);
+        printf("CODE 0x%08x SIZE %u\n", code, result_size);
+        print_response("RESPONSE ", result, result_size);
+        Tbsip_Context_Close(context);
+        return 0;
+    }
+    if (!strcmp(scenario, "submit-size-mismatch"))
+    {
+        unsigned char command[16];
+        make_getrandom(command, 16, 12);
+        /* The header declares 12 octets but 14 are submitted:
+         * the TPM's own inconsistency error must arrive verbatim. */
+        result_size = sizeof(result);
+        code = Tbsip_Submit_Command(context, TBS_COMMAND_LOCALITY_ZERO, TBS_COMMAND_PRIORITY_NORMAL,
+                                    command, 14, result, &result_size);
+        printf("CODE 0x%08x SIZE %u\n", code, result_size);
+        print_response("RESPONSE ", result, result_size);
+        Tbsip_Context_Close(context);
+        return 0;
+    }
+    if (!strcmp(scenario, "cancel-storm"))
+    {
+        unsigned int ok = 0;
+        for (int i = 0; i < 25; i++)
+            if (Tbsip_Cancel_Commands(context) == TBS_SUCCESS)
+                ok++;
+        printf("CANCELS %u/25\n", ok);
+        code = run_submit(context, 4, 12, TBS_COMMAND_LOCALITY_ZERO, TBS_COMMAND_PRIORITY_NORMAL,
+                          result, sizeof(result), &result_size);
+        printf("CODE 0x%08x SIZE %u\n", code, result_size);
+        Tbsip_Context_Close(context);
+        return 0;
+    }
+    if (!strcmp(scenario, "cancel-stdin"))
+    {
+        char line[64];
+        printf("READY\n");
+        fflush(stdout);
+        if (!fgets(line, sizeof(line), stdin))
+        {
+            print_code("CODE", (TBS_RESULT)-1);
+            return 0;
+        }
+        /* The gate stops the vTPM between READY and this line. */
+        print_code("CODE", Tbsip_Cancel_Commands(context));
+        return 0;
+    }
+    if (!strcmp(scenario, "submit-loop"))
+    {
+        int iterations = argc > 2 ? atoi(argv[2]) : 50;
+        unsigned int ok = 0;
+        for (int i = 0; i < iterations; i++)
+        {
+            code = run_submit(context, 4, 12, TBS_COMMAND_LOCALITY_ZERO, TBS_COMMAND_PRIORITY_NORMAL,
+                              result, sizeof(result), &result_size);
+            if (code == TBS_SUCCESS)
+                ok++;
+        }
+        printf("SUBMITS %u/%d\n", ok, iterations);
+        Tbsip_Context_Close(context);
+        return 0;
+    }
+    if (!strcmp(scenario, "cancel-loop"))
+    {
+        int iterations = argc > 2 ? atoi(argv[2]) : 25;
+        unsigned int ok = 0;
+        for (int i = 0; i < iterations; i++)
+            if (Tbsip_Cancel_Commands(context) == TBS_SUCCESS)
+                ok++;
+        printf("CANCELS %u/%d\n", ok, iterations);
+        Tbsip_Context_Close(context);
+        return 0;
+    }
+    if (!strcmp(scenario, "vendor-identity"))
+    {
+        /* GetCapability(TPM_CAP_TPM_PROPERTIES=6, property=0x105
+         * (PT_MANUFACTURER), count=2): manufacturer and vendor
+         * string 1 arrive through the layer, verbatim. */
+        unsigned char command[22];
+        store_be16(command, 0x8001);
+        store_be32(command + 2, 22);
+        store_be32(command + 6, 0x017a);
+        store_be32(command + 10, 6);
+        store_be32(command + 14, 0x105);
+        store_be32(command + 18, 2);
+        result_size = sizeof(result);
+        code = Tbsip_Submit_Command(context, TBS_COMMAND_LOCALITY_ZERO, TBS_COMMAND_PRIORITY_NORMAL,
+                                    command, 22, result, &result_size);
+        printf("CODE 0x%08x SIZE %u\n", code, result_size);
+        print_response("RESPONSE ", result, result_size);
+        Tbsip_Context_Close(context);
         return 0;
     }
 

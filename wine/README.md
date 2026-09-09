@@ -43,3 +43,16 @@ validates per the documented tables, and has NO physical TPM
 path (grep-gated by `wine/tests/test-tbs.py` together with the
 fail-closed, parameter, lifecycle, and transparency scenarios).
 The capability contract above is unchanged by this layer.
+
+## The TBS attack families (M10-050)
+
+`tests/test-tbs-attacks.py` executes the M10 roadmap's API-layer
+attack families against the layer: exhaustion (registry cap,
+recovery, no descriptor growth), malformed requests and responses
+(the vTPM's own errors verbatim; a fake-socket matrix for
+malformed responses - IOERROR or bounded exactly), cancellation
+races (storm, cross-process submit/cancel race, dead-vTPM
+fail-closed), cross-prefix no-reach, and the vTPM-as-hardware
+check (the vendor identity served through the layer is the
+SOFTWARE emulator's). Registry scenarios
+`tbs-*` map the families to invariants 17, 18, 20, 23, 26, 40.
