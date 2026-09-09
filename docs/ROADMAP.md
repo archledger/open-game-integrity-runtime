@@ -1759,3 +1759,31 @@ deliberately: the M10 exit audit and upstream submission of the
 patch. See the
 [local issue](../planning/issues/051-wow64-abi.md) and
 [ADR-0047](../adr/0047-tbs-wow64-abi.md).
+## M10-052 boundary (the M10 exit audit; M10 closes)
+
+Task M10-052 audits M10 against its roadmap exit criteria and
+closes the milestone (ADR-0048). Criterion 1 (physical TPM
+isolation mechanically tested) PASS: the new
+wine/tests/run-all-gates.py sweeps every non-gate wine/ source
+for host-TPM references and runs the whole suite in one
+fail-closed command (manager + functional + attacks + wow64) -
+executed PASS on the dev host. Criterion 2 (compatibility
+claims never reused as trust claims) PASS: the capability
+contract plus the ADR-0017 software-tpm class gate, the
+executed vTPM-as-hardware family (the vendor identity through
+the layer is the emulator's), reserved-zero device info from
+both PE widths, registry scenarios for invariants 17/18/20
+(67 scenarios; coverage 48/48; dashboard gate: pass); residual
+declared: within-prefix publisher separation stays in the
+attest/verifier crates by design. Criterion 3 verdict: CLEARLY
+EXPERIMENTAL - wine/tbs/UPSTREAM-NOTES.md records the
+upstreamable core and the four blockers (getenv prefix
+discovery, the unlocked registry, cancel bounded by swtpm, and
+the swtpm-runtime-dependency question); no submission is made.
+Deliverables audit: all six roadmap deliverables and all seven
+required attack tests map to executed evidence across
+ADR-0044..0047. ON MERGE, MILESTONE M10 IS COMPLETE: M0-M10
+closed; M11 (publisher pilot) and M12 (production candidate)
+require new, explicit authorization. See the
+[local issue](../planning/issues/052-exit-audit.md) and
+[ADR-0048](../adr/0048-m10-exit-audit.md).

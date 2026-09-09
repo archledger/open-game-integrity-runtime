@@ -67,3 +67,13 @@ x86_64 and i686 and runs the behavior matrix under Wine (the
 i686 leg through WoW64): the i386 stdcall symbol shapes are
 asserted at the object level and both callers reach only their
 own prefix's vTPM.
+
+## The M10 exit audit (M10-052)
+
+`tests/run-all-gates.py` runs the whole wine/ suite in one
+fail-closed command (the repo-wide isolation sweep, the manager
+gate, the TBS functional gate, the attack-family gate, and the
+WoW64 ABI gate). `tbs/UPSTREAM-NOTES.md` records the upstream
+delta honestly: the patch is EXPERIMENTAL, with the upstreamable
+core and its blockers identified. The milestone record is
+ADR-0048.
