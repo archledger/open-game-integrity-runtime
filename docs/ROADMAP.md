@@ -1657,3 +1657,43 @@ cross-prefix leakage at the API layer, vTPM-presented-as-hardware),
 and the M10 exit audit. See the
 [local issue](../planning/issues/048-wine-vtpm.md) and
 [ADR-0044](../adr/0044-per-prefix-vtpm.md).
+## M10-049 boundary (the TBS compatibility layer)
+
+Task M10-049 delivers M10's compat core (ADR-0045): the
+DOCUMENTED TBS surface - Tbsi_Context_Create,
+Tbsip_Submit_Command, Tbsip_Cancel_Commands,
+Tbsip_Context_Close, Tbsi_GetDeviceInfo - over the per-prefix
+vTPM (upstream Wine's tbs.dll is stubs; these five are the
+slice's implemented set). wine/tbs/tbs.c (LGPL-2.1-or-later,
+Wine-shaped, standalone-compilable for the gate) +
+wine/tbs/include/tbs.h (the documented types and codes) +
+wine/tbs/tbs.spec (the promoted entries for the upstream patch).
+Transport: ONE connection per submit over the data socket - the
+manager (extended here) starts the data channel in server
+disconnect mode, because swtpm serves one persistent data client
+at a time and a second context would hang (probed); discovery is
+the manager-maintained <prefix>/vtpm/sockets symlink, so no
+runtime-dir layout knowledge lives in C. The layer validates per
+the Microsoft Learn tables (locality ZERO only, the five
+priorities, the 10-byte TPM2 header, the 4096 swtpm buffer cap,
+TBS_CONTEXT_PARAMS2 includeTpm20), honors the
+insufficient-buffer contract and in-place buffers, returns TPM
+errors VERBATIM in the response buffer (compat transport, never
+synthesis), fails bogus handles closed via a bounded registry
+(no dereference before validation), and bounds IO at 30s ->
+TBS_E_IOERROR. Cancel is honest-bounded: swtpm cannot interrupt
+a synchronous in-flight command. THE CAPABILITY CONTRACT is
+unchanged: software-tpm class compatibility, never
+hardware-host attestation (invariant 17); the layer has NO
+physical TPM path (grep-gated mechanically). Executed: the
+scenario gate (wine/tests/test-tbs.py - no-vtpm fail-closed,
+parameter matrix, handle misuse, a real GetRandom round-trip,
+insufficient-buffer, in-place, TPM-error transparency, cancel,
+device info, cycling, interleaved contexts, source grep) and the
+extended manager gate PASS on the dev host. Open deliberately:
+the WoW64 ABI tests, the API-layer attack families (exhaustion,
+malformed buffers, cancellation races, cross-prefix leakage,
+vTPM-presented-as-hardware), the M10 exit audit, and upstream
+submission of the patch. See the
+[local issue](../planning/issues/049-tbs-layer.md) and
+[ADR-0045](../adr/0045-tbs-compat-layer.md).
