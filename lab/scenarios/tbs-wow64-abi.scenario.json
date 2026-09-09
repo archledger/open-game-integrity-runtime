@@ -1,0 +1,31 @@
+{
+ "id": "OGIR-M10-TBS-WOW64",
+ "title": "Call the TBS layer across the WoW64 boundary",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "a per-prefix virtual TPM is running and Wine with the mingw cross-compilers is available (dev-host gate)"
+ ],
+ "steps": [
+  "build the layer and the scenario harness as PE binaries for x86_64 and i686 with the winsock transport",
+  "assert the object-level symbol shapes (i386 stdcall decorations with exact argument-byte counts, x64 undecorated)",
+  "run the behavior matrix for both architectures under Wine, the i686 leg through WoW64",
+  "compare the random payloads the two architectures received"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 28: No raw Windows pointer or unchecked length crosses the Wine/Unix boundary.",
+  "invariant 17: Raw Windows TPM compatibility terminates at an isolated virtual TPM."
+ ],
+ "residual_risk": [
+  "the PE transport is the same one-connection-per-submit model over the prefix's own sockets; the layer validates every pointer and length per the documented prototype before use, and both callers only ever reach their own prefix's vTPM; executable evidence: wine/tests/test-tbs-wow64.py"
+ ]
+}

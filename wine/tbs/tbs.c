@@ -42,9 +42,13 @@
  * serves one data client at a time - which would deadlock any
  * application opening two TBS contexts.
  *
- * Standalone builds: the dev-host gate compiles this file with
- * -DOGIR_TBS_STANDALONE (POSIX-only dependencies); inside Wine
- * the same code paths run against windef.h types.
+ * Build modes: -DOGIR_TBS_STANDALONE (the dev-host POSIX gate;
+ * unix sockets) and -DOGIR_TBS_PE (the mingw/Wine gate and any
+ * PE build; the SAME AF_UNIX sockets through ws2_32 - probed:
+ * Wine passes the family through to the host, so a PE client
+ * reaches the per-prefix socket exactly like a POSIX one). The
+ * Wine-tree build uses the same PE transport shape. All TBS
+ * logic above the transport primitives is shared verbatim.
  */
 
 #ifdef OGIR_TBS_STANDALONE
@@ -58,6 +62,10 @@
 #include <unistd.h>
 typedef int HRESULT; /* winerror types, standalone builds only */
 #define E_NOTIMPL 0x80004001
+#elif defined(OGIR_TBS_PE)
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #else
 #include <windef.h>
 #include <wine/debug.h>
@@ -65,6 +73,16 @@ WINE_DEFAULT_DEBUG_CHANNEL(tbs);
 #endif
 
 #include "tbs.h"
+
+/* The transport handle type (after tbs.h: the PE branch's SOCKET
+ * needs winsock2.h, which tbs.h includes in that mode). */
+#if defined(OGIR_TBS_PE)
+typedef SOCKET tbs_fd_t;
+#define TBS_FD_INVALID INVALID_SOCKET
+#else
+typedef int tbs_fd_t;
+#define TBS_FD_INVALID (-1)
+#endif
 
 /* swtpm's default TPM command/response buffer is 4096 bytes
  * (swtpm_ioctl -b); larger buffers are refused before any IO. */
@@ -107,7 +125,34 @@ static void store_be32(BYTE *p, UINT32 v)
     p[3] = (BYTE)v;
 }
 
-static int write_full(int fd, const BYTE *buf, UINT32 len)
+#if defined(OGIR_TBS_PE)
+static int write_full(tbs_fd_t fd, const BYTE *buf, UINT32 len)
+{
+    UINT32 done = 0;
+    while (done < len)
+    {
+        int n = send(fd, (const char *)(buf + done), (int)(len - done), 0);
+        if (n == SOCKET_ERROR)
+            return 0;
+        done += (UINT32)n;
+    }
+    return 1;
+}
+
+static int read_full(tbs_fd_t fd, BYTE *buf, UINT32 len)
+{
+    UINT32 done = 0;
+    while (done < len)
+    {
+        int n = recv(fd, (char *)(buf + done), (int)(len - done), 0);
+        if (n <= 0)
+            return 0;
+        done += (UINT32)n;
+    }
+    return 1;
+}
+#else
+static int write_full(tbs_fd_t fd, const BYTE *buf, UINT32 len)
 {
     UINT32 done = 0;
     while (done < len)
@@ -124,7 +169,7 @@ static int write_full(int fd, const BYTE *buf, UINT32 len)
     return 1;
 }
 
-static int read_full(int fd, BYTE *buf, UINT32 len)
+static int read_full(tbs_fd_t fd, BYTE *buf, UINT32 len)
 {
     UINT32 done = 0;
     while (done < len)
@@ -142,10 +187,11 @@ static int read_full(int fd, BYTE *buf, UINT32 len)
     }
     return 1;
 }
+#endif
 
 /* Discard len bytes (draining a response the caller could not
  * accept, so the vTPM is not left mid-stream). */
-static int drain_full(int fd, UINT32 len)
+static int drain_full(tbs_fd_t fd, UINT32 len)
 {
     BYTE scratch[256];
     while (len > 0)
@@ -158,29 +204,84 @@ static int drain_full(int fd, UINT32 len)
     return 1;
 }
 
-static int connect_unix(const char *path)
+/* Close works for both transports: winsock handles and POSIX fds. */
+static void tbs_close(tbs_fd_t fd)
+{
+#if defined(OGIR_TBS_PE)
+    closesocket(fd);
+#else
+    close(fd);
+#endif
+}
+
+#if defined(OGIR_TBS_PE)
+static tbs_fd_t connect_unix(const char *path)
+{
+    /* sockaddr_un's layout; afunix.h equivalents, spelled out so
+     * the struct survives every mingw generation. */
+    struct
+    {
+        unsigned short family;
+        char path[TBS_UNIX_PATH_MAX];
+    } addr;
+    tbs_fd_t fd;
+    static BOOL winsock_started;
+    WSADATA data;
+
+    if (strlen(path) >= sizeof(addr.path))
+        return TBS_FD_INVALID;
+    if (!winsock_started)
+    {
+        if (WSAStartup(MAKEWORD(2, 2), &data) != 0)
+            return TBS_FD_INVALID;
+        winsock_started = TRUE;
+    }
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd == TBS_FD_INVALID)
+        return TBS_FD_INVALID;
+    memset(&addr, 0, sizeof(addr));
+    addr.family = AF_UNIX;
+    strcpy(addr.path, path);
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0)
+    {
+        closesocket(fd);
+        return TBS_FD_INVALID;
+    }
+    return fd;
+}
+#else
+static tbs_fd_t connect_unix(const char *path)
 {
     struct sockaddr_un addr;
-    int fd;
+    tbs_fd_t fd;
 
     if (strlen(path) >= sizeof(addr.sun_path))
-        return -1;
+        return TBS_FD_INVALID;
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0)
-        return -1;
+        return TBS_FD_INVALID;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     strcpy(addr.sun_path, path);
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
     {
-        close(fd);
-        return -1;
+        tbs_close(fd);
+        return TBS_FD_INVALID;
     }
     return fd;
 }
+#endif
 
-static int mark_timeouts(int fd)
+static int mark_timeouts(tbs_fd_t fd)
 {
+#if defined(OGIR_TBS_PE)
+    DWORD ms = (DWORD)TBS_IO_TIMEOUT_SECONDS * 1000;
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&ms, sizeof(ms)) != 0)
+        return 0;
+    if (setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&ms, sizeof(ms)) != 0)
+        return 0;
+    return 1;
+#else
     struct timeval tv;
     tv.tv_sec = TBS_IO_TIMEOUT_SECONDS;
     tv.tv_usec = 0;
@@ -189,6 +290,7 @@ static int mark_timeouts(int fd)
     if (setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0)
         return 0;
     return 1;
+#endif
 }
 
 /* Resolve the prefix's socket pair: <prefix>/vtpm/sockets is a
@@ -270,7 +372,7 @@ static BOOL context_is_valid(const struct tbs_context *ctx)
 TBS_RESULT WINAPI Tbsi_Context_Create(const TBS_CONTEXT_PARAMS *params, TBS_HCONTEXT *out)
 {
     struct tbs_context *ctx;
-    int fd;
+    tbs_fd_t fd;
 
     if (!out)
         return TBS_E_INVALID_OUTPUT_POINTER;
@@ -299,12 +401,12 @@ TBS_RESULT WINAPI Tbsi_Context_Create(const TBS_CONTEXT_PARAMS *params, TBS_HCON
         return TBS_E_INTERNAL_ERROR;
     }
     fd = connect_unix(ctx->data_path);
-    if (fd < 0)
+    if (fd == TBS_FD_INVALID)
     {
         free(ctx);
         return TBS_E_TPM_NOT_FOUND;
     }
-    close(fd); /* presence probe; each submit opens its own connection */
+    tbs_close(fd); /* presence probe; each submit opens its own connection */
 
     ctx->magic = TBS_CONTEXT_MAGIC;
     if (!context_register(ctx))
@@ -324,7 +426,7 @@ TBS_RESULT WINAPI Tbsip_Submit_Command(TBS_HCONTEXT context, TBS_COMMAND_LOCALIT
     struct tbs_context *ctx = context;
     BYTE header[TPM2_HEADER_SIZE];
     UINT32 response_size;
-    int fd;
+    tbs_fd_t fd;
 
     if (!context_is_valid(ctx))
         return TBS_E_INVALID_CONTEXT;
@@ -348,35 +450,35 @@ TBS_RESULT WINAPI Tbsip_Submit_Command(TBS_HCONTEXT context, TBS_COMMAND_LOCALIT
         return TBS_E_BUFFER_TOO_LARGE;
 
     fd = connect_unix(ctx->data_path);
-    if (fd < 0)
+    if (fd == TBS_FD_INVALID)
         return TBS_E_IOERROR;
     if (!mark_timeouts(fd))
     {
-        close(fd);
+        tbs_close(fd);
         return TBS_E_IOERROR;
     }
     /* The command is fully sent before the response is read, so
      * result may alias command (documented as allowed). */
     if (!write_full(fd, command, command_size))
     {
-        close(fd);
+        tbs_close(fd);
         return TBS_E_IOERROR;
     }
     if (!read_full(fd, header, sizeof(header)))
     {
-        close(fd);
+        tbs_close(fd);
         return TBS_E_IOERROR;
     }
     response_size = load_be32(header + 2);
     if (response_size < TPM2_HEADER_SIZE || response_size > TBS_MAX_BUFFER)
     {
-        close(fd);
+        tbs_close(fd);
         return TBS_E_IOERROR;
     }
     if (*result_size < response_size)
     {
         drain_full(fd, response_size - sizeof(header));
-        close(fd);
+        tbs_close(fd);
         *result_size = response_size; /* the documented too-small contract */
         return TBS_E_INSUFFICIENT_BUFFER;
     }
@@ -384,10 +486,10 @@ TBS_RESULT WINAPI Tbsip_Submit_Command(TBS_HCONTEXT context, TBS_COMMAND_LOCALIT
     if (response_size > sizeof(header)
         && !read_full(fd, result + sizeof(header), response_size - sizeof(header)))
     {
-        close(fd);
+        tbs_close(fd);
         return TBS_E_IOERROR;
     }
-    close(fd);
+    tbs_close(fd);
     *result_size = response_size;
     /* Success here means TRANSPORT success: a TPM-level failure
      * is in the response buffer, never synthesized by this layer. */
@@ -398,7 +500,7 @@ TBS_RESULT WINAPI Tbsip_Cancel_Commands(TBS_HCONTEXT context)
 {
     struct tbs_context *ctx = context;
     BYTE request[4], response[4];
-    int fd;
+    tbs_fd_t fd;
 
     if (!context_is_valid(ctx))
         return TBS_E_INVALID_CONTEXT;
@@ -409,20 +511,20 @@ TBS_RESULT WINAPI Tbsip_Cancel_Commands(TBS_HCONTEXT context)
      * API is present for compatibility and bounded to what the
      * vTPM reports. */
     fd = connect_unix(ctx->ctrl_path);
-    if (fd < 0)
+    if (fd == TBS_FD_INVALID)
         return TBS_E_IOERROR;
     if (!mark_timeouts(fd))
     {
-        close(fd);
+        tbs_close(fd);
         return TBS_E_IOERROR;
     }
     store_be32(request, SWTPM_CMD_CANCEL_TPM_CMD);
     if (!write_full(fd, request, sizeof(request)) || !read_full(fd, response, sizeof(response)))
     {
-        close(fd);
+        tbs_close(fd);
         return TBS_E_IOERROR;
     }
-    close(fd);
+    tbs_close(fd);
     return load_be32(response) == 0 ? TBS_SUCCESS : TBS_E_IOERROR;
 }
 
@@ -444,7 +546,7 @@ TBS_RESULT WINAPI Tbsi_GetDeviceInfo(UINT32 size, void *info)
 {
     TPM_DEVICE_INFO *device_info = info;
     struct tbs_context ctx;
-    int fd;
+    tbs_fd_t fd;
 
     if (!info || size < sizeof(TPM_DEVICE_INFO))
         return TBS_E_BAD_PARAMETER;
@@ -452,9 +554,9 @@ TBS_RESULT WINAPI Tbsi_GetDeviceInfo(UINT32 size, void *info)
     if (!build_paths(&ctx))
         return TBS_E_INTERNAL_ERROR;
     fd = connect_unix(ctx.data_path);
-    if (fd < 0)
+    if (fd == TBS_FD_INVALID)
         return TBS_E_TPM_NOT_FOUND;
-    close(fd);
+    tbs_close(fd);
 
     memset(device_info, 0, sizeof(*device_info));
     device_info->structVersion = TPM_VERSION_20;

@@ -28,10 +28,16 @@
 #define _TBS_H_
 
 /*
- * OGIR standalone-build shim (the dev-host gate): when compiled
- * without Wine's headers, provide the minimal base types this
- * header needs. An upstream submission drops this block; there
- * the includer has already pulled in windef.h.
+ * Build-mode base types.
+ *
+ * - OGIR_TBS_STANDALONE (the dev-host POSIX gate): minimal type
+ *   shims; an upstream submission drops this block because the
+ *   includer has already pulled in windef.h.
+ * - OGIR_TBS_PE (the mingw/Wine gate and any PE build): winsock
+ *   and the Windows base types; winsock2.h precedes windows.h so
+ *   the winsock (not winsock.h) declarations win. The layer's
+ *   transport speaks AF_UNIX through ws2_32 (probed: Wine passes
+ *   it through to the host).
  */
 #ifdef OGIR_TBS_STANDALONE
 #include <stdint.h>
@@ -45,6 +51,11 @@ typedef unsigned short WCHAR;
 #ifndef WINAPI
 #define WINAPI
 #endif
+#elif defined(OGIR_TBS_PE)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+typedef const BYTE *PCBYTE; /* Windows SDKs spell it LPCBYTE; tbs.h says PCBYTE */
 #endif
 
 #ifdef __cplusplus
@@ -58,19 +69,45 @@ typedef void *TBS_HCONTEXT, **PTBS_HCONTEXT;
 #define TBS_SUCCESS 0
 
 /* Documented TBS return codes (Microsoft Learn, tbs.h). */
+#ifndef TBS_E_INTERNAL_ERROR
 #define TBS_E_INTERNAL_ERROR          0x80284001
+#endif
+#ifndef TBS_E_BAD_PARAMETER
 #define TBS_E_BAD_PARAMETER           0x80284002
+#endif
+#ifndef TBS_E_INVALID_OUTPUT_POINTER
 #define TBS_E_INVALID_OUTPUT_POINTER  0x80284003
+#endif
+#ifndef TBS_E_INVALID_CONTEXT
 #define TBS_E_INVALID_CONTEXT         0x80284004
+#endif
+#ifndef TBS_E_INSUFFICIENT_BUFFER
 #define TBS_E_INSUFFICIENT_BUFFER     0x80284005
+#endif
+#ifndef TBS_E_IOERROR
 #define TBS_E_IOERROR                 0x80284006
+#endif
+#ifndef TBS_E_INVALID_CONTEXT_PARAM
 #define TBS_E_INVALID_CONTEXT_PARAM   0x80284007
+#endif
+#ifndef TBS_E_SERVICE_NOT_RUNNING
 #define TBS_E_SERVICE_NOT_RUNNING     0x80284008
+#endif
+#ifndef TBS_E_TOO_MANY_TBS_CONTEXTS
 #define TBS_E_TOO_MANY_TBS_CONTEXTS   0x80284009
+#endif
+#ifndef TBS_E_SERVICE_START_PENDING
 #define TBS_E_SERVICE_START_PENDING   0x8028400B
+#endif
+#ifndef TBS_E_SERVICE_DISABLED
 #define TBS_E_SERVICE_DISABLED        0x80284010
+#endif
+#ifndef TBS_E_BUFFER_TOO_LARGE
 #define TBS_E_BUFFER_TOO_LARGE        0x8028400E
+#endif
+#ifndef TBS_E_TPM_NOT_FOUND
 #define TBS_E_TPM_NOT_FOUND           0x8028400F
+#endif
 
 #define TPM_VERSION_12 1
 #define TPM_VERSION_20 2
