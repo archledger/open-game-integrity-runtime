@@ -27,6 +27,19 @@ its roadmap exit criteria, audited here.
   beyond M10: closing M10 ends the standing authorization's
   scope.
 
+## Options considered
+
+1. **Audit by execution**: one reproducible command runs the
+   whole wine/ suite plus a repo-wide isolation sweep, and every
+   criterion cites a gate or artifact that exists.
+2. Audit by reading: review the slices' ADRs and summarize.
+   Rejected: the house posture is executed evidence; a summary
+   without a run is a claim.
+3. Audit by new tests: write fresh attack tests for the audit.
+   Rejected: the families are already executed (ADR-0046/0047);
+   duplicating them would double maintenance without new
+   evidence.
+
 ## Decision
 
 ### Criterion 1: Physical TPM isolation is mechanically tested - PASS
