@@ -1,0 +1,29 @@
+{
+ "id": "OGIR-M10-TBS-EXHAUSTION",
+ "title": "Exhaust the TBS layer's context table",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "a per-prefix virtual TPM is running under the M10-048 manager"
+ ],
+ "steps": [
+  "open TBS contexts without closing until the bounded registry refuses",
+  "close every held context and open a new one",
+  "submit TPM commands in a loop while counting open descriptors"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 23: Every untrusted parser has fixed limits for total bytes, nesting, fields, strings, collections, and processing time."
+ ],
+ "residual_risk": [
+  "the registry is per-process and unlocked: concurrent callers per context remain the documented single-threaded posture; executable evidence: wine/tests/test-tbs-attacks.py exhaustion family (cap at TBS_E_TOO_MANY_TBS_CONTEXTS, recovery after close-all, no descriptor growth over a 50-submit loop)"
+ ]
+}

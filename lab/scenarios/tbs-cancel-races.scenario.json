@@ -1,0 +1,30 @@
+{
+ "id": "OGIR-M10-TBS-CANCEL",
+ "title": "Race cancels against submits on the TBS layer",
+ "attacker": "A3",
+ "owner": "initial-maintainer",
+ "required_assurance_profile": "all-protected-modes",
+ "assets": [
+  "integrity_of_trust_decisions"
+ ],
+ "preconditions": [
+  "a per-prefix virtual TPM is running under the M10-048 manager"
+ ],
+ "steps": [
+  "issue a storm of cancels on one context, then submit again",
+  "run a submit-loop process and a cancel-loop process against the same live prefix concurrently",
+  "cancel on a context whose virtual TPM has since stopped"
+ ],
+ "expected": {
+  "decision": "deny",
+  "reason": "invariant-covered",
+  "automatic_ban": false
+ },
+ "invariants": [
+  "invariant 23: Every untrusted parser has fixed limits for total bytes, nesting, fields, strings, collections, and processing time.",
+  "invariant 40: Unsupported, revoked, unavailable, transient, and policy-denied outcomes remain distinguishable."
+ ],
+ "residual_risk": [
+  "swtpm cannot interrupt a synchronous in-flight command, so cancel is compatibility surface bounded to what the virtual TPM reports; a dead virtual TPM yields IOERROR, never a hang; executable evidence: wine/tests/test-tbs-attacks.py cancellation family"
+ ]
+}
