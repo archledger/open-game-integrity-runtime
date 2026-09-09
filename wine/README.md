@@ -56,3 +56,14 @@ fail-closed), cross-prefix no-reach, and the vTPM-as-hardware
 check (the vendor identity served through the layer is the
 SOFTWARE emulator's). Registry scenarios
 `tbs-*` map the families to invariants 17, 18, 20, 23, 26, 40.
+
+## The WoW64 ABI evidence (M10-051)
+
+`tbs/tbs.c` builds in three modes: the POSIX standalone gate, a
+future Wine tree, and PE (-DOGIR_TBS_PE - the same AF_UNIX
+transport through ws2_32; probed: Wine passes it through).
+`tests/test-tbs-wow64.py` builds the layer as PE binaries for
+x86_64 and i686 and runs the behavior matrix under Wine (the
+i686 leg through WoW64): the i386 stdcall symbol shapes are
+asserted at the object level and both callers reach only their
+own prefix's vTPM.

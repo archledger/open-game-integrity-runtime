@@ -11,7 +11,6 @@
  * Usage: tbs_harness <scenario> [arg]
  */
 
-#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -71,7 +70,16 @@ static void print_response(const char *label, const unsigned char *buf, UINT32 s
 }
 
 /* Open-descriptor count via /proc/self/fd (dev-host Linux): the
- * fd-stability attack asserts submits do not leak descriptors. */
+ * fd-stability attack asserts submits do not leak descriptors.
+ * PE builds report -1 (not applicable there; the WoW64 gate
+ * never invokes that scenario). */
+#if defined(OGIR_TBS_PE)
+static long count_open_fds(void)
+{
+    return -1;
+}
+#else
+#include <dirent.h>
 static long count_open_fds(void)
 {
     DIR *dir = opendir("/proc/self/fd");
@@ -88,6 +96,7 @@ static long count_open_fds(void)
     closedir(dir);
     return count;
 }
+#endif
 
 static int run_submit(TBS_HCONTEXT context, unsigned int count, unsigned int declared_size,
                       TBS_COMMAND_LOCALITY locality, TBS_COMMAND_PRIORITY priority,

@@ -1729,3 +1729,33 @@ deliberately: the WoW64 ABI tests, the M10 exit audit, and
 upstream submission. See the
 [local issue](../planning/issues/050-tbs-attack-families.md) and
 [ADR-0046](../adr/0046-tbs-attack-families.md).
+## M10-051 boundary (the WoW64 ABI tests)
+
+Task M10-051 delivers M10's "WoW64 ABI tests" (ADR-0047): the
+layer gains a PE build mode - the SAME five transport primitives
+behind winsock (probed: Wine's ws2_32 passes AF_UNIX through to
+the host, so a PE client reaches the per-prefix data socket
+exactly like a POSIX one; lazily-initialized WSAStartup;
+DWORD-ms timeouts; all TBS logic shared verbatim, the POSIX path
+unchanged and still gate-covered). wine/tests/test-tbs-wow64.py
+builds the layer + harness as PE binaries for x86_64 AND i686
+with the mingw cross-compilers, asserts the object-level symbol
+shapes (i386 stdcall decorations with the exact argument-byte
+counts - _Tbsip_Submit_Command@28 among them; x64 undecorated),
+and runs the TBS behavior matrix under Wine for both
+architectures (the i686 leg through WoW64): fail-closed
+presence, documented validation codes, a real GetRandom
+round-trip with per-architecture DISTINCT payloads,
+insufficient-buffer, cancel, device info (reserved zeros),
+cycling, interleaved contexts, and fail-closed after the vTPM
+stops. Discovery under PE is the WINEPREFIX environment
+(getenv works in Wine processes); a Wine-tree integration would
+derive the prefix from Wine internals - the one recorded
+integration point for a future upstream submission. Dev-host
+gate (CI has no Wine). Executed on the dev host: the WoW64 gate,
+the POSIX regression set (functional, attacks, manager), the
+traceability (67 scenarios), and coverage (48/48) all PASS. Open
+deliberately: the M10 exit audit and upstream submission of the
+patch. See the
+[local issue](../planning/issues/051-wow64-abi.md) and
+[ADR-0047](../adr/0047-tbs-wow64-abi.md).
